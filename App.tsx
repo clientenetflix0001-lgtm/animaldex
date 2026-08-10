@@ -1,7 +1,13 @@
-import React from 'react';
-import { View, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Platform, ActivityIndicator, Linking } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer, DefaultTheme, RouteProp, LinkingOptions } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  DefaultTheme,
+  RouteProp,
+  LinkingOptions,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +28,8 @@ import AuthScreen from './screens/AuthScreen';
 import AddPetScreen from './screens/AddPetScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
 import QRScannerScreen from './screens/QRScannerScreen';
+import TagWelcomeScreen from './screens/TagWelcomeScreen';
+import AdminTagsScreen from './screens/AdminTagsScreen';
 
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
@@ -29,9 +37,15 @@ import { colors } from './lib/theme';
 import { RootStackParamList, TabParamList } from './lib/types';
 import { useBreakpoint } from './lib/responsive';
 import { Sidebar } from './components/Sidebar';
+import { extractTagCode } from './lib/tags';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
+
+// Ref global de navegación: permite navegar desde fuera del árbol de
+// componentes (por ejemplo, al detectar un deep link ?qr=xx antes de
+// que el usuario haya iniciado sesión).
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 function MyProfileTab() {
   return <UserProfileScreen showBack={false} />;
@@ -148,10 +162,55 @@ const linking: LinkingOptions<RootStackParamList> = {
       AddPet: 'nueva-mascota',
       EditProfile: 'editar-perfil',
       QRScanner: 'escanear',
+      AdminTags: 'admin/chapitas',
       Auth: 'entrar',
     },
   },
 };
+
+// ============================================================
+// Chapitas QR: detecta el par\u00e1metro ?qr=<code> en cualquier URL con la
+// que se abra la app (deep link, o la propia URL del navegador en web),
+// y lo guarda como "pendiente". Cuando el usuario est\u00e9 autenticado
+// (ya sea porque ya lo estaba, o justo despu\u00e9s de registrarse/iniciar
+// sesi\u00f3n), navega autom\u00e1ticamente a la pantalla de bienvenida de la
+// chapita, UNA sola vez.
+// ============================================================
+function TagDeepLinkHandler() {
+  const { user, authReady, pendingTagCode, setPendingTagCode } = useStore();
+  const handledRef = useRef(false);
+
+  useEffect(() => {
+    Linking.getInitialURL().then((url) => {
+      const code = extractTagCode(url);
+      if (code != null) setPendingTagCode(code);
+    });
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      const code = extractTagCode(url);
+      if (code != null) setPendingTagCode(code);
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || !user || pendingTagCode == null || handledRef.current) return;
+    handledRef.current = true;
+    const code = pendingTagCode;
+    setPendingTagCode(null);
+
+    const tryNavigate = () => {
+      if (navigationRef.isReady()) {
+        navigationRef.navigate('TagWelcome', { code });
+      } else {
+        setTimeout(tryNavigate, 100);
+      }
+    };
+    tryNavigate();
+  }, [authReady, user, pendingTagCode, setPendingTagCode]);
+
+  return null;
+}
 
 const screenHeaderOptions = {
   headerBackTitle: 'Atrás',
@@ -206,6 +265,16 @@ function RootNavigator() {
         component={QRScannerScreen}
         options={{ headerShown: false, presentation: 'modal', animation: 'slide_from_bottom' }}
       />
+      <Stack.Screen
+        name="TagWelcome"
+        component={TagWelcomeScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="AdminTags"
+        component={AdminTagsScreen}
+        options={{ title: 'Chapitas QR', ...screenHeaderOptions }}
+      />
     </Stack.Navigator>
   );
 }
@@ -237,6 +306,7 @@ export default function App() {
         <StoreProvider>
           <NotificationsProvider>
           <NavigationContainer
+            ref={navigationRef}
             theme={navTheme}
             linking={linking}
             documentTitle={{
@@ -244,6 +314,7 @@ export default function App() {
             }}
           >
             <StatusBar style="dark" />
+            <TagDeepLinkHandler />
             <RootNavigator />
           </NavigationContainer>
           </NotificationsProvider>

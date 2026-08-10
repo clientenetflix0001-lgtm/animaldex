@@ -59,11 +59,17 @@ interface StoreState {
   editedCaptions: Record<string, string>;
   markPostDeleted: (postId: string) => void;
   markPostEdited: (postId: string, caption: string) => void;
+  // Chapita QR pendiente: código detectado al abrir un link ?qr=xx antes
+  // de saber si el usuario ya está autenticado. Persiste en disco para
+  // sobrevivir al flujo de registro/login (incluso si la app se recarga).
+  pendingTagCode: number | null;
+  setPendingTagCode: (code: number | null) => void;
 }
 
 const StoreContext = createContext<StoreState | null>(null);
 
 const LEGACY_KEY = 'petgram-store-v1';
+const PENDING_TAG_KEY = 'animaldex-pending-tag-code';
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
@@ -79,6 +85,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
   const [deletedPostIds, setDeletedPostIds] = useState<string[]>([]);
   const [editedCaptions, setEditedCaptions] = useState<Record<string, string>>({});
+  const [pendingTagCode, setPendingTagCodeState] = useState<number | null>(null);
 
   const loadMyState = useCallback(async () => {
     try {
@@ -105,12 +112,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch {
         await setToken(null);
       }
+      // Restaurar chapita QR pendiente (por si el usuario cerró la app
+      // a mitad del registro después de escanear una chapita).
+      try {
+        const saved = await AsyncStorage.getItem(PENDING_TAG_KEY);
+        if (saved) setPendingTagCodeState(Number(saved));
+      } catch {}
       // limpiar almacenamiento legado
       AsyncStorage.removeItem(LEGACY_KEY).catch(() => {});
       setAuthReady(true);
       setReady(true);
     })();
   }, [loadMyState]);
+
+  const setPendingTagCode = useCallback((code: number | null) => {
+    setPendingTagCodeState(code);
+    if (code == null) AsyncStorage.removeItem(PENDING_TAG_KEY).catch(() => {});
+    else AsyncStorage.setItem(PENDING_TAG_KEY, String(code)).catch(() => {});
+  }, []);
 
   const login = useCallback(async (username: string, password: string) => {
     const res = await auth.login(username, password);
@@ -257,6 +276,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         editedCaptions,
         markPostDeleted,
         markPostEdited,
+        pendingTagCode,
+        setPendingTagCode,
       }}
     >
       {children}

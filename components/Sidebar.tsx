@@ -98,6 +98,21 @@ export function Sidebar({ state, navigation, mode }: Props) {
 
       <View style={{ flex: 1 }} />
 
+      {/* Panel de administrador (solo lucasfuentes) */}
+      {user?.username === 'lucasfuentes' && (
+        <Pressable
+          style={(st: any) => [
+            styles.item,
+            !full && styles.itemRail,
+            (st.hovered || st.pressed) && styles.itemHover,
+          ]}
+          onPress={() => navigation.navigate('AdminTags')}
+        >
+          <Ionicons name="qr-code-outline" size={24} color={colors.text} />
+          {full && <Text style={styles.itemLabel}>Chapitas QR</Text>}
+        </Pressable>
+      )}
+
       {/* Usuario + salir */}
       <View style={[styles.userBlock, !full && styles.userBlockRail]}>
         <Pressable

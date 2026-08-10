@@ -106,6 +106,17 @@ export interface ApiComment {
   createdAt: number;
 }
 
+export interface ApiTag {
+  code: number;
+  status: 'unclaimed' | 'claimed';
+  petId: string | null;
+  petName: string | null;
+  petEmoji: string | null;
+  petAvatar: string | null;
+  createdAt: number;
+  claimedAt: number | null;
+}
+
 export interface ApiNotification {
   id: string;
   type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location';
@@ -206,6 +217,19 @@ export const db = {
     accuracy?: number
   ): Promise<{ status: string; notified: boolean }> =>
     call('/db', { action: 'shareLocation', petId, lat, lon, accuracy }),
+
+  // ---------- Chapitas QR (links de invitación) ----------
+  // Público: no requiere sesión (se llama antes de que el usuario se registre).
+  tagStatus: (
+    code: number
+  ): Promise<{ ok: boolean; exists: boolean; status?: 'unclaimed' | 'claimed'; pet?: ApiPet | null }> =>
+    call('/db', { action: 'tagStatus', code }),
+  // Requiere sesión: vincula la chapita a una mascota recién creada.
+  claimTag: (code: number, petId: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'claimTag', code, petId }),
+  // Solo admin (lucasfuentes): genera un nuevo código y lista todos los existentes.
+  createTag: (): Promise<{ ok: boolean; code: number }> => call('/db', { action: 'createTag' }),
+  listTags: (): Promise<{ ok: boolean; tags: ApiTag[] }> => call('/db', { action: 'listTags' }),
 };
 
 // ---------- Helpers ----------

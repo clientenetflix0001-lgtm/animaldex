@@ -5,9 +5,11 @@ export type RootStackParamList = {
   UserProfile: { userId: string };
   PostDetail: { postId: string; d?: string };
   VerifyPhone: undefined;
-  AddPet: undefined;
+  AddPet: { tagCode?: number } | undefined;
   EditProfile: undefined;
   QRScanner: undefined;
+  TagWelcome: { code: number };
+  AdminTags: undefined;
 };
 
 export type TabParamList = {

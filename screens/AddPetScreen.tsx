@@ -14,12 +14,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { db } from '../lib/db';
 import { uploadImage } from '../lib/api';
 import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
+import { RootStackParamList } from '../lib/types';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const SPECIES = [
   { id: 'perro', label: 'Perro', emoji: '🐶' },
@@ -31,7 +35,9 @@ const SPECIES = [
 ];
 
 export default function AddPetScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<Nav>();
+  const route = useRoute<RouteProp<RootStackParamList, 'AddPet'>>();
+  const tagCode = route.params?.tagCode;
   const { refreshMyPets } = useStore();
   const [name, setName] = useState('');
   const [species, setSpecies] = useState('perro');
@@ -84,7 +90,7 @@ export default function AddPetScreen() {
     setSaving(true);
     try {
       const emoji = SPECIES.find((s) => s.id === species)?.emoji ?? '🐾';
-      await db.createPet({
+      const { pet } = await db.createPet({
         name: name.trim(),
         species,
         breed: breed.trim(),
@@ -94,18 +100,48 @@ export default function AddPetScreen() {
         avatarUrl: avatarUrl ?? undefined,
       });
       await refreshMyPets();
+
+      // Si esta mascota se está registrando a partir de escanear una
+      // chapita QR sin asignar, la vinculamos ahora: a partir de este
+      // momento, ese mismo link/QR llevará directo al perfil de la mascota.
+      if (tagCode != null) {
+        try {
+          await db.claimTag(tagCode, pet.id);
+          Alert.alert(
+            '¡Listo! 🎉',
+            `${pet.name} ya tiene su chapita QR activada. La próxima vez que alguien la escanee, llegará directo a su perfil.`,
+            [{ text: 'Ver perfil', onPress: () => navigation.replace('PetProfile', { petId: pet.id }) }]
+          );
+        } catch (e: any) {
+          Alert.alert(
+            'Mascota guardada',
+            `${pet.name} se registró correctamente, pero no se pudo vincular la chapita: ${e?.message || 'inténtalo de nuevo desde el perfil.'}`,
+            [{ text: 'Ver perfil', onPress: () => navigation.replace('PetProfile', { petId: pet.id }) }]
+          );
+        }
+        return;
+      }
+
       navigation.goBack();
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo guardar');
     } finally {
       setSaving(false);
     }
-  }, [name, species, breed, age, bio, avatarUrl, refreshMyPets, navigation]);
+  }, [name, species, breed, age, bio, avatarUrl, refreshMyPets, navigation, tagCode]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          {tagCode != null && (
+            <View style={styles.tagBanner}>
+              <Ionicons name="qr-code" size={18} color={colors.primary} />
+              <Text style={styles.tagBannerText}>
+                Esta mascota se vinculará a la chapita QR #{tagCode}
+              </Text>
+            </View>
+          )}
           {/* Avatar */}
           <Pressable style={styles.avatarWrap} onPress={pickAvatar}>
             {avatarUrl ? (
@@ -206,6 +242,16 @@ const styles = StyleSheet.create({
     maxWidth: 680,
     alignSelf: 'center',
   },
+  tagBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primarysoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  tagBannerText: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.text },
   avatarWrap: { alignItems: 'center', marginBottom: spacing.lg },
   avatar: { width: 110, height: 110, borderRadius: 55 },
   avatarEmpty: {

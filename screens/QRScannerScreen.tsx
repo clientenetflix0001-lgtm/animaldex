@@ -118,6 +118,7 @@ export default function QRScannerScreen() {
       if (r.kind === 'pet') navigation.replace('PetProfile', { petId: r.id });
       else if (r.kind === 'user') navigation.replace('UserProfile', { userId: r.id });
       else if (r.kind === 'post') navigation.replace('PostDetail', { postId: r.id });
+      else if (r.kind === 'tag') navigation.replace('TagWelcome', { code: r.code });
     },
     [navigation]
   );
@@ -255,6 +256,8 @@ export default function QRScannerScreen() {
                   ? 'person'
                   : result.kind === 'post'
                   ? 'chatbubble-ellipses'
+                  : result.kind === 'tag'
+                  ? 'qr-code'
                   : result.kind === 'url'
                   ? 'link'
                   : 'document-text'
@@ -265,15 +268,19 @@ export default function QRScannerScreen() {
           </View>
           <Text style={styles.resultKind}>{scanKindLabel(result.kind)}</Text>
           <Text style={styles.resultRaw} numberOfLines={2}>
-            {result.kind === 'url' ? result.url : result.raw}
+            {result.kind === 'url' ? result.url : result.kind === 'tag' ? `Código #${result.code}` : result.raw}
           </Text>
 
           <View style={styles.resultActions}>
-            {(result.kind === 'pet' || result.kind === 'user' || result.kind === 'post') && (
+            {(result.kind === 'pet' || result.kind === 'user' || result.kind === 'post' || result.kind === 'tag') && (
               <Pressable style={styles.primaryBtn} onPress={() => goToInternalTarget(result)}>
                 <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
                 <Text style={styles.primaryBtnText}>
-                  {result.kind === 'post' ? 'Ver publicación' : 'Ver perfil'}
+                  {result.kind === 'post'
+                    ? 'Ver publicación'
+                    : result.kind === 'tag'
+                    ? 'Continuar'
+                    : 'Ver perfil'}
                 </Text>
               </Pressable>
             )}

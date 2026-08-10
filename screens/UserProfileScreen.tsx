@@ -177,9 +177,16 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         )}
         <Text style={styles.username}>@{displayUsername}</Text>
         {isMe ? (
-          <Pressable onPress={confirmLogout} hitSlop={8}>
-            <Ionicons name="log-out-outline" size={22} color={colors.text} />
-          </Pressable>
+          <View style={styles.topBarActions}>
+            {me?.username === 'lucasfuentes' && (
+              <Pressable onPress={() => navigation.navigate('AdminTags')} hitSlop={8}>
+                <Ionicons name="qr-code-outline" size={22} color={colors.text} />
+              </Pressable>
+            )}
+            <Pressable onPress={confirmLogout} hitSlop={8}>
+              <Ionicons name="log-out-outline" size={22} color={colors.text} />
+            </Pressable>
+          </View>
         ) : (
           <View style={{ width: 24 }} />
         )}
@@ -357,6 +364,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
+  topBarActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   username: { fontWeight: '800', fontSize: 17, color: colors.text },
   infoRow: {
     flexDirection: 'row',

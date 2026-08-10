@@ -18,7 +18,7 @@ import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint } from '../lib/responsive';
 
 export default function AuthScreen() {
-  const { login, register } = useStore();
+  const { login, register, pendingTagCode } = useStore();
   const { desktopWeb } = useBreakpoint();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
@@ -57,6 +57,17 @@ export default function AuthScreen() {
 
   const formCard = (
     <View style={[styles.card, desktopWeb && styles.cardDesktop]}>
+            {pendingTagCode != null && (
+              <View style={styles.tagBanner}>
+                <Text style={styles.tagBannerEmoji}>🐾</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.tagBannerTitle}>¡Escaneaste una chapita QR!</Text>
+                  <Text style={styles.tagBannerText}>
+                    Crea tu cuenta o inicia sesión para registrar a tu mascota.
+                  </Text>
+                </View>
+              </View>
+            )}
             {/* Selector login/registro */}
             <View style={styles.tabs}>
               <Pressable
@@ -265,6 +276,18 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     ...shadow.card,
   },
+  tagBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.primarysoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  tagBannerEmoji: { fontSize: 22 },
+  tagBannerTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
+  tagBannerText: { fontSize: 12, color: colors.textMuted, marginTop: 2, lineHeight: 17 },
   tabs: {
     flexDirection: 'row',
     backgroundColor: colors.bg,

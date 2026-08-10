@@ -33,6 +33,10 @@ function json(data, status = 200) {
 
 const clean = (s, max = 300) => String(s == null ? '' : s).slice(0, max).trim();
 
+// Usuarios con permiso para generar chapitas QR (links de invitación).
+// Solo estos usernames pueden usar las acciones createTag/listTags.
+const ADMIN_USERNAMES = ['lucasfuentes'];
+
 // ---------- Envío genérico de SMS vía Twilio (reutilizado por varios endpoints) ----------
 async function sendTwilioSms(env, toPhone, body) {
   if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_PHONE_NUMBER) {
@@ -407,6 +411,22 @@ async function handleDb(request, env) {
       return json({ ok: true, counts });
     }
 
+    // ---------- Chapitas QR (links de invitación para registrar mascotas) ----------
+    // Público: cualquiera que escanee una chapita puede consultar su estado,
+    // incluso sin haber iniciado sesión todavía (primera vez que se escanea).
+    if (action === 'tagStatus') {
+      const code = Number(body.code);
+      if (!Number.isInteger(code)) return json({ error: 'Código inválido' }, 400);
+      const rows = await d1(env, 'SELECT * FROM pet_tags WHERE code = ?', [code]);
+      if (!rows[0]) return json({ ok: true, exists: false });
+      const tag = rows[0];
+      if (tag.status === 'claimed' && tag.pet_id) {
+        const pets = await d1(env, 'SELECT * FROM pets WHERE id = ?', [tag.pet_id]);
+        return json({ ok: true, exists: true, status: 'claimed', pet: pets[0] ? petRow(pets[0]) : null });
+      }
+      return json({ ok: true, exists: true, status: 'unclaimed' });
+    }
+
     // ---------- Compartir ubicación (público, con consentimiento GPS del visitante) ----------
     // El navegador siempre pide permiso visible antes de dar la ubicación;
     // este endpoint solo recibe el resultado YA consentido y lo envía por SMS
@@ -455,6 +475,63 @@ async function handleDb(request, env) {
 
     const userId = await authUser(request, env, body);
     if (!userId) return json({ error: 'Inicia sesión para continuar' }, 401);
+
+    // Vincula una chapita QR (todavía sin asignar) a una mascota del usuario
+    // autenticado. Se usa justo después de crear la mascota en el flujo de
+    // "escaneé una chapita → me registro → registro a mi mascota".
+    if (action === 'claimTag') {
+      const code = Number(body.code);
+      const petId = clean(body.petId, 80);
+      if (!Number.isInteger(code)) return json({ error: 'Código inválido' }, 400);
+      const tags = await d1(env, 'SELECT * FROM pet_tags WHERE code = ?', [code]);
+      if (!tags[0]) return json({ error: 'Chapita no encontrada' }, 404);
+      if (tags[0].status === 'claimed') return json({ error: 'Esta chapita ya fue asignada a una mascota' }, 409);
+      const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
+      if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
+      await d1(
+        env,
+        "UPDATE pet_tags SET status = 'claimed', pet_id = ?, claimed_by_user_id = ?, claimed_at = ? WHERE code = ?",
+        [petId, userId, now, code]
+      );
+      return json({ ok: true });
+    }
+
+    // Panel de administrador: solo ADMIN_USERNAMES puede generar y listar chapitas.
+    if (action === 'createTag' || action === 'listTags') {
+      const admins = await d1(env, 'SELECT username FROM users WHERE id = ?', [userId]);
+      const username = admins[0]?.username || '';
+      if (!ADMIN_USERNAMES.includes(username)) return json({ error: 'No autorizado' }, 403);
+
+      if (action === 'createTag') {
+        const maxRows = await d1(env, 'SELECT MAX(code) AS m FROM pet_tags');
+        const nextCode = (maxRows[0].m || 0) + 1;
+        await d1(env, 'INSERT INTO pet_tags (code, status, created_by, created_at) VALUES (?, ?, ?, ?)', [
+          nextCode, 'unclaimed', userId, now,
+        ]);
+        return json({ ok: true, code: nextCode });
+      }
+
+      // listTags
+      const rows = await d1(
+        env,
+        `SELECT t.*, p.name AS pet_name, p.emoji AS pet_emoji, p.avatar_url AS pet_avatar
+         FROM pet_tags t LEFT JOIN pets p ON p.id = t.pet_id
+         ORDER BY t.code DESC`
+      );
+      return json({
+        ok: true,
+        tags: rows.map((r) => ({
+          code: r.code,
+          status: r.status,
+          petId: r.pet_id || null,
+          petName: r.pet_name || null,
+          petEmoji: r.pet_emoji || null,
+          petAvatar: r.pet_avatar || null,
+          createdAt: r.created_at,
+          claimedAt: r.claimed_at || null,
+        })),
+      });
+    }
 
     if (action === 'myState') {
       const [likes, saves, follows, pets] = await Promise.all([
