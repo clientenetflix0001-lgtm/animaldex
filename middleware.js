@@ -12,7 +12,7 @@ const BOT_RE =
   /facebookexternalhit|facebot|facebookcatalog|twitterbot|whatsapp|telegrambot|linkedinbot|slackbot|slack-imgproxy|discordbot|pinterest|googlebot|bingbot|yandex|baiduspider|vkshare|redditbot|applebot|flipboard|tumblr|skypeuripreview|nuzzel|quora|bitlybot|embedly|iframely|snap url preview|viber|line-poker|kakaotalk/i;
 
 export const config = {
-  matcher: ['/p/:path*', '/pet/:path*', '/'],
+  matcher: ['/p/:path*', '/pet/:path*', '/a/:path*', '/'],
 };
 
 export default function middleware(request) {
@@ -40,6 +40,13 @@ export default function middleware(request) {
     rewrite = new URL('/api/og', url.origin);
     rewrite.searchParams.set('type', 'pet');
     rewrite.searchParams.set('id', decodeURIComponent(pet[1]));
+  }
+
+  const alert = url.pathname.match(/^\/a\/([^/]+)\/?$/);
+  if (alert) {
+    rewrite = new URL('/api/og', url.origin);
+    rewrite.searchParams.set('type', 'alert');
+    rewrite.searchParams.set('id', decodeURIComponent(alert[1]));
   }
 
   // Portada: OG genérico de Animaldex para bots

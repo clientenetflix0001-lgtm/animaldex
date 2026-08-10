@@ -106,6 +106,31 @@ export interface ApiComment {
   createdAt: number;
 }
 
+export interface ApiAlert {
+  id: string;
+  userId: string;
+  type: 'lost' | 'found';
+  status: 'active' | 'resolved';
+  petName: string | null;
+  species: string;
+  breed: string;
+  description: string;
+  image: string;
+  locality: string;
+  province: string;
+  country: string;
+  lat: number | null;
+  lon: number | null;
+  eventDate: number | null;
+  createdAt: number;
+  likeCount: number;
+  commentCount: number;
+  isLiked: boolean;
+  username: string | null;
+  userName: string | null;
+  userAvatar: string | null;
+}
+
 export interface ApiTag {
   code: number;
   status: 'unclaimed' | 'claimed';
@@ -230,6 +255,30 @@ export const db = {
   // Solo admin (lucasfuentes): genera un nuevo código y lista todos los existentes.
   createTag: (): Promise<{ ok: boolean; code: number }> => call('/db', { action: 'createTag' }),
   listTags: (): Promise<{ ok: boolean; tags: ApiTag[] }> => call('/db', { action: 'listTags' }),
+
+  // ---------- Alertas (animales perdidos/encontrados) ----------
+  alertsFeed: (locality: string, before?: number, limit = 10): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
+    call('/db', { action: 'alertsFeed', locality, before, limit }),
+  alertDetail: (alertId: string): Promise<{ alert: ApiAlert }> => call('/db', { action: 'alertDetail', alertId }),
+  alertComments: (alertId: string): Promise<{ comments: ApiComment[] }> =>
+    call('/db', { action: 'alertComments', alertId }),
+  createAlert: (alert: {
+    type: 'lost' | 'found';
+    petName?: string;
+    species: string;
+    breed?: string;
+    description: string;
+    image: string;
+    locality: string;
+    province?: string;
+    lat?: number | null;
+    lon?: number | null;
+    eventDate?: number;
+  }): Promise<{ alert: ApiAlert }> => call('/db', { action: 'createAlert', ...alert }),
+  alertLike: (alertId: string, value: boolean): Promise<{ likeCount: number }> =>
+    call('/db', { action: 'alertLike', alertId, value }),
+  alertComment: (alertId: string, text: string): Promise<{ id: string; createdAt: number }> =>
+    call('/db', { action: 'alertComment', alertId, text }),
 };
 
 // ---------- Helpers ----------

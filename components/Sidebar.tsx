@@ -14,6 +14,7 @@ import { SIDEBAR_FULL, SIDEBAR_RAIL } from '../lib/responsive';
 
 export const TAB_ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap }> = {
   Inicio: { on: 'home', off: 'home-outline' },
+  Alertas: { on: 'warning', off: 'warning-outline' },
   Explorar: { on: 'compass', off: 'compass-outline' },
   Crear: { on: 'add-circle', off: 'add-circle-outline' },
   Actividad: { on: 'heart', off: 'heart-outline' },
@@ -22,6 +23,7 @@ export const TAB_ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off
 
 const LABELS: Record<string, string> = {
   Inicio: 'Inicio',
+  Alertas: 'Alertas',
   Explorar: 'Explorar',
   Crear: 'Crear',
   Actividad: 'Actividad',

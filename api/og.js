@@ -239,6 +239,20 @@ module.exports = async (req, res) => {
         };
       }
     }
+  } else if (type === 'alert' && id) {
+    const rows = await d1Query('SELECT * FROM alerts WHERE id = ?', [String(id)]);
+    if (rows[0]) {
+      const a = rows[0];
+      const typeLabel = a.type === 'found' ? 'ENCONTRADO' : 'PERDIDO';
+      const speciesLabel = { perro: 'Perro', gato: 'Gato', conejo: 'Conejo', loro: 'Ave', 'hámster': 'Hámster' }[a.species] || 'Animal';
+      const name = a.pet_name ? ` ${a.pet_name}` : '';
+      meta = {
+        title: `🚨 ${speciesLabel.toUpperCase()} ${typeLabel}${name} · Animaldex`,
+        description: `${a.description || ''} · 📍 ${a.locality}`.trim(),
+        image: a.image,
+        url: `${origin}/a/${a.id}`,
+      };
+    }
   } else if (type === 'post' && id) {
     const resolved = resolvePostMeta(id, d);
     if (resolved) {

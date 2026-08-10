@@ -30,6 +30,9 @@ import EditProfileScreen from './screens/EditProfileScreen';
 import QRScannerScreen from './screens/QRScannerScreen';
 import TagWelcomeScreen from './screens/TagWelcomeScreen';
 import AdminTagsScreen from './screens/AdminTagsScreen';
+import AlertsScreen from './screens/AlertsScreen';
+import CreateAlertScreen from './screens/CreateAlertScreen';
+import AlertDetailScreen from './screens/AlertDetailScreen';
 
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
@@ -58,6 +61,7 @@ function UserProfileRoute() {
 
 const TAB_ICONS: Record<keyof TabParamList, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap }> = {
   Inicio: { on: 'home', off: 'home-outline' },
+  Alertas: { on: 'warning', off: 'warning-outline' },
   Explorar: { on: 'compass', off: 'compass-outline' },
   Crear: { on: 'add-circle', off: 'add-circle-outline' },
   Actividad: { on: 'heart', off: 'heart-outline' },
@@ -94,6 +98,7 @@ function Tabs() {
         }}
       >
         <Tab.Screen name="Inicio" component={FeedScreen} />
+        <Tab.Screen name="Alertas" component={AlertsScreen} />
         <Tab.Screen name="Explorar" component={ExploreScreen} />
         <Tab.Screen name="Crear" component={CreatePostScreen} />
         <Tab.Screen name="Actividad" component={ActivityScreen} />
@@ -126,6 +131,7 @@ function Tabs() {
       })}
     >
       <Tab.Screen name="Inicio" component={FeedScreen} />
+      <Tab.Screen name="Alertas" component={AlertsScreen} />
       <Tab.Screen name="Explorar" component={ExploreScreen} />
       <Tab.Screen name="Crear" component={CreatePostScreen} options={{ tabBarLabel: '' }} />
       <Tab.Screen
@@ -149,6 +155,7 @@ const linking: LinkingOptions<RootStackParamList> = {
         path: '',
         screens: {
           Inicio: '',
+          Alertas: 'alertas',
           Explorar: 'explorar',
           Crear: 'crear',
           Actividad: 'actividad',
@@ -163,6 +170,8 @@ const linking: LinkingOptions<RootStackParamList> = {
       EditProfile: 'editar-perfil',
       QRScanner: 'escanear',
       AdminTags: 'admin/chapitas',
+      CreateAlert: 'crear-alerta',
+      AlertDetail: 'a/:alertId',
       Auth: 'entrar',
     },
   },
@@ -274,6 +283,16 @@ function RootNavigator() {
         name="AdminTags"
         component={AdminTagsScreen}
         options={{ title: 'Chapitas QR', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="CreateAlert"
+        component={CreateAlertScreen}
+        options={{ title: 'Crear alerta', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="AlertDetail"
+        component={AlertDetailScreen}
+        options={{ title: 'Alerta', ...screenHeaderOptions }}
       />
     </Stack.Navigator>
   );

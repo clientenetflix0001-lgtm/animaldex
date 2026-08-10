@@ -10,10 +10,13 @@ export type RootStackParamList = {
   QRScanner: undefined;
   TagWelcome: { code: number };
   AdminTags: undefined;
+  CreateAlert: undefined;
+  AlertDetail: { alertId: string };
 };
 
 export type TabParamList = {
   Inicio: undefined;
+  Alertas: undefined;
   Explorar: undefined;
   Crear: undefined;
   Actividad: undefined;

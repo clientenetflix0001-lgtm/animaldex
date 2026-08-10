@@ -239,6 +239,60 @@ const POST_SELECT = `
   LEFT JOIN users u ON u.id = p.user_id
 `;
 
+// ============================================================
+// ALERTAS (animales perdidos/encontrados) — feed independiente,
+// filtrado por localidad. Estructura pensada para poder agregar
+// después: avistamientos, "mascota recuperada", coincidencias,
+// notificaciones, radio de búsqueda y mapa — sin migrar datos.
+// ============================================================
+
+function alertRow(r, viewerLiked) {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    type: r.type, // 'lost' | 'found' (futuro: 'sighting', 'reunited')
+    status: r.status, // 'active' (futuro: 'resolved')
+    petName: r.pet_name || null,
+    species: r.species,
+    breed: r.breed || '',
+    description: r.description || '',
+    image: r.image,
+    locality: r.locality,
+    province: r.province || '',
+    country: r.country || 'AR',
+    lat: r.lat ?? null,
+    lon: r.lon ?? null,
+    eventDate: r.event_date ?? null,
+    createdAt: r.created_at,
+    likeCount: r.like_count || 0,
+    commentCount: r.comment_count || 0,
+    isLiked: !!viewerLiked,
+    username: r.username || null,
+    userName: r.user_name || null,
+    userAvatar: r.user_avatar || null,
+  };
+}
+
+const ALERT_SELECT = `
+  SELECT a.*,
+    (SELECT COUNT(*) FROM alert_likes al WHERE al.alert_id = a.id) AS like_count,
+    (SELECT COUNT(*) FROM alert_comments ac WHERE ac.alert_id = a.id) AS comment_count,
+    u.username AS username, u.name AS user_name, u.avatar_url AS user_avatar
+  FROM alerts a
+  LEFT JOIN users u ON u.id = a.user_id
+`;
+
+// Marca isLiked en un array de filas de alerta ya resueltas, para un
+// viewer opcional (puede ser null si no hay sesión).
+async function attachLikedFlags(env, rows, viewerId) {
+  if (!viewerId || rows.length === 0) return rows.map((r) => alertRow(r, false));
+  const ids = rows.map((r) => r.id);
+  const ph = ids.map(() => '?').join(',');
+  const liked = await d1(env, `SELECT alert_id FROM alert_likes WHERE user_id = ? AND alert_id IN (${ph})`, [viewerId, ...ids]);
+  const likedSet = new Set(liked.map((l) => l.alert_id));
+  return rows.map((r) => alertRow(r, likedSet.has(r.id)));
+}
+
 async function handleDb(request, env) {
   const body = await request.json().catch(() => ({}));
   const action = clean(body.action, 40);
@@ -409,6 +463,53 @@ async function handleDb(request, env) {
       likeRows.forEach((r) => (counts[r.post_id] = { ...counts[r.post_id], likes: r.n }));
       commentRows.forEach((r) => (counts[r.post_id] = { ...(counts[r.post_id] || { likes: 0 }), comments: r.n }));
       return json({ ok: true, counts });
+    }
+
+    // ---------- Alertas (animales perdidos/encontrados) ----------
+    // Lectura pública, filtrada por localidad; la sesión es opcional
+    // (si viene token, se marca isLiked correctamente por usuario).
+    if (action === 'alertsFeed') {
+      const locality = clean(body.locality, 100);
+      if (!locality) return json({ error: 'Falta la localidad' }, 400);
+      const before = Number(body.before) || now + 1000;
+      const limit = Math.min(Number(body.limit) || 10, 30);
+      const viewerId = await authUser(request, env, body);
+      const rows = await d1(
+        env,
+        `${ALERT_SELECT} WHERE LOWER(a.locality) = LOWER(?) AND a.created_at < ? ORDER BY a.created_at DESC LIMIT ?`,
+        [locality, before, limit + 1]
+      );
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const alerts = await attachLikedFlags(env, page, viewerId);
+      return json({ ok: true, alerts, hasMore });
+    }
+
+    if (action === 'alertDetail') {
+      const alertId = clean(body.alertId, 80);
+      const viewerId = await authUser(request, env, body);
+      const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [alertId]);
+      if (!rows[0]) return json({ error: 'Alerta no encontrada' }, 404);
+      const [alert] = await attachLikedFlags(env, rows, viewerId);
+      return json({ ok: true, alert });
+    }
+
+    if (action === 'alertComments') {
+      const alertId = clean(body.alertId, 80);
+      const rows = await d1(
+        env,
+        `SELECT c.*, u.username, u.name AS user_name, u.avatar_url
+         FROM alert_comments c LEFT JOIN users u ON u.id = c.user_id
+         WHERE c.alert_id = ? ORDER BY c.created_at ASC LIMIT 200`,
+        [alertId]
+      );
+      return json({
+        ok: true,
+        comments: rows.map((c) => ({
+          id: c.id, userId: c.user_id, username: c.username || 'usuario', userName: c.user_name || 'Usuario',
+          avatarUrl: c.avatar_url || null, text: c.text, createdAt: c.created_at,
+        })),
+      });
     }
 
     // ---------- Chapitas QR (links de invitación para registrar mascotas) ----------
@@ -586,6 +687,56 @@ async function handleDb(request, env) {
       if (!text) return json({ error: 'Comentario vacío' }, 400);
       const id = `c-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(env, 'INSERT INTO comments (id, post_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, postId, userId, text, now]);
+      return json({ ok: true, id, createdAt: now });
+    }
+
+    // ---------- Alertas: escrituras (requieren sesión) ----------
+
+    if (action === 'createAlert') {
+      const type = body.type === 'found' ? 'found' : 'lost';
+      const petName = clean(body.petName, 40);
+      const species = clean(body.species, 20) || 'perro';
+      const breed = clean(body.breed, 60);
+      const description = clean(body.description, 600);
+      const image = clean(body.image, 2000);
+      const locality = clean(body.locality, 100);
+      const province = clean(body.province, 100);
+      const country = clean(body.country, 10) || 'AR';
+      const lat = body.lat != null && Number.isFinite(Number(body.lat)) ? Number(body.lat) : null;
+      const lon = body.lon != null && Number.isFinite(Number(body.lon)) ? Number(body.lon) : null;
+      const eventDate = body.eventDate != null && Number.isFinite(Number(body.eventDate)) ? Number(body.eventDate) : now;
+
+      if (!image) return json({ error: 'Falta la foto del animal' }, 400);
+      if (image.startsWith('data:')) return json({ error: 'La imagen debe subirse primero a Cloudflare' }, 400);
+      if (!description) return json({ error: 'Agrega una descripción' }, 400);
+      if (!locality) return json({ error: 'Falta la localidad del hecho' }, 400);
+
+      const id = `alert-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(
+        env,
+        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at)
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now]
+      );
+      const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [id]);
+      const [alert] = await attachLikedFlags(env, rows, userId);
+      return json({ ok: true, alert });
+    }
+
+    if (action === 'alertLike') {
+      const alertId = clean(body.alertId, 80);
+      if (body.value) await d1(env, 'INSERT OR IGNORE INTO alert_likes (user_id, alert_id, created_at) VALUES (?, ?, ?)', [userId, alertId, now]);
+      else await d1(env, 'DELETE FROM alert_likes WHERE user_id = ? AND alert_id = ?', [userId, alertId]);
+      const count = await d1(env, 'SELECT COUNT(*) AS n FROM alert_likes WHERE alert_id = ?', [alertId]);
+      return json({ ok: true, likeCount: count[0].n });
+    }
+
+    if (action === 'alertComment') {
+      const alertId = clean(body.alertId, 80);
+      const text = clean(body.text, 500);
+      if (!text) return json({ error: 'Comentario vacío' }, 400);
+      const id = `ac-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(env, 'INSERT INTO alert_comments (id, alert_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, alertId, userId, text, now]);
       return json({ ok: true, id, createdAt: now });
     }
 

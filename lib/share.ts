@@ -190,6 +190,25 @@ export async function sharePost(post: Post): Promise<void> {
   await shareLink(title, post.caption, url);
 }
 
+// ---------- Alertas (perdidos/encontrados): compartir con apps nativas ----------
+// NO crea una publicación/republicación interna: solo abre el share sheet
+// del sistema (WhatsApp, Estado de WhatsApp, Facebook, Instagram, copiar
+// enlace, etc.) con un link directo a la alerta dentro de Animaldex.
+import type { ApiAlert } from './db';
+
+export function alertShareUrl(alertId: string): string {
+  return `${siteOrigin()}/a/${alertId}`;
+}
+
+export async function shareAlert(alert: ApiAlert): Promise<void> {
+  const typeLabel = alert.type === 'found' ? 'ENCONTRADO' : 'PERDIDO';
+  const name = alert.petName ? ` ${alert.petName}` : '';
+  const title = `🚨 ${typeLabel}${name} · Animaldex`;
+  const text = `${alert.description}\n📍 ${alert.locality}`;
+  const url = alertShareUrl(alert.id);
+  await shareLink(title, text, url);
+}
+
 async function shareLink(title: string, text: string, url: string): Promise<void> {
   if (Platform.OS === 'web') {
     const nav: any = typeof navigator !== 'undefined' ? navigator : null;
