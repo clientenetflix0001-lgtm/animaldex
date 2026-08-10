@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Agon Preview",
-    "slug": "agon-preview",
+    "name": "Animaldex",
+    "slug": "animaldex",
     "scheme": "animaldex",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,8 +11,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.lucasap123.animaldex",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Animaldex usa tu ubicaci\u00f3n solo cuando decides compartirla con el due\u00f1o de una mascota, tocando el bot\u00f3n de compartir ubicaci\u00f3n.",
-        "NSCameraUsageDescription": "Animaldex usa la c\u00e1mara para escanear c\u00f3digos QR de mascotas y perfiles."
+        "NSLocationWhenInUseUsageDescription": "Animaldex usa tu ubicación solo cuando decides compartirla con el dueño de una mascota, tocando el botón de compartir ubicación.",
+        "NSCameraUsageDescription": "Animaldex usa la cámara para escanear códigos QR de mascotas y perfiles."
       }
     },
     "android": {
@@ -34,12 +34,12 @@
       "favicon": "./assets/favicon.png"
     },
     "updates": {
-      "url": "https://u.expo.dev/552f0665-e30d-4f11-9ea9-97bc22a22809"
+      "url": "https://u.expo.dev/f2b4eacd-6e1a-4dbc-89cd-b65598756451"
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "owner": "arcadalabs",
+    "owner": "lucasap123",
     "platforms": [
       "ios",
       "android",
@@ -50,13 +50,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Animaldex usa la c\u00e1mara para escanear c\u00f3digos QR de mascotas y perfiles."
+          "cameraPermission": "Animaldex usa la cámara para escanear códigos QR de mascotas y perfiles."
         }
       ]
     ],
     "extra": {
       "eas": {
-        "projectId": "552f0665-e30d-4f11-9ea9-97bc22a22809"
+        "projectId": "f2b4eacd-6e1a-4dbc-89cd-b65598756451"
       }
     }
   }
