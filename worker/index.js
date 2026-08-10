@@ -293,6 +293,82 @@ async function attachLikedFlags(env, rows, viewerId) {
   return rows.map((r) => alertRow(r, likedSet.has(r.id)));
 }
 
+// ============================================================
+// REELS (videos cortos de TikTok embebidos) — etapa 1: sin
+// almacenamiento propio de video. Estructura pensada para poder
+// migrar a Cloudflare Stream en el futuro sin romper el esquema
+// (basta con agregar columnas nuevas tipo cf_stream_uid y usarlas
+// en lugar de tiktok_video_id cuando corresponda).
+// ============================================================
+
+const TIKTOK_HOST_RE = /(^|\.)tiktok\.com$/i;
+
+function isTikTokUrl(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    return TIKTOK_HOST_RE.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Usa el oEmbed OFICIAL de TikTok tanto para validar que el enlace
+// corresponde a un video público real, como para obtener metadata
+// (autor, título, miniatura, id del video) sin descargar el archivo.
+async function fetchTikTokOEmbed(rawUrl) {
+  const resp = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(rawUrl)}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!resp.ok) {
+    throw new Error(
+      resp.status === 404
+        ? 'Ese video de TikTok no existe, es privado o fue eliminado'
+        : 'No se pudo validar el enlace de TikTok'
+    );
+  }
+  return resp.json();
+}
+
+function reelRow(r, viewerLiked) {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    tiktokUrl: r.tiktok_url,
+    tiktokVideoId: r.tiktok_video_id || null,
+    creatorUsername: r.creator_username || null,
+    title: r.title || '',
+    thumbnailUrl: r.thumbnail_url || null,
+    status: r.status,
+    viewsCount: r.views_count || 0,
+    sharesCount: r.shares_count || 0,
+    createdAt: r.created_at,
+    likeCount: r.like_count || 0,
+    commentCount: r.comment_count || 0,
+    isLiked: !!viewerLiked,
+    username: r.username || null,
+    userName: r.user_name || null,
+    userAvatar: r.user_avatar || null,
+  };
+}
+
+const REEL_SELECT = `
+  SELECT rl.*,
+    (SELECT COUNT(*) FROM reel_likes l WHERE l.reel_id = rl.id) AS like_count,
+    (SELECT COUNT(*) FROM reel_comments c WHERE c.reel_id = rl.id) AS comment_count,
+    u.username AS username, u.name AS user_name, u.avatar_url AS user_avatar
+  FROM reels rl
+  LEFT JOIN users u ON u.id = rl.user_id
+`;
+
+async function attachReelLikedFlags(env, rows, viewerId) {
+  if (!viewerId || rows.length === 0) return rows.map((r) => reelRow(r, false));
+  const ids = rows.map((r) => r.id);
+  const ph = ids.map(() => '?').join(',');
+  const liked = await d1(env, `SELECT reel_id FROM reel_likes WHERE user_id = ? AND reel_id IN (${ph})`, [viewerId, ...ids]);
+  const likedSet = new Set(liked.map((l) => l.reel_id));
+  return rows.map((r) => reelRow(r, likedSet.has(r.id)));
+}
+
 async function handleDb(request, env) {
   const body = await request.json().catch(() => ({}));
   const action = clean(body.action, 40);
@@ -510,6 +586,64 @@ async function handleDb(request, env) {
           avatarUrl: c.avatar_url || null, text: c.text, createdAt: c.created_at,
         })),
       });
+    }
+
+    // ---------- Reels (videos de TikTok embebidos) ----------
+    // Lectura pública, con sesión opcional (isLiked correcto si hay token).
+    if (action === 'reelsFeed') {
+      const before = Number(body.before) || now + 1000;
+      const limit = Math.min(Number(body.limit) || 5, 20);
+      const viewerId = await authUser(request, env, body);
+      const rows = await d1(
+        env,
+        `${REEL_SELECT} WHERE rl.status = 'active' AND rl.created_at < ? ORDER BY rl.created_at DESC LIMIT ?`,
+        [before, limit + 1]
+      );
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const reels = await attachReelLikedFlags(env, page, viewerId);
+      return json({ ok: true, reels, hasMore });
+    }
+
+    if (action === 'reelDetail') {
+      const reelId = clean(body.reelId, 80);
+      const viewerId = await authUser(request, env, body);
+      const rows = await d1(env, `${REEL_SELECT} WHERE rl.id = ?`, [reelId]);
+      if (!rows[0]) return json({ error: 'Reel no encontrado' }, 404);
+      const [reel] = await attachReelLikedFlags(env, rows, viewerId);
+      return json({ ok: true, reel });
+    }
+
+    if (action === 'reelComments') {
+      const reelId = clean(body.reelId, 80);
+      const rows = await d1(
+        env,
+        `SELECT c.*, u.username, u.name AS user_name, u.avatar_url
+         FROM reel_comments c LEFT JOIN users u ON u.id = c.user_id
+         WHERE c.reel_id = ? ORDER BY c.created_at ASC LIMIT 200`,
+        [reelId]
+      );
+      return json({
+        ok: true,
+        comments: rows.map((c) => ({
+          id: c.id, userId: c.user_id, username: c.username || 'usuario', userName: c.user_name || 'Usuario',
+          avatarUrl: c.avatar_url || null, text: c.text, createdAt: c.created_at,
+        })),
+      });
+    }
+
+    // Contadores best-effort (vista/difusión): no crítico, no requieren
+    // sesión — un fallo aquí nunca debe romper la reproducción del video.
+    if (action === 'reelView') {
+      const reelId = clean(body.reelId, 80);
+      if (reelId) await d1(env, 'UPDATE reels SET views_count = views_count + 1 WHERE id = ?', [reelId]).catch(() => {});
+      return json({ ok: true });
+    }
+
+    if (action === 'reelShare') {
+      const reelId = clean(body.reelId, 80);
+      if (reelId) await d1(env, 'UPDATE reels SET shares_count = shares_count + 1 WHERE id = ?', [reelId]).catch(() => {});
+      return json({ ok: true });
     }
 
     // ---------- Chapitas QR (links de invitación para registrar mascotas) ----------
@@ -738,6 +872,113 @@ async function handleDb(request, env) {
       const id = `ac-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(env, 'INSERT INTO alert_comments (id, alert_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, alertId, userId, text, now]);
       return json({ ok: true, id, createdAt: now });
+    }
+
+    // ---------- Reels: escrituras (requieren sesión) ----------
+
+    if (action === 'createReel') {
+      const tiktokUrl = clean(body.tiktokUrl, 500);
+      if (!tiktokUrl) return json({ error: 'Pega el enlace del video de TikTok' }, 400);
+      if (!isTikTokUrl(tiktokUrl)) return json({ error: 'Ese enlace no es de TikTok' }, 400);
+
+      let meta;
+      try {
+        meta = await fetchTikTokOEmbed(tiktokUrl);
+      } catch (e) {
+        return json({ error: e.message || 'No se pudo validar el video de TikTok' }, 400);
+      }
+      if (!meta || meta.type !== 'video') {
+        return json({ error: 'El enlace no corresponde a un video público de TikTok' }, 400);
+      }
+
+      const id = `reel-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      const videoId = clean(meta.embed_product_id, 40) || null;
+      const creatorUsername = clean(meta.author_unique_id, 60) || null;
+      const title = clean(meta.title, 500);
+      const thumbnailUrl = clean(meta.thumbnail_url, 1000) || null;
+
+      await d1(
+        env,
+        `INSERT INTO reels (id, user_id, tiktok_url, tiktok_video_id, creator_username, title, thumbnail_url, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+        [id, userId, tiktokUrl, videoId, creatorUsername, title, thumbnailUrl, now]
+      );
+      const rows = await d1(env, `${REEL_SELECT} WHERE rl.id = ?`, [id]);
+      const [reel] = await attachReelLikedFlags(env, rows, userId);
+      return json({ ok: true, reel });
+    }
+
+    if (action === 'reelLike') {
+      const reelId = clean(body.reelId, 80);
+      if (body.value) await d1(env, 'INSERT OR IGNORE INTO reel_likes (user_id, reel_id, created_at) VALUES (?, ?, ?)', [userId, reelId, now]);
+      else await d1(env, 'DELETE FROM reel_likes WHERE user_id = ? AND reel_id = ?', [userId, reelId]);
+      const count = await d1(env, 'SELECT COUNT(*) AS n FROM reel_likes WHERE reel_id = ?', [reelId]);
+      return json({ ok: true, likeCount: count[0].n });
+    }
+
+    if (action === 'reelComment') {
+      const reelId = clean(body.reelId, 80);
+      const text = clean(body.text, 500);
+      if (!text) return json({ error: 'Comentario vacío' }, 400);
+      const id = `rc-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(env, 'INSERT INTO reel_comments (id, reel_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, reelId, userId, text, now]);
+      return json({ ok: true, id, createdAt: now });
+    }
+
+    if (action === 'reportReel') {
+      const reelId = clean(body.reelId, 80);
+      const reason = clean(body.reason, 300);
+      if (!reelId) return json({ error: 'Falta el reel a denunciar' }, 400);
+      const id = `rr-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(env, 'INSERT INTO reel_reports (id, reel_id, user_id, reason, status, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+        id, reelId, userId, reason || null, 'open', now,
+      ]);
+      return json({ ok: true });
+    }
+
+    if (action === 'deleteReel') {
+      const reelId = clean(body.reelId, 80);
+      const rows = await d1(env, 'SELECT id FROM reels WHERE id = ? AND user_id = ?', [reelId, userId]);
+      if (!rows[0]) return json({ error: 'Ese reel no es tuyo' }, 403);
+      await d1(env, "UPDATE reels SET status = 'removed', updated_at = ? WHERE id = ?", [now, reelId]);
+      return json({ ok: true });
+    }
+
+    // Moderación (solo ADMIN_USERNAMES): oculta un reel denunciado o
+    // lista las denuncias abiertas. Estructura lista para una futura
+    // pantalla de administración (no implementada todavía).
+    if (action === 'adminHideReel' || action === 'adminListReelReports') {
+      const admins = await d1(env, 'SELECT username FROM users WHERE id = ?', [userId]);
+      const username = admins[0]?.username || '';
+      if (!ADMIN_USERNAMES.includes(username)) return json({ error: 'No autorizado' }, 403);
+
+      if (action === 'adminHideReel') {
+        const reelId = clean(body.reelId, 80);
+        await d1(env, "UPDATE reels SET status = 'hidden', updated_at = ? WHERE id = ?", [now, reelId]);
+        return json({ ok: true });
+      }
+
+      const rows = await d1(
+        env,
+        `SELECT rr.*, rl.title, rl.thumbnail_url, rl.status AS reel_status, u.username AS reporter_username
+         FROM reel_reports rr
+         LEFT JOIN reels rl ON rl.id = rr.reel_id
+         LEFT JOIN users u ON u.id = rr.user_id
+         WHERE rr.status = 'open' ORDER BY rr.created_at DESC LIMIT 100`
+      );
+      return json({
+        ok: true,
+        reports: rows.map((r) => ({
+          id: r.id,
+          reelId: r.reel_id,
+          reason: r.reason || '',
+          reporterUsername: r.reporter_username || 'usuario',
+          reelTitle: r.title || '',
+          reelThumbnail: r.thumbnail_url || null,
+          reelStatus: r.reel_status,
+          createdAt: r.created_at,
+        })),
+      });
     }
 
     if (action === 'createPost') {

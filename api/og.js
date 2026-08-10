@@ -253,6 +253,18 @@ module.exports = async (req, res) => {
         url: `${origin}/a/${a.id}`,
       };
     }
+  } else if (type === 'reel' && id) {
+    const rows = await d1Query('SELECT * FROM reels WHERE id = ?', [String(id)]);
+    if (rows[0]) {
+      const r = rows[0];
+      const creator = r.creator_username ? `@${r.creator_username}` : 'un creador de TikTok';
+      meta = {
+        title: `🎬 Reel de ${creator} · Animaldex`,
+        description: r.title || 'Un video de mascotas compartido en Animaldex 🐾',
+        image: r.thumbnail_url || petImage('perro', 11, 600),
+        url: `${origin}/r/${r.id}`,
+      };
+    }
   } else if (type === 'post' && id) {
     const resolved = resolvePostMeta(id, d);
     if (resolved) {

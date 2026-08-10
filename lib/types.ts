@@ -12,10 +12,13 @@ export type RootStackParamList = {
   AdminTags: undefined;
   CreateAlert: undefined;
   AlertDetail: { alertId: string };
+  CreateReel: undefined;
+  ReelDetail: { reelId: string };
 };
 
 export type TabParamList = {
   Inicio: undefined;
+  Reels: undefined;
   Alertas: undefined;
   Explorar: undefined;
   Crear: undefined;

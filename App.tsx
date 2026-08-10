@@ -33,6 +33,9 @@ import AdminTagsScreen from './screens/AdminTagsScreen';
 import AlertsScreen from './screens/AlertsScreen';
 import CreateAlertScreen from './screens/CreateAlertScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
+import ReelsScreen from './screens/ReelsScreen';
+import CreateReelScreen from './screens/CreateReelScreen';
+import ReelDetailScreen from './screens/ReelDetailScreen';
 
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
@@ -61,6 +64,7 @@ function UserProfileRoute() {
 
 const TAB_ICONS: Record<keyof TabParamList, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap }> = {
   Inicio: { on: 'home', off: 'home-outline' },
+  Reels: { on: 'film', off: 'film-outline' },
   Alertas: { on: 'warning', off: 'warning-outline' },
   Explorar: { on: 'compass', off: 'compass-outline' },
   Crear: { on: 'add-circle', off: 'add-circle-outline' },
@@ -98,6 +102,7 @@ function Tabs() {
         }}
       >
         <Tab.Screen name="Inicio" component={FeedScreen} />
+        <Tab.Screen name="Reels" component={ReelsScreen} />
         <Tab.Screen name="Alertas" component={AlertsScreen} />
         <Tab.Screen name="Explorar" component={ExploreScreen} />
         <Tab.Screen name="Crear" component={CreatePostScreen} />
@@ -131,6 +136,7 @@ function Tabs() {
       })}
     >
       <Tab.Screen name="Inicio" component={FeedScreen} />
+      <Tab.Screen name="Reels" component={ReelsScreen} />
       <Tab.Screen name="Alertas" component={AlertsScreen} />
       <Tab.Screen name="Explorar" component={ExploreScreen} />
       <Tab.Screen name="Crear" component={CreatePostScreen} options={{ tabBarLabel: '' }} />
@@ -155,6 +161,7 @@ const linking: LinkingOptions<RootStackParamList> = {
         path: '',
         screens: {
           Inicio: '',
+          Reels: 'reels',
           Alertas: 'alertas',
           Explorar: 'explorar',
           Crear: 'crear',
@@ -172,6 +179,8 @@ const linking: LinkingOptions<RootStackParamList> = {
       AdminTags: 'admin/chapitas',
       CreateAlert: 'crear-alerta',
       AlertDetail: 'a/:alertId',
+      CreateReel: 'crear-reel',
+      ReelDetail: 'r/:reelId',
       Auth: 'entrar',
     },
   },
@@ -293,6 +302,16 @@ function RootNavigator() {
         name="AlertDetail"
         component={AlertDetailScreen}
         options={{ title: 'Alerta', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="CreateReel"
+        component={CreateReelScreen}
+        options={{ title: 'Agregar Reel', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="ReelDetail"
+        component={ReelDetailScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

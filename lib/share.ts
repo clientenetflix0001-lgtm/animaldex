@@ -209,6 +209,23 @@ export async function shareAlert(alert: ApiAlert): Promise<void> {
   await shareLink(title, text, url);
 }
 
+// ---------- Reels: compartir con apps nativas ----------
+// Comparte SIEMPRE el enlace del Reel dentro de Animaldex (nunca el
+// archivo de video en sí, que Animaldex no aloja en esta etapa).
+import type { ApiReel } from './db';
+
+export function reelShareUrl(reelId: string): string {
+  return `${siteOrigin()}/r/${reelId}`;
+}
+
+export async function shareReel(reel: ApiReel): Promise<void> {
+  const creator = reel.creatorUsername ? `@${reel.creatorUsername}` : 'un creador de TikTok';
+  const title = `🎬 Reel de ${creator} · Animaldex`;
+  const text = reel.title || 'Mira este video de mascotas en Animaldex';
+  const url = reelShareUrl(reel.id);
+  await shareLink(title, text, url);
+}
+
 async function shareLink(title: string, text: string, url: string): Promise<void> {
   if (Platform.OS === 'web') {
     const nav: any = typeof navigator !== 'undefined' ? navigator : null;
