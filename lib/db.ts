@@ -1,0 +1,215 @@
+// ============================================================
+// Cliente de la API (auth + datos en Cloudflare D1)
+// ============================================================
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Backend real: Cloudflare Worker con acceso nativo a D1 (rápido y confiable).
+// Las funciones serverless de Vercel no se desplegaban de forma consistente,
+// por eso el backend vive aquí, en la misma red que la base de datos y las imágenes.
+export const API_ORIGIN = 'https://animaldex-api.animaldex-api.workers.dev';
+
+const TOKEN_KEY = 'animaldex-session-token';
+
+let sessionToken: string | null = null;
+let tokenLoaded = false;
+
+export async function loadToken(): Promise<string | null> {
+  if (tokenLoaded) return sessionToken;
+  tokenLoaded = true;
+  try {
+    sessionToken = await AsyncStorage.getItem(TOKEN_KEY);
+  } catch {}
+  return sessionToken;
+}
+
+export async function setToken(token: string | null): Promise<void> {
+  sessionToken = token;
+  tokenLoaded = true;
+  try {
+    if (token) await AsyncStorage.setItem(TOKEN_KEY, token);
+    else await AsyncStorage.removeItem(TOKEN_KEY);
+  } catch {}
+}
+
+export function getToken(): string | null {
+  return sessionToken;
+}
+
+async function call(path: string, body: object): Promise<any> {
+  await loadToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
+  const res = await fetch(`${API_ORIGIN}${path}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(json.error || `Error ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return json;
+}
+
+// ---------- Tipos ----------
+
+export interface ApiUser {
+  id: string;
+  username: string;
+  name: string;
+  avatarUrl: string | null;
+  bio: string;
+  location: string;
+  verifiedPhone: string | null;
+}
+
+export interface ApiPet {
+  id: string;
+  userId: string;
+  name: string;
+  species: string;
+  breed: string;
+  age: string;
+  bio: string;
+  emoji: string;
+  avatarUrl: string | null;
+  createdAt: number;
+}
+
+export interface ApiPost {
+  id: string;
+  userId: string;
+  petId: string;
+  image: string;
+  caption: string;
+  createdAt: number;
+  likeCount: number;
+  commentCount: number;
+  petName: string | null;
+  petEmoji: string | null;
+  petAvatar: string | null;
+  petSpecies: string | null;
+  username: string | null;
+  userName: string | null;
+}
+
+export interface ApiComment {
+  id: string;
+  userId: string;
+  username: string;
+  userName: string;
+  avatarUrl: string | null;
+  text: string;
+  createdAt: number;
+}
+
+export interface ApiNotification {
+  id: string;
+  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location';
+  actorId: string | null;
+  actorName: string;
+  actorUsername: string;
+  actorAvatar: string | null;
+  postId?: string;
+  postImage?: string | null;
+  petId?: string;
+  petName?: string;
+  petEmoji?: string;
+  text?: string;
+  lat?: number;
+  lon?: number;
+  accuracy?: number | null;
+  smsStatus?: string;
+  createdAt: number;
+}
+
+// ---------- Auth ----------
+
+export const auth = {
+  register: (username: string, name: string, password: string) =>
+    call('/auth', { action: 'register', username, name, password }),
+  login: (username: string, password: string) =>
+    call('/auth', { action: 'login', username, password }),
+  me: () => call('/auth', { action: 'me' }),
+  logout: () => call('/auth', { action: 'logout' }),
+  updateProfile: (fields: { name?: string; bio?: string; location?: string; avatarUrl?: string }) =>
+    call('/auth', { action: 'updateProfile', ...fields }),
+};
+
+// ---------- Datos ----------
+
+export const db = {
+  feed: (before?: number, limit = 10): Promise<{ posts: ApiPost[] }> =>
+    call('/db', { action: 'feed', before, limit }),
+  petPosts: (petId: string): Promise<{ posts: ApiPost[] }> =>
+    call('/db', { action: 'petPosts', petId }),
+  userPosts: (targetUserId: string): Promise<{ posts: ApiPost[] }> =>
+    call('/db', { action: 'userPosts', targetUserId }),
+  postDetail: (postId: string): Promise<{ post: ApiPost; comments: ApiComment[] }> =>
+    call('/db', { action: 'postDetail', postId }),
+  userProfile: (targetUserId: string): Promise<{ user: ApiUser; pets: ApiPet[]; stats: { posts: number; followers: number } }> =>
+    call('/db', { action: 'userProfile', targetUserId }),
+  petProfile: (petId: string): Promise<{ pet: ApiPet; owner: { id: string; username: string; name: string; avatarUrl: string | null } | null; stats: { posts: number; followers: number } }> =>
+    call('/db', { action: 'petProfile', petId }),
+  search: (q: string): Promise<{ pets: ApiPet[]; users: Array<{ id: string; username: string; name: string; avatarUrl: string | null }> }> =>
+    call('/db', { action: 'search', q }),
+  featuredPets: (): Promise<{ pets: ApiPet[] }> =>
+    call('/db', { action: 'featuredPets' }),
+  comments: (postId: string): Promise<{ comments: ApiComment[] }> =>
+    call('/db', { action: 'comments', postId }),
+  myState: (): Promise<{ state: { likedPosts: string[]; savedPosts: string[]; followedPets: string[]; followedUsers: string[]; myPets: ApiPet[] } }> =>
+    call('/db', { action: 'myState' }),
+  like: (postId: string, value: boolean): Promise<{ likeCount: number }> =>
+    call('/db', { action: 'like', postId, value }),
+  save: (postId: string, value: boolean) => call('/db', { action: 'save', postId, value }),
+  savedPosts: (): Promise<{ posts: ApiPost[] }> => call('/db', { action: 'savedPosts' }),
+  follow: (targetType: 'pet' | 'user', targetId: string, value: boolean) =>
+    call('/db', { action: 'follow', targetType, targetId, value }),
+  comment: (postId: string, text: string): Promise<{ id: string; createdAt: number }> =>
+    call('/db', { action: 'comment', postId, text }),
+  createPost: (petId: string, image: string, caption: string): Promise<{ post: ApiPost }> =>
+    call('/db', { action: 'createPost', petId, image, caption }),
+  updatePost: (postId: string, caption: string): Promise<{ caption: string }> =>
+    call('/db', { action: 'updatePost', postId, caption }),
+  deletePost: (postId: string): Promise<{ imageDeleted: boolean }> =>
+    call('/db', { action: 'deletePost', postId }),
+  createPet: (pet: { name: string; species: string; breed?: string; age?: string; bio?: string; emoji?: string; avatarUrl?: string }): Promise<{ pet: ApiPet }> =>
+    call('/db', { action: 'createPet', ...pet }),
+  updatePet: (petId: string, fields: Partial<ApiPet>) =>
+    call('/db', { action: 'updatePet', petId, ...fields }),
+  setPhone: (phone: string | null) => call('/db', { action: 'setPhone', phone }),
+  registerImage: (url: string, cfId?: string, kind?: string) =>
+    call('/db', { action: 'registerImage', url, cfId, kind }),
+  // ---------- Tiempo real (actualizaciones incrementales) ----------
+  updates: (since: number, excludeUserId?: string): Promise<{ newPosts: number; latest: number }> =>
+    call('/db', { action: 'updates', since, excludeUserId: excludeUserId ?? '' }),
+  feedSince: (since: number, excludeUserId?: string): Promise<{ posts: ApiPost[] }> =>
+    call('/db', { action: 'feedSince', since, excludeUserId: excludeUserId ?? '' }),
+  postUpdates: (
+    postId: string,
+    since: number
+  ): Promise<{ likeCount: number; commentCount: number; newComments: ApiComment[] }> =>
+    call('/db', { action: 'postUpdates', postId, since }),
+  counts: (postIds: string[]): Promise<{ counts: Record<string, { likes: number; comments: number }> }> =>
+    call('/db', { action: 'counts', postIds }),
+  notifications: (): Promise<{ notifications: ApiNotification[] }> =>
+    call('/db', { action: 'notifications' }),
+  // Ubicación GPS compartida con consentimiento visible del visitante,
+  // enviada por SMS al dueño de la mascota (requiere que tenga tel. verificado).
+  shareLocation: (
+    petId: string,
+    lat: number,
+    lon: number,
+    accuracy?: number
+  ): Promise<{ status: string; notified: boolean }> =>
+    call('/db', { action: 'shareLocation', petId, lat, lon, accuracy }),
+};
+
+// ---------- Helpers ----------
+
+export function timeAgoMinutes(createdAt: number): number {
+  return Math.max(0, Math.floor((Date.now() - createdAt) / 60000));
+}

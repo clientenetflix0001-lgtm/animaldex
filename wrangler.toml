@@ -1,0 +1,13 @@
+name = "animaldex-api"
+main = "worker/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "animaldex-db"
+database_id = "c0ae095d-b9a5-4acd-b500-8a9c2be03010"
+
+[vars]
+CF_ACCOUNT_ID = "76a9bc649184dfbf09c0b4319bcaa85b"
+CF_DELIVERY_HASH = "8m1UaEl3HZU-HEHN3G4Exg"

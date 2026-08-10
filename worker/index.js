@@ -1,0 +1,792 @@
+// ============================================================
+// Animaldex — Cloudflare Worker (backend real, tiempo real)
+// ============================================================
+// Sustituye a las funciones serverless de Vercel (que no se estaban
+// desplegando correctamente). Corre en la red de Cloudflare, con
+// acceso NATIVO a D1 (sin HTTP intermedio → mucho más rápido) y
+// llega directo a Cloudflare Images. Mismo esquema de contraseñas
+// (scrypt) para no invalidar las cuentas ya creadas.
+// ============================================================
+
+import { scryptSync, randomBytes, createHmac } from 'node:crypto';
+
+// ---------- Helpers D1 ----------
+async function d1(env, sql, params = []) {
+  const res = await env.DB.prepare(sql).bind(...params).all();
+  return res.results || [];
+}
+
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+}
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+  });
+}
+
+const clean = (s, max = 300) => String(s == null ? '' : s).slice(0, max).trim();
+
+// ---------- Envío genérico de SMS vía Twilio (reutilizado por varios endpoints) ----------
+async function sendTwilioSms(env, toPhone, body) {
+  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_PHONE_NUMBER) {
+    return { ok: false, provider: 'demo', reason: 'Twilio no configurado' };
+  }
+  try {
+    const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Basic ' + btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ To: toPhone, From: env.TWILIO_PHONE_NUMBER, Body: body }).toString(),
+    });
+    const respJson = await resp.json();
+    if (!resp.ok) return { ok: false, provider: 'twilio', reason: respJson.message || 'error Twilio' };
+    return { ok: true, provider: 'twilio', sid: respJson.sid };
+  } catch (e) {
+    return { ok: false, provider: 'twilio', reason: e.message };
+  }
+}
+
+// ---------- Password hashing (idéntico al esquema anterior) ----------
+function hashPassword(password, salt) {
+  return scryptSync(password, salt, 64).toString('hex');
+}
+const newSalt = () => randomBytes(16).toString('hex');
+const newToken = () => randomBytes(32).toString('hex');
+
+// ---------- Sesiones ----------
+const SESSION_TTL = 90 * 24 * 60 * 60 * 1000; // 90 días
+
+async function createSession(env, userId) {
+  const token = newToken();
+  const now = Date.now();
+  await d1(env, 'INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', [
+    token, userId, now, now + SESSION_TTL,
+  ]);
+  return token;
+}
+
+async function authUser(request, env, body) {
+  const header = request.headers.get('authorization');
+  let token = '';
+  if (header && header.startsWith('Bearer ')) token = header.slice(7);
+  else if (body && body.sessionToken) token = String(body.sessionToken);
+  if (!token || token.length < 32) return null;
+  const rows = await d1(env, 'SELECT user_id, expires_at FROM sessions WHERE token = ?', [token]);
+  if (!rows[0]) return null;
+  if (Date.now() > rows[0].expires_at) {
+    d1(env, 'DELETE FROM sessions WHERE token = ?', [token]).catch(() => {});
+    return null;
+  }
+  return rows[0].user_id;
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+
+const USERNAME_RE = /^[a-z0-9_.]{3,20}$/;
+
+function publicUser(u) {
+  return {
+    id: u.id,
+    username: u.username,
+    name: u.name,
+    avatarUrl: u.avatar_url || null,
+    bio: u.bio || '',
+    location: u.location || '',
+    verifiedPhone: u.verified_phone || null,
+    createdAt: u.created_at,
+  };
+}
+
+async function handleAuth(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const action = clean(body.action, 30);
+
+  try {
+    if (action === 'register') {
+      const username = clean(body.username, 20).toLowerCase();
+      const name = clean(body.name, 60);
+      const password = String(body.password || '');
+      if (!USERNAME_RE.test(username)) {
+        return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
+      }
+      if (name.length < 2) return json({ error: 'Escribe tu nombre' }, 400);
+      if (password.length < 6) return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
+
+      const existing = await d1(env, 'SELECT id FROM users WHERE username = ?', [username]);
+      if (existing.length > 0) return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
+
+      const id = `u-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const salt = newSalt();
+      const passHash = hashPassword(password, salt);
+      await d1(env, 'INSERT INTO users (id, username, name, pass_hash, salt, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+        id, username, name, passHash, salt, Date.now(),
+      ]);
+      const token = await createSession(env, id);
+      const rows = await d1(env, 'SELECT * FROM users WHERE id = ?', [id]);
+      return json({ ok: true, token, user: publicUser(rows[0]) });
+    }
+
+    if (action === 'login') {
+      const username = clean(body.username, 20).toLowerCase();
+      const password = String(body.password || '');
+      const rows = await d1(env, 'SELECT * FROM users WHERE username = ?', [username]);
+      const invalid = { error: 'Usuario o contraseña incorrectos' };
+      if (!rows[0]) return json(invalid, 401);
+      const u = rows[0];
+      if (hashPassword(password, u.salt) !== u.pass_hash) return json(invalid, 401);
+      const token = await createSession(env, u.id);
+      return json({ ok: true, token, user: publicUser(u) });
+    }
+
+    if (action === 'me') {
+      const userId = await authUser(request, env, body);
+      if (!userId) return json({ error: 'Sesión inválida o expirada' }, 401);
+      const rows = await d1(env, 'SELECT * FROM users WHERE id = ?', [userId]);
+      if (!rows[0]) return json({ error: 'Usuario no encontrado' }, 401);
+      return json({ ok: true, user: publicUser(rows[0]) });
+    }
+
+    if (action === 'logout') {
+      const header = request.headers.get('authorization');
+      const token = header && header.startsWith('Bearer ') ? header.slice(7) : String(body.sessionToken || '');
+      if (token) await d1(env, 'DELETE FROM sessions WHERE token = ?', [token]).catch(() => {});
+      return json({ ok: true });
+    }
+
+    if (action === 'updateProfile') {
+      const userId = await authUser(request, env, body);
+      if (!userId) return json({ error: 'Sesión inválida' }, 401);
+      const name = clean(body.name, 60);
+      const bio = clean(body.bio, 200);
+      const location = clean(body.location, 60);
+      const avatarUrl = clean(body.avatarUrl, 500) || null;
+      await d1(
+        env,
+        "UPDATE users SET name = COALESCE(NULLIF(?, ''), name), bio = ?, location = ?, avatar_url = COALESCE(?, avatar_url) WHERE id = ?",
+        [name, bio, location, avatarUrl, userId]
+      );
+      const rows = await d1(env, 'SELECT * FROM users WHERE id = ?', [userId]);
+      return json({ ok: true, user: publicUser(rows[0]) });
+    }
+
+    return json({ error: 'Acción desconocida' }, 400);
+  } catch (e) {
+    return json({ error: `Auth: ${e.message}` }, 502);
+  }
+}
+
+// ============================================================
+// DB (datos: feed, posts, mascotas, tiempo real...)
+// ============================================================
+
+function postRow(r) {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    petId: r.pet_id,
+    image: r.image,
+    caption: r.caption,
+    createdAt: r.created_at,
+    likeCount: r.like_count || 0,
+    commentCount: r.comment_count || 0,
+    petName: r.pet_name || null,
+    petEmoji: r.pet_emoji || null,
+    petAvatar: r.pet_avatar || null,
+    petSpecies: r.pet_species || null,
+    username: r.username || null,
+    userName: r.user_name || null,
+  };
+}
+
+function petRow(r) {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    name: r.name,
+    species: r.species,
+    breed: r.breed || '',
+    age: r.age || '',
+    bio: r.bio || '',
+    emoji: r.emoji || '🐾',
+    avatarUrl: r.avatar_url || null,
+    createdAt: r.created_at,
+  };
+}
+
+const POST_SELECT = `
+  SELECT p.*,
+    (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count,
+    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
+    pet.name AS pet_name, pet.emoji AS pet_emoji, pet.avatar_url AS pet_avatar, pet.species AS pet_species,
+    u.username AS username, u.name AS user_name
+  FROM posts p
+  LEFT JOIN pets pet ON pet.id = p.pet_id
+  LEFT JOIN users u ON u.id = p.user_id
+`;
+
+async function handleDb(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const action = clean(body.action, 40);
+  const now = Date.now();
+
+  try {
+    // ---------- Lecturas públicas ----------
+
+    if (action === 'health') {
+      await d1(env, 'SELECT 1');
+      return json({ ok: true, provider: 'd1-worker' });
+    }
+
+    if (action === 'feed') {
+      const before = Number(body.before) || now + 1000;
+      const limit = Math.min(Number(body.limit) || 10, 30);
+      const rows = await d1(env, `${POST_SELECT} WHERE p.created_at < ? ORDER BY p.created_at DESC LIMIT ?`, [before, limit]);
+      return json({ ok: true, posts: rows.map(postRow) });
+    }
+
+    if (action === 'petPosts') {
+      const petId = clean(body.petId, 80);
+      const rows = await d1(env, `${POST_SELECT} WHERE p.pet_id = ? ORDER BY p.created_at DESC LIMIT 60`, [petId]);
+      return json({ ok: true, posts: rows.map(postRow) });
+    }
+
+    if (action === 'userPosts') {
+      const targetId = clean(body.targetUserId, 80);
+      const rows = await d1(env, `${POST_SELECT} WHERE p.user_id = ? ORDER BY p.created_at DESC LIMIT 60`, [targetId]);
+      return json({ ok: true, posts: rows.map(postRow) });
+    }
+
+    if (action === 'postDetail') {
+      const postId = clean(body.postId, 80);
+      const [posts, comments] = await Promise.all([
+        d1(env, `${POST_SELECT} WHERE p.id = ?`, [postId]),
+        d1(
+          env,
+          `SELECT c.*, u.username, u.name AS user_name, u.avatar_url
+           FROM comments c LEFT JOIN users u ON u.id = c.user_id
+           WHERE c.post_id = ? ORDER BY c.created_at ASC LIMIT 200`,
+          [postId]
+        ),
+      ]);
+      if (!posts[0]) return json({ error: 'Publicación no encontrada' }, 404);
+      return json({
+        ok: true,
+        post: postRow(posts[0]),
+        comments: comments.map((c) => ({
+          id: c.id, userId: c.user_id, username: c.username || 'usuario', userName: c.user_name || 'Usuario',
+          avatarUrl: c.avatar_url || null, text: c.text, createdAt: c.created_at,
+        })),
+      });
+    }
+
+    if (action === 'userProfile') {
+      const targetId = clean(body.targetUserId, 80);
+      const [users, pets, postCount, followerCount] = await Promise.all([
+        d1(env, 'SELECT id, username, name, avatar_url, bio, location, verified_phone, created_at FROM users WHERE id = ?', [targetId]),
+        d1(env, 'SELECT * FROM pets WHERE user_id = ? ORDER BY created_at ASC', [targetId]),
+        d1(env, 'SELECT COUNT(*) AS n FROM posts WHERE user_id = ?', [targetId]),
+        d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'user' AND target_id = ?", [targetId]),
+      ]);
+      if (!users[0]) return json({ error: 'Usuario no encontrado' }, 404);
+      const u = users[0];
+      return json({
+        ok: true,
+        user: { id: u.id, username: u.username, name: u.name, avatarUrl: u.avatar_url || null, bio: u.bio || '', location: u.location || '', verifiedPhone: u.verified_phone || null },
+        pets: pets.map(petRow),
+        stats: { posts: postCount[0].n, followers: followerCount[0].n },
+      });
+    }
+
+    if (action === 'petProfile') {
+      const petId = clean(body.petId, 80);
+      const pets = await d1(env, 'SELECT * FROM pets WHERE id = ?', [petId]);
+      if (!pets[0]) return json({ error: 'Mascota no encontrada' }, 404);
+      const pet = pets[0];
+      const [owners, postCount, followerCount] = await Promise.all([
+        d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE id = ?', [pet.user_id]),
+        d1(env, 'SELECT COUNT(*) AS n FROM posts WHERE pet_id = ?', [petId]),
+        d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'pet' AND target_id = ?", [petId]),
+      ]);
+      return json({
+        ok: true,
+        pet: petRow(pet),
+        owner: owners[0] ? { id: owners[0].id, username: owners[0].username, name: owners[0].name, avatarUrl: owners[0].avatar_url || null } : null,
+        stats: { posts: postCount[0].n, followers: followerCount[0].n },
+      });
+    }
+
+    if (action === 'search') {
+      const q = `%${clean(body.q, 40).toLowerCase()}%`;
+      const [pets, users] = await Promise.all([
+        d1(env, 'SELECT * FROM pets WHERE LOWER(name) LIKE ? OR LOWER(breed) LIKE ? OR LOWER(species) LIKE ? LIMIT 20', [q, q, q]),
+        d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE LOWER(username) LIKE ? OR LOWER(name) LIKE ? LIMIT 20', [q, q]),
+      ]);
+      return json({ ok: true, pets: pets.map(petRow), users: users.map((u) => ({ id: u.id, username: u.username, name: u.name, avatarUrl: u.avatar_url || null })) });
+    }
+
+    if (action === 'featuredPets') {
+      const rows = await d1(env, 'SELECT * FROM pets ORDER BY created_at DESC LIMIT 20');
+      return json({ ok: true, pets: rows.map(petRow) });
+    }
+
+    if (action === 'comments') {
+      const postId = clean(body.postId, 80);
+      const rows = await d1(
+        env,
+        `SELECT c.*, u.username, u.name AS user_name, u.avatar_url
+         FROM comments c LEFT JOIN users u ON u.id = c.user_id
+         WHERE c.post_id = ? ORDER BY c.created_at ASC LIMIT 200`,
+        [postId]
+      );
+      return json({
+        ok: true,
+        comments: rows.map((c) => ({
+          id: c.id, userId: c.user_id, username: c.username || 'usuario', userName: c.user_name || 'Usuario',
+          avatarUrl: c.avatar_url || null, text: c.text, createdAt: c.created_at,
+        })),
+      });
+    }
+
+    // ---------- Tiempo real (lecturas incrementales) ----------
+
+    if (action === 'updates') {
+      const since = Number(body.since) || 0;
+      const exclude = clean(body.excludeUserId, 80);
+      const rows = await d1(env, 'SELECT COUNT(*) AS n, MAX(created_at) AS latest FROM posts WHERE created_at > ? AND user_id != ?', [since, exclude]);
+      return json({ ok: true, newPosts: rows[0].n, latest: rows[0].latest || since });
+    }
+
+    if (action === 'feedSince') {
+      const since = Number(body.since) || 0;
+      const exclude = clean(body.excludeUserId, 80);
+      const rows = await d1(env, `${POST_SELECT} WHERE p.created_at > ? AND p.user_id != ? ORDER BY p.created_at DESC LIMIT 30`, [since, exclude]);
+      return json({ ok: true, posts: rows.map(postRow) });
+    }
+
+    if (action === 'postUpdates') {
+      const postId = clean(body.postId, 80);
+      const since = Number(body.since) || 0;
+      const [counts, newComments] = await Promise.all([
+        d1(env, 'SELECT (SELECT COUNT(*) FROM likes WHERE post_id = ?) AS likes, (SELECT COUNT(*) FROM comments WHERE post_id = ?) AS comments', [postId, postId]),
+        d1(env, `SELECT c.*, u.username, u.name AS user_name, u.avatar_url FROM comments c LEFT JOIN users u ON u.id = c.user_id WHERE c.post_id = ? AND c.created_at > ? ORDER BY c.created_at ASC LIMIT 50`, [postId, since]),
+      ]);
+      return json({
+        ok: true,
+        likeCount: counts[0].likes,
+        commentCount: counts[0].comments,
+        newComments: newComments.map((c) => ({
+          id: c.id, userId: c.user_id, username: c.username || 'usuario', userName: c.user_name || 'Usuario',
+          avatarUrl: c.avatar_url || null, text: c.text, createdAt: c.created_at,
+        })),
+      });
+    }
+
+    if (action === 'counts') {
+      const ids = Array.isArray(body.postIds) ? body.postIds.slice(0, 30).map((x) => clean(x, 80)).filter(Boolean) : [];
+      if (ids.length === 0) return json({ ok: true, counts: {} });
+      const ph = ids.map(() => '?').join(',');
+      const [likeRows, commentRows] = await Promise.all([
+        d1(env, `SELECT post_id, COUNT(*) AS n FROM likes WHERE post_id IN (${ph}) GROUP BY post_id`, ids),
+        d1(env, `SELECT post_id, COUNT(*) AS n FROM comments WHERE post_id IN (${ph}) GROUP BY post_id`, ids),
+      ]);
+      const counts = {};
+      ids.forEach((id) => (counts[id] = { likes: 0, comments: 0 }));
+      likeRows.forEach((r) => (counts[r.post_id] = { ...counts[r.post_id], likes: r.n }));
+      commentRows.forEach((r) => (counts[r.post_id] = { ...(counts[r.post_id] || { likes: 0 }), comments: r.n }));
+      return json({ ok: true, counts });
+    }
+
+    // ---------- Compartir ubicación (público, con consentimiento GPS del visitante) ----------
+    // El navegador siempre pide permiso visible antes de dar la ubicación;
+    // este endpoint solo recibe el resultado YA consentido y lo envía por SMS
+    // al dueño de la mascota (su teléfono verificado).
+    if (action === 'shareLocation') {
+      const petId = clean(body.petId, 80);
+      const lat = Number(body.lat);
+      const lon = Number(body.lon);
+      const accuracy = body.accuracy != null ? Number(body.accuracy) : null;
+      if (!petId || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return json({ error: 'Faltan datos de ubicación' }, 400);
+      }
+      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+        return json({ error: 'Coordenadas inválidas' }, 400);
+      }
+
+      const pets = await d1(env, 'SELECT id, name, user_id FROM pets WHERE id = ?', [petId]);
+      if (!pets[0]) return json({ error: 'Mascota no encontrada' }, 404);
+      const pet = pets[0];
+
+      const owners = await d1(env, 'SELECT id, name, verified_phone FROM users WHERE id = ?', [pet.user_id]);
+      const owner = owners[0];
+
+      const id = `loc-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      let status = 'no_phone';
+      let smsResult = null;
+
+      if (owner && owner.verified_phone) {
+        const mapsUrl = `https://maps.google.com/?q=${lat},${lon}`;
+        const precision = accuracy ? ` (precisión ±${Math.round(accuracy)}m)` : '';
+        const msg = `🐾 Animaldex: alguien compartió su ubicación en el perfil de ${pet.name}${precision}.\n📍 ${mapsUrl}`;
+        smsResult = await sendTwilioSms(env, owner.verified_phone, msg);
+        status = smsResult.ok ? 'sent' : smsResult.provider === 'demo' ? 'demo' : 'failed';
+      }
+
+      await d1(
+        env,
+        'INSERT INTO location_shares (id, pet_id, owner_id, lat, lon, accuracy, sms_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, petId, pet.user_id, lat, lon, accuracy, status, now]
+      );
+
+      return json({ ok: true, status, notified: status === 'sent' });
+    }
+
+    // ---------- Escrituras (requieren sesión) ----------
+
+    const userId = await authUser(request, env, body);
+    if (!userId) return json({ error: 'Inicia sesión para continuar' }, 401);
+
+    if (action === 'myState') {
+      const [likes, saves, follows, pets] = await Promise.all([
+        d1(env, 'SELECT post_id FROM likes WHERE user_id = ?', [userId]),
+        d1(env, 'SELECT post_id FROM saves WHERE user_id = ?', [userId]),
+        d1(env, 'SELECT target_type, target_id FROM follows WHERE user_id = ?', [userId]),
+        d1(env, 'SELECT * FROM pets WHERE user_id = ? ORDER BY created_at ASC', [userId]),
+      ]);
+      return json({
+        ok: true,
+        state: {
+          likedPosts: likes.map((r) => r.post_id),
+          savedPosts: saves.map((r) => r.post_id),
+          followedPets: follows.filter((r) => r.target_type === 'pet').map((r) => r.target_id),
+          followedUsers: follows.filter((r) => r.target_type === 'user').map((r) => r.target_id),
+          myPets: pets.map(petRow),
+        },
+      });
+    }
+
+    if (action === 'like') {
+      const postId = clean(body.postId, 80);
+      if (body.value) await d1(env, 'INSERT OR IGNORE INTO likes (user_id, post_id, created_at) VALUES (?, ?, ?)', [userId, postId, now]);
+      else await d1(env, 'DELETE FROM likes WHERE user_id = ? AND post_id = ?', [userId, postId]);
+      const count = await d1(env, 'SELECT COUNT(*) AS n FROM likes WHERE post_id = ?', [postId]);
+      return json({ ok: true, likeCount: count[0].n });
+    }
+
+    if (action === 'save') {
+      const postId = clean(body.postId, 80);
+      if (body.value) await d1(env, 'INSERT OR IGNORE INTO saves (user_id, post_id, created_at) VALUES (?, ?, ?)', [userId, postId, now]);
+      else await d1(env, 'DELETE FROM saves WHERE user_id = ? AND post_id = ?', [userId, postId]);
+      return json({ ok: true });
+    }
+
+    if (action === 'savedPosts') {
+      const rows = await d1(env, `${POST_SELECT} WHERE p.id IN (SELECT post_id FROM saves WHERE user_id = ?) ORDER BY p.created_at DESC LIMIT 60`, [userId]);
+      return json({ ok: true, posts: rows.map(postRow) });
+    }
+
+    if (action === 'follow') {
+      const targetType = body.targetType === 'user' ? 'user' : 'pet';
+      const targetId = clean(body.targetId, 80);
+      if (body.value) await d1(env, 'INSERT OR IGNORE INTO follows (user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?)', [userId, targetType, targetId, now]);
+      else await d1(env, 'DELETE FROM follows WHERE user_id = ? AND target_type = ? AND target_id = ?', [userId, targetType, targetId]);
+      return json({ ok: true });
+    }
+
+    if (action === 'comment') {
+      const postId = clean(body.postId, 80);
+      const text = clean(body.text, 500);
+      if (!text) return json({ error: 'Comentario vacío' }, 400);
+      const id = `c-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(env, 'INSERT INTO comments (id, post_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, postId, userId, text, now]);
+      return json({ ok: true, id, createdAt: now });
+    }
+
+    if (action === 'createPost') {
+      const petId = clean(body.petId, 80);
+      const image = clean(body.image, 2000);
+      const caption = clean(body.caption, 500);
+      if (!petId || !image) return json({ error: 'Faltan datos de la publicación' }, 400);
+      if (image.startsWith('data:')) return json({ error: 'La imagen debe subirse primero a Cloudflare' }, 400);
+      const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
+      if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
+      const id = `post-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(env, 'INSERT INTO posts (id, user_id, pet_id, image, caption, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, userId, petId, image, caption, now]);
+      const rows = await d1(env, `${POST_SELECT} WHERE p.id = ?`, [id]);
+      return json({ ok: true, post: postRow(rows[0]) });
+    }
+
+    if (action === 'updatePost') {
+      const postId = clean(body.postId, 80);
+      const caption = clean(body.caption, 500);
+      const rows = await d1(env, 'SELECT id FROM posts WHERE id = ? AND user_id = ?', [postId, userId]);
+      if (!rows[0]) return json({ error: 'Esa publicación no es tuya' }, 403);
+      await d1(env, 'UPDATE posts SET caption = ? WHERE id = ?', [caption, postId]);
+      return json({ ok: true, caption });
+    }
+
+    if (action === 'deletePost') {
+      const postId = clean(body.postId, 80);
+      const rows = await d1(env, 'SELECT id, image FROM posts WHERE id = ? AND user_id = ?', [postId, userId]);
+      if (!rows[0]) return json({ error: 'Esa publicación no es tuya' }, 403);
+      const image = rows[0].image || '';
+
+      await d1(env, 'DELETE FROM likes WHERE post_id = ?', [postId]);
+      await d1(env, 'DELETE FROM saves WHERE post_id = ?', [postId]);
+      await d1(env, 'DELETE FROM comments WHERE post_id = ?', [postId]);
+      await d1(env, 'DELETE FROM posts WHERE id = ?', [postId]);
+
+      let imageDeleted = false;
+      const m = image.match(/imagedelivery\.net\/[^/]+\/([^/]+)\//);
+      if (m && env.CF_ACCOUNT_ID && env.CF_IMAGES_TOKEN) {
+        const stillUsed = await d1(env, 'SELECT COUNT(*) AS n FROM posts WHERE image = ?', [image]);
+        if (stillUsed[0].n === 0) {
+          try {
+            const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/images/v1/${m[1]}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` },
+            });
+            imageDeleted = resp.ok;
+          } catch {}
+          await d1(env, 'DELETE FROM images WHERE url = ?', [image]).catch(() => {});
+        }
+      }
+      return json({ ok: true, imageDeleted });
+    }
+
+    if (action === 'createPet') {
+      const name = clean(body.name, 40);
+      const species = clean(body.species, 20) || 'perro';
+      const breed = clean(body.breed, 60);
+      const age = clean(body.age, 30);
+      const bio = clean(body.bio, 200);
+      const emoji = clean(body.emoji, 8) || '🐾';
+      const avatarUrl = clean(body.avatarUrl, 500) || null;
+      if (name.length < 1) return json({ error: 'Ponle nombre a tu mascota' }, 400);
+      const id = `pet-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(env, 'INSERT INTO pets (id, user_id, name, species, breed, age, bio, emoji, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, name, species, breed, age, bio, emoji, avatarUrl, now]);
+      const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [id]);
+      return json({ ok: true, pet: petRow(rows[0]) });
+    }
+
+    if (action === 'updatePet') {
+      const petId = clean(body.petId, 80);
+      const pets = await d1(env, 'SELECT * FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
+      if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
+      const p = pets[0];
+      await d1(env, 'UPDATE pets SET name = ?, species = ?, breed = ?, age = ?, bio = ?, emoji = ?, avatar_url = ? WHERE id = ?', [
+        clean(body.name, 40) || p.name,
+        clean(body.species, 20) || p.species,
+        clean(body.breed, 60) || p.breed,
+        clean(body.age, 30) || p.age,
+        clean(body.bio, 200) || p.bio,
+        clean(body.emoji, 8) || p.emoji,
+        clean(body.avatarUrl, 500) || p.avatar_url,
+        petId,
+      ]);
+      const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [petId]);
+      return json({ ok: true, pet: petRow(rows[0]) });
+    }
+
+    if (action === 'notifications') {
+      const [likes, comments, followsUser, followsPet, locations] = await Promise.all([
+        d1(env, `SELECT l.created_at, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url, p.id AS post_id, p.image AS post_image
+           FROM likes l JOIN posts p ON p.id = l.post_id JOIN users u ON u.id = l.user_id
+           WHERE p.user_id = ? AND l.user_id != ? ORDER BY l.created_at DESC LIMIT 20`, [userId, userId]),
+        d1(env, `SELECT c.created_at, c.text, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url, p.id AS post_id, p.image AS post_image
+           FROM comments c JOIN posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
+           WHERE p.user_id = ? AND c.user_id != ? ORDER BY c.created_at DESC LIMIT 20`, [userId, userId]),
+        d1(env, `SELECT f.created_at, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url
+           FROM follows f JOIN users u ON u.id = f.user_id
+           WHERE f.target_type = 'user' AND f.target_id = ? AND f.user_id != ? ORDER BY f.created_at DESC LIMIT 20`, [userId, userId]),
+        d1(env, `SELECT f.created_at, pt.name AS pet_name, pt.id AS pet_id, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url
+           FROM follows f JOIN pets pt ON pt.id = f.target_id JOIN users u ON u.id = f.user_id
+           WHERE f.target_type = 'pet' AND pt.user_id = ? AND f.user_id != ? ORDER BY f.created_at DESC LIMIT 20`, [userId, userId]),
+        // Ubicaciones compartidas por visitantes (vía QR/chapita) en mis mascotas.
+        // Notificación 100% gratuita: vive solo en D1, sin SMS.
+        d1(env, `SELECT ls.id, ls.created_at, ls.lat, ls.lon, ls.accuracy, ls.sms_status, pt.id AS pet_id, pt.name AS pet_name, pt.emoji AS pet_emoji
+           FROM location_shares ls JOIN pets pt ON pt.id = ls.pet_id
+           WHERE ls.owner_id = ? ORDER BY ls.created_at DESC LIMIT 20`, [userId]),
+      ]);
+      const items = [
+        ...likes.map((r) => ({ id: `like-${r.actor_id}-${r.post_id}-${r.created_at}`, type: 'like', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, postId: r.post_id, postImage: r.post_image || null, createdAt: r.created_at })),
+        ...comments.map((r) => ({ id: `comment-${r.actor_id}-${r.post_id}-${r.created_at}`, type: 'comment', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, postId: r.post_id, postImage: r.post_image || null, text: (r.text || '').slice(0, 80), createdAt: r.created_at })),
+        ...followsUser.map((r) => ({ id: `fu-${r.actor_id}-${r.created_at}`, type: 'follow_user', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, createdAt: r.created_at })),
+        ...followsPet.map((r) => ({ id: `fp-${r.actor_id}-${r.pet_id}-${r.created_at}`, type: 'follow_pet', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, petId: r.pet_id, petName: r.pet_name, createdAt: r.created_at })),
+        ...locations.map((r) => ({
+          id: `loc-${r.id}`,
+          type: 'location',
+          actorId: null,
+          actorName: 'Alguien',
+          actorUsername: 'anónimo',
+          actorAvatar: null,
+          petId: r.pet_id,
+          petName: r.pet_name,
+          petEmoji: r.pet_emoji,
+          lat: r.lat,
+          lon: r.lon,
+          accuracy: r.accuracy,
+          smsStatus: r.sms_status,
+          createdAt: r.created_at,
+        })),
+      ].sort((a, b) => b.createdAt - a.createdAt).slice(0, 40);
+      return json({ ok: true, notifications: items });
+    }
+
+    if (action === 'setPhone') {
+      const phone = clean(body.phone, 20) || null;
+      await d1(env, 'UPDATE users SET verified_phone = ? WHERE id = ?', [phone, userId]);
+      return json({ ok: true });
+    }
+
+    if (action === 'registerImage') {
+      const url = clean(body.url, 500);
+      const cfId = clean(body.cfId, 80) || null;
+      const kind = clean(body.kind, 20) || 'post';
+      if (!url) return json({ error: 'Falta la URL' }, 400);
+      const id = `img-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(env, 'INSERT INTO images (id, user_id, cf_id, url, kind, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, userId, cfId, url, kind, now]);
+      return json({ ok: true, id });
+    }
+
+    return json({ error: 'Acción desconocida' }, 400);
+  } catch (e) {
+    return json({ error: `D1: ${e.message}` }, 502);
+  }
+}
+
+// ============================================================
+// UPLOAD (Cloudflare Images — FormData/Blob nativos del Worker)
+// ============================================================
+
+async function handleUpload(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const image = String(body.image || '');
+  const m = image.match(/^data:(image\/[a-z+]+);base64,(.+)$/);
+  if (!m) return json({ error: 'Imagen inválida (se espera data URL base64)' }, 400);
+
+  const mime = m[1];
+  const base64 = m[2];
+  if (base64.length > 4_000_000) return json({ error: 'Imagen demasiado grande (máx ~3MB)' }, 413);
+
+  if (!env.CF_ACCOUNT_ID || !env.CF_IMAGES_TOKEN) {
+    return json({ ok: true, provider: 'demo', url: image, message: 'Cloudflare Images no configurado' });
+  }
+
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const ext = mime.split('/')[1].replace('+', '');
+    const blob = new Blob([bytes], { type: mime });
+    const form = new FormData();
+    form.append('file', blob, `animaldex-${Date.now()}.${ext}`);
+
+    const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/images/v1`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` },
+      body: form,
+    });
+    const result = await resp.json();
+    if (!resp.ok || !result.success) {
+      const msg = (result.errors && result.errors[0] && result.errors[0].message) || 'error al subir a Cloudflare Images';
+      return json({ error: `Cloudflare: ${msg}` }, 502);
+    }
+    const variants = result.result.variants || [];
+    const url = variants.find((v) => /\/public$/.test(v)) || variants[0];
+    return json({ ok: true, provider: 'cloudflare', url, id: result.result.id });
+  } catch (e) {
+    return json({ error: `No se pudo subir la imagen: ${e.message}` }, 502);
+  }
+}
+
+// ============================================================
+// SMS (Twilio — verificación OTP, con HMAC de Web Crypto/node:crypto)
+// ============================================================
+
+function sign(secret, phone, code, exp) {
+  return createHmac('sha256', secret).update(`${phone}|${code}|${exp}`).digest('hex');
+}
+
+async function handleSms(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const action = clean(body.action, 20);
+  const OTP_SECRET = env.OTP_SECRET || 'animaldex-demo-otp-secret';
+  const TTL_MS = 10 * 60 * 1000;
+
+  if (action === 'send') {
+    const phone = String(body.phone || '').replace(/[^+\d]/g, '');
+    if (!/^\+?\d{8,15}$/.test(phone)) return json({ error: 'Número de teléfono inválido' }, 400);
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const exp = Date.now() + TTL_MS;
+    const token = sign(OTP_SECRET, phone, code, exp);
+
+    if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_PHONE_NUMBER) {
+      try {
+        const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Basic ' + btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`),
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ To: phone, From: env.TWILIO_PHONE_NUMBER, Body: `Tu código de verificación de Animaldex es: ${code} 🐾` }).toString(),
+        });
+        const respJson = await resp.json();
+        if (!resp.ok) return json({ error: `Twilio: ${respJson.message || 'error al enviar SMS'}` }, 502);
+        return json({ ok: true, provider: 'twilio', token, exp, message: `SMS enviado a ${phone}` });
+      } catch {
+        return json({ error: 'No se pudo contactar a Twilio' }, 502);
+      }
+    }
+    return json({ ok: true, provider: 'demo', token, exp, demoCode: code, message: 'Modo demo: configura Twilio para SMS reales.' });
+  }
+
+  if (action === 'verify') {
+    const phone = String(body.phone || '').replace(/[^+\d]/g, '');
+    const code = String(body.code || '');
+    const token = String(body.token || '');
+    const exp = Number(body.exp || 0);
+    if (Date.now() > exp) return json({ error: 'El código expiró, solicita uno nuevo' }, 400);
+    if (sign(OTP_SECRET, phone, code, exp) !== token) return json({ error: 'Código incorrecto' }, 400);
+    return json({ ok: true, verified: true, phone });
+  }
+
+  return json({ error: 'Acción desconocida' }, 400);
+}
+
+// ============================================================
+// Entry point
+// ============================================================
+
+export default {
+  async fetch(request, env) {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders() });
+    }
+
+    const url = new URL(request.url);
+    try {
+      if (url.pathname === '/auth') return await handleAuth(request, env);
+      if (url.pathname === '/db') return await handleDb(request, env);
+      if (url.pathname === '/upload') return await handleUpload(request, env);
+      if (url.pathname === '/sms') return await handleSms(request, env);
+      if (url.pathname === '/' || url.pathname === '/health') {
+        return json({ ok: true, service: 'animaldex-api', time: Date.now() });
+      }
+      return json({ error: 'Ruta no encontrada' }, 404);
+    } catch (e) {
+      return json({ error: `Worker: ${e.message}` }, 500);
+    }
+  },
+};

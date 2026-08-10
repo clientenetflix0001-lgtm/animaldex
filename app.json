@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "Animaldex",
+    "slug": "animaldex",
+    "scheme": "animaldex",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lucasap123.animaldex",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Animaldex usa tu ubicación solo cuando decides compartirla con el dueño de una mascota, tocando el botón de compartir ubicación.",
+        "NSCameraUsageDescription": "Animaldex usa la cámara para escanear códigos QR de mascotas y perfiles."
+      }
+    },
+    "android": {
+      "package": "com.lucasap123.animaldex",
+      "adaptiveIcon": {
+        "backgroundColor": "#FFE8E1",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f2b4eacd-6e1a-4dbc-89cd-b65598756451"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "owner": "lucasap123",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "plugins": [
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Animaldex usa la cámara para escanear códigos QR de mascotas y perfiles."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "f2b4eacd-6e1a-4dbc-89cd-b65598756451"
+      }
+    }
+  }
+}
