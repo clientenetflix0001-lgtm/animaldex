@@ -257,6 +257,11 @@ export default function SellerShopScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
         <FlatList
+          // Key distinto al de la grilla de productos/servicios: evita que
+          // React reutilice la misma instancia al cambiar numColumns entre
+          // pestañas (reseñas = 1 columna, productos/servicios = 2), que
+          // congela la app (mismo bug que en MarketScreen).
+          key="shop-reviews"
           data={reviews}
           keyExtractor={(r) => r.id}
           ListHeaderComponent={header}
@@ -299,6 +304,7 @@ export default function SellerShopScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <FlatList
+        key="shop-grid"
         data={listData}
         keyExtractor={(l) => l.id}
         numColumns={2}

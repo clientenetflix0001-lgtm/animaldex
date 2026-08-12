@@ -418,6 +418,11 @@ export default function MarketScreen() {
       <ActivityIndicator color={colors.primary} style={{ marginTop: 60 }} />
     ) : (
       <FlatList
+        // "key" fijo distinto al de la lista de secciones: evita que React
+        // reutilice la misma instancia de FlatList al cambiar numColumns
+        // (1 columna en secciones → 2 columnas en resultados), que es lo que
+        // causaba el congelamiento/pantalla negra al buscar.
+        key="market-grid"
         data={listings}
         keyExtractor={(l) => l.id}
         numColumns={2}
@@ -449,6 +454,7 @@ export default function MarketScreen() {
   } else {
     body = (
       <FlatList
+        key="market-sections"
         data={MARKET_SECTIONS}
         keyExtractor={(s) => s.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
