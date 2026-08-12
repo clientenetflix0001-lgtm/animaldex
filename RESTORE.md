@@ -82,6 +82,43 @@ npx wrangler pages project create animaldex-web --production-branch main
 > pages deploy` para el sitio) se mantienen deliberadamente separados y
 > sin interferirse.
 
+### ⚠️ Bug ya resuelto: pantalla en blanco infinita ("necesita JavaScript")
+
+`wrangler pages deploy` **respeta el `.gitignore`** del proyecto al
+decidir qué archivos subir. Como el `.gitignore` tiene la línea
+`node_modules/` (patrón universal), **cualquier archivo bajo una carpeta
+llamada `node_modules` en `dist/` nunca se sube**, sin importar que esté
+anidada dentro del build ya exportado. Esto afecta a los assets que
+Metro empaqueta desde paquetes de terceros con rutas tipo
+`dist/assets/node_modules/@expo/vector-icons/.../Fonts/Ionicons.*.ttf`
+o `dist/assets/node_modules/@react-navigation/elements/.../*.png`.
+
+Cuando esos archivos faltan, Cloudflare Pages responde con el fallback
+de la SPA (200 + `index.html`) en vez de un 404 — de forma silenciosa,
+sin ningún error visible. Como `App.tsx` usa `useFonts()` y no renderiza
+nada hasta que la fuente de Ionicons cargue, la app se queda **para
+siempre** en una pantalla de un solo color sólido (`colors.bg`), y en
+"Ver código fuente" del navegador aparece el texto del `<noscript>`
+("You need to enable JavaScript...") — de ahí el síntoma reportado.
+
+**Ya solucionado** en `scripts/deploy-cf-pages.sh` y `cf-pages-worker.src.js`:
+el script genera copias "espejo" de cualquier archivo cuyo path contenga
+`node_modules` o `@`, reemplazando esas palabras (`node_modules` →
+`vendor_modules`, `@` → `_`) para que sí se suban; y el Worker reescribe
+en tiempo real cualquier request a la ruta original problemática hacia
+su copia espejo — 100% transparente, sin tocar el código de la app ni
+la configuración de Metro.
+
+Si en el futuro aparece este mismo síntoma (pantalla en blanco, un solo
+color, sin errores visibles) después de agregar una nueva dependencia
+con assets propios, verificar con:
+```bash
+curl -sI "https://animaldex-web.pages.dev/assets/node_modules/<paquete>/archivo.ttf"
+# Si devuelve content-type: text/html en vez del tipo real (font/ttf, image/png...),
+# es este mismo bug — confirmar que scripts/deploy-cf-pages.sh se ejecutó
+# de nuevo después de agregar la dependencia (regenera las copias espejo).
+```
+
 ---
 
 ## 📦 Contenido del respaldo
