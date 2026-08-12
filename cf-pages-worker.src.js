@@ -1,8 +1,34 @@
-// Animaldex — Open Graph serverless function
-// Genera las meta etiquetas (foto + título) para los enlaces compartidos /p/<id> y /pet/<id>.
-// Replica la generación determinista de publicaciones de la app (lib/data.ts).
+// ============================================================
+// Animaldex — Cloudflare Pages "Advanced Mode" Worker
+// ============================================================
+// Reemplaza al middleware.js + api/og.js de Vercel (que ya no se usan
+// en este hosting). Este único archivo:
+//
+// 1) Detecta bots de redes sociales (WhatsApp, Facebook, Twitter...)
+//    y les sirve HTML con meta etiquetas Open Graph (foto + título)
+//    para los enlaces /p/:id, /pet/:id, /a/:id, /m/:id y la portada.
+// 2) Para el resto de las visitas (usuarios reales), sirve los
+//    archivos estáticos generados por `expo export` normalmente,
+//    con fallback a index.html para las rutas de la SPA (mismo
+//    comportamiento que el "rewrites" de vercel.json).
+//
+// Consulta D1 vía la API HTTP de Cloudflare (mismo mecanismo que ya
+// usaba api/og.js en Vercel) usando un token guardado como secreto de
+// Pages (CF_D1_TOKEN). Nota: "wrangler pages deploy" no admite un
+// wrangler.toml en ruta personalizada, y el wrangler.toml de la raíz
+// ya pertenece al Worker del backend (animaldex-api) — por eso este
+// Worker de Pages NO usa binding nativo a D1, para no tener que tocar
+// esa configuración.
+//
+// IMPORTANTE: este archivo es la FUENTE. Antes de cada deploy hay que
+// copiarlo a dist/_worker.js (expo export borra dist/ por completo en
+// cada build). Ver scripts/deploy-cf-pages.sh.
+// ============================================================
 
-// ---------- RNG determinista (idéntico a lib/data.ts) ----------
+const BOT_RE =
+  /facebookexternalhit|facebot|facebookcatalog|twitterbot|whatsapp|telegrambot|linkedinbot|slackbot|slack-imgproxy|discordbot|pinterest|googlebot|bingbot|yandex|baiduspider|vkshare|redditbot|applebot|flipboard|tumblr|skypeuripreview|nuzzel|quora|bitlybot|embedly|iframely|snap url preview|viber|line-poker|kakaotalk/i;
+
+// ---------- RNG determinista (idéntico a lib/data.ts, para posts demo) ----------
 function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -23,7 +49,6 @@ function hashStr(s) {
   return h >>> 0;
 }
 
-// ---------- Datos (espejo de lib/data.ts) ----------
 const PETS = [
   { id: 'p1', name: 'Luna', species: 'perro', breed: 'Golden Retriever', emoji: '🐕', bio: 'Experta en atrapar pelotas y robar corazones 🎾💛', avatarSeed: 11 },
   { id: 'p2', name: 'Michi', species: 'gato', breed: 'Siamés', emoji: '🐱', bio: 'Juez supremo de la casa. Acepto tributos en atún 🐟', avatarSeed: 22 },
@@ -82,7 +107,7 @@ const CAPTIONS = {
     'Hoy volé por toda la sala. Turbulencia leve, aterrizaje perfecto ✈️',
     'Bailando al ritmo de la cumbia con mi humano 💃🦜',
   ],
-  'hámster': [
+  hámster: [
     'Llené mis cachetes con provisiones para el invierno... en verano 🐹',
     'Corrí 5km en mi rueda. ¿Adónde llegué? A ningún lado, pero feliz 🎡',
     'Remodelé mi casa: todo el aserrín en una esquina 🏗️',
@@ -109,7 +134,6 @@ function petImage(species, seed, size) {
   }
 }
 
-// Replica exacta de makePost() (solo caption e imagen)
 function makePostMeta(seed, forcePet) {
   const rng = mulberry32(seed * 7919 + 4231);
   const pet = forcePet || PETS[Math.floor(rng() * PETS.length)];
@@ -120,15 +144,19 @@ function makePostMeta(seed, forcePet) {
 }
 
 function resolvePostMeta(postId, d) {
-  // Publicaciones creadas por el usuario: viajan codificadas en "d"
   if (d) {
     try {
-      const o = JSON.parse(Buffer.from(String(d), 'base64url').toString('utf8'));
+      // atob (Workers runtime) en vez de Buffer (Node) — base64url simple.
+      const b64 = String(d).replace(/-/g, '+').replace(/_/g, '/');
+      const json = decodeURIComponent(
+        Array.prototype.map
+          .call(atob(b64), (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0'))
+          .join('')
+      );
+      const o = JSON.parse(json);
       const pet = PETS.find((p) => p.id === o.petId);
-      if (pet && o.image) {
-        return { pet, caption: o.caption || '', image: o.image };
-      }
-    } catch (e) {
+      if (pet && o.image) return { pet, caption: o.caption || '', image: o.image };
+    } catch {
       /* enlace corrupto → seguir con el ID */
     }
   }
@@ -184,17 +212,16 @@ function ogHtml({ title, description, image, url }) {
 </html>`;
 }
 
-// ---------- Consulta a D1 para publicaciones/mascotas reales ----------
-const config = require('./_config.js');
-
-async function d1Query(sql, params) {
+// ---------- D1 vía API HTTP de Cloudflare (token en env.CF_D1_TOKEN) ----------
+async function d1Query(env, sql, params) {
   try {
+    if (!env.CF_D1_TOKEN || !env.CF_ACCOUNT_ID || !env.CF_D1_DATABASE_ID) return [];
     const resp = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${config.CF_ACCOUNT_ID}/d1/database/${config.CF_D1_DATABASE_ID}/query`,
+      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/d1/database/${env.CF_D1_DATABASE_ID}/query`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${config.CF_D1_TOKEN}`,
+          Authorization: `Bearer ${env.CF_D1_TOKEN}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ sql, params }),
@@ -208,27 +235,28 @@ async function d1Query(sql, params) {
   }
 }
 
-module.exports = async (req, res) => {
-  const proto = req.headers['x-forwarded-proto'] || 'https';
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'animaldex.vercel.app';
-  const origin = `${proto}://${host}`;
-
-  const { type, id, d } = req.query || {};
-
+async function buildOgMeta(request, env, url) {
+  const origin = url.origin;
+  const pathname = url.pathname;
   let meta = null;
 
-  if (type === 'pet' && id) {
-    const pet = PETS.find((p) => p.id === id);
-    if (pet) {
+  const petMatch = pathname.match(/^\/pet\/([^/]+)\/?$/);
+  const alertMatch = pathname.match(/^\/a\/([^/]+)\/?$/);
+  const listingMatch = pathname.match(/^\/m\/([^/]+)\/?$/);
+  const postMatch = pathname.match(/^\/p\/([^/]+)\/?$/);
+
+  if (petMatch) {
+    const id = decodeURIComponent(petMatch[1]);
+    const demoPet = PETS.find((p) => p.id === id);
+    if (demoPet) {
       meta = {
-        title: `${pet.name} ${pet.emoji} en Animaldex`,
-        description: `${pet.breed} · ${pet.bio}`,
-        image: petImage(pet.species, pet.avatarSeed, 600),
-        url: `${origin}/pet/${pet.id}`,
+        title: `${demoPet.name} ${demoPet.emoji} en Animaldex`,
+        description: `${demoPet.breed} · ${demoPet.bio}`,
+        image: petImage(demoPet.species, demoPet.avatarSeed, 600),
+        url: `${origin}/pet/${demoPet.id}`,
       };
     } else {
-      // Mascota real en la base de datos
-      const rows = await d1Query('SELECT * FROM pets WHERE id = ?', [String(id)]);
+      const rows = await d1Query(env, 'SELECT * FROM pets WHERE id = ?', [id]);
       if (rows[0]) {
         const p = rows[0];
         meta = {
@@ -239,12 +267,13 @@ module.exports = async (req, res) => {
         };
       }
     }
-  } else if (type === 'alert' && id) {
-    const rows = await d1Query('SELECT * FROM alerts WHERE id = ?', [String(id)]);
+  } else if (alertMatch) {
+    const id = decodeURIComponent(alertMatch[1]);
+    const rows = await d1Query(env, 'SELECT * FROM alerts WHERE id = ?', [id]);
     if (rows[0]) {
       const a = rows[0];
       const typeLabel = a.type === 'found' ? 'ENCONTRADO' : 'PERDIDO';
-      const speciesLabel = { perro: 'Perro', gato: 'Gato', conejo: 'Conejo', loro: 'Ave', 'hámster': 'Hámster' }[a.species] || 'Animal';
+      const speciesLabel = { perro: 'Perro', gato: 'Gato', conejo: 'Conejo', loro: 'Ave', hámster: 'Hámster' }[a.species] || 'Animal';
       const name = a.pet_name ? ` ${a.pet_name}` : '';
       meta = {
         title: `🚨 ${speciesLabel.toUpperCase()} ${typeLabel}${name} · Animaldex`,
@@ -253,12 +282,15 @@ module.exports = async (req, res) => {
         url: `${origin}/a/${a.id}`,
       };
     }
-  } else if (type === 'listing' && id) {
-    const rows = await d1Query('SELECT * FROM listings WHERE id = ?', [String(id)]);
+  } else if (listingMatch) {
+    const id = decodeURIComponent(listingMatch[1]);
+    const rows = await d1Query(env, 'SELECT * FROM listings WHERE id = ?', [id]);
     if (rows[0]) {
       const l = rows[0];
       let images = [];
-      try { images = JSON.parse(l.images || '[]'); } catch {}
+      try {
+        images = JSON.parse(l.images || '[]');
+      } catch {}
       const kindLabel = l.kind === 'service' ? 'Servicio' : 'Producto';
       meta = {
         title: `${l.kind === 'service' ? '🛠️' : '🛍️'} ${l.title} · Mercado Animaldex`,
@@ -267,10 +299,12 @@ module.exports = async (req, res) => {
         url: `${origin}/m/${l.id}`,
       };
     }
-  } else if (type === 'post' && id) {
+  } else if (postMatch) {
+    const id = decodeURIComponent(postMatch[1]);
+    const d = url.searchParams.get('d');
     const resolved = resolvePostMeta(id, d);
     if (resolved) {
-      const query = d ? `?d=${encodeURIComponent(String(d))}` : '';
+      const query = d ? `?d=${encodeURIComponent(d)}` : '';
       meta = {
         title: `${resolved.pet.name} ${resolved.pet.emoji} en Animaldex`,
         description: resolved.caption || `Una publicación de ${resolved.pet.name} en Animaldex 🐾`,
@@ -278,11 +312,11 @@ module.exports = async (req, res) => {
         url: `${origin}/p/${id}${query}`,
       };
     } else {
-      // Publicación real en la base de datos
       const rows = await d1Query(
+        env,
         `SELECT p.*, pet.name AS pet_name, pet.emoji AS pet_emoji
          FROM posts p LEFT JOIN pets pet ON pet.id = p.pet_id WHERE p.id = ?`,
-        [String(id)]
+        [id]
       );
       if (rows[0]) {
         const p = rows[0];
@@ -305,7 +339,36 @@ module.exports = async (req, res) => {
     };
   }
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=3600');
-  res.status(200).send(ogHtml(meta));
+  return meta;
+}
+
+const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/)|^\/$/;
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const ua = request.headers.get('user-agent') || '';
+
+    // 1) Bots de redes sociales en rutas con preview: servir OG HTML.
+    if (BOT_RE.test(ua) && OG_PATH_RE.test(url.pathname)) {
+      const meta = await buildOgMeta(request, env, url);
+      return new Response(ogHtml(meta), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=300, s-maxage=3600',
+        },
+      });
+    }
+
+    // 2) Usuarios normales: servir los archivos estáticos de la SPA.
+    const assetResponse = await env.ASSETS.fetch(request);
+    if (assetResponse.status !== 404) return assetResponse;
+
+    // 3) Ruta sin archivo estático correspondiente (ej. /alertas, /mercado,
+    //    /p/xyz para un humano) → fallback a index.html, igual que el
+    //    "rewrites" de vercel.json (comportamiento estándar de SPA).
+    const indexUrl = new URL('/index.html', url.origin);
+    return env.ASSETS.fetch(new Request(indexUrl.toString(), request));
+  },
 };

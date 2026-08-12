@@ -156,8 +156,9 @@ export function postNavParams(post: Post): { postId: string; d?: string } {
 
 // En web siempre se usa el dominio real donde est\u00e1 publicada la app
 // (funciona autom\u00e1ticamente con tu dominio propio cuando lo conectes).
-// FALLBACK_ORIGIN solo aplica en la app nativa: c\u00e1mbialo por tu dominio.
-const FALLBACK_ORIGIN = 'https://tudominio.com';
+// FALLBACK_ORIGIN solo aplica en la app nativa (iOS/Android): es el
+// dominio que se usa al generar links para compartir desde el celular.
+const FALLBACK_ORIGIN = 'https://animaldex-web.pages.dev';
 
 export function siteOrigin(): string {
   if (typeof window !== 'undefined' && window.location?.origin?.startsWith('http')) {
