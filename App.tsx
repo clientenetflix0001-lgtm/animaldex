@@ -16,7 +16,6 @@ import { useFonts } from 'expo-font';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRoute } from '@react-navigation/native';
 
-import FeedScreen from './screens/FeedScreen';
 import ExploreScreen from './screens/ExploreScreen';
 import CreatePostScreen from './screens/CreatePostScreen';
 import ActivityScreen from './screens/ActivityScreen';
@@ -33,9 +32,7 @@ import AdminTagsScreen from './screens/AdminTagsScreen';
 import AlertsScreen from './screens/AlertsScreen';
 import CreateAlertScreen from './screens/CreateAlertScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
-import ReelsScreen from './screens/ReelsScreen';
-import CreateReelScreen from './screens/CreateReelScreen';
-import ReelDetailScreen from './screens/ReelDetailScreen';
+import FeedReelsSwiper from './screens/FeedReelsSwiper';
 
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
@@ -101,8 +98,8 @@ function Tabs() {
           sceneStyle: { paddingLeft: sidebarWidth, backgroundColor: colors.bg },
         }}
       >
-        <Tab.Screen name="Inicio" component={FeedScreen} />
-        <Tab.Screen name="Reels" component={ReelsScreen} />
+        <Tab.Screen name="Inicio">{() => <FeedReelsSwiper initialPage={0} />}</Tab.Screen>
+        <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
         <Tab.Screen name="Alertas" component={AlertsScreen} />
         <Tab.Screen name="Explorar" component={ExploreScreen} />
         <Tab.Screen name="Crear" component={CreatePostScreen} />
@@ -135,8 +132,8 @@ function Tabs() {
         },
       })}
     >
-      <Tab.Screen name="Inicio" component={FeedScreen} />
-      <Tab.Screen name="Reels" component={ReelsScreen} />
+      <Tab.Screen name="Inicio">{() => <FeedReelsSwiper initialPage={0} />}</Tab.Screen>
+      <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
       <Tab.Screen name="Alertas" component={AlertsScreen} />
       <Tab.Screen name="Explorar" component={ExploreScreen} />
       <Tab.Screen name="Crear" component={CreatePostScreen} options={{ tabBarLabel: '' }} />
@@ -179,8 +176,6 @@ const linking: LinkingOptions<RootStackParamList> = {
       AdminTags: 'admin/chapitas',
       CreateAlert: 'crear-alerta',
       AlertDetail: 'a/:alertId',
-      CreateReel: 'crear-reel',
-      ReelDetail: 'r/:reelId',
       Auth: 'entrar',
     },
   },
@@ -302,16 +297,6 @@ function RootNavigator() {
         name="AlertDetail"
         component={AlertDetailScreen}
         options={{ title: 'Alerta', ...screenHeaderOptions }}
-      />
-      <Stack.Screen
-        name="CreateReel"
-        component={CreateReelScreen}
-        options={{ title: 'Agregar Reel', ...screenHeaderOptions }}
-      />
-      <Stack.Screen
-        name="ReelDetail"
-        component={ReelDetailScreen}
-        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

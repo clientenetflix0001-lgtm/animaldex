@@ -131,26 +131,6 @@ export interface ApiAlert {
   userAvatar: string | null;
 }
 
-export interface ApiReel {
-  id: string;
-  userId: string;
-  tiktokUrl: string;
-  tiktokVideoId: string | null;
-  creatorUsername: string | null;
-  title: string;
-  thumbnailUrl: string | null;
-  status: 'active' | 'hidden' | 'removed';
-  viewsCount: number;
-  sharesCount: number;
-  createdAt: number;
-  likeCount: number;
-  commentCount: number;
-  isLiked: boolean;
-  username: string | null;
-  userName: string | null;
-  userAvatar: string | null;
-}
-
 export interface ApiTag {
   code: number;
   status: 'unclaimed' | 'claimed';
@@ -299,25 +279,6 @@ export const db = {
     call('/db', { action: 'alertLike', alertId, value }),
   alertComment: (alertId: string, text: string): Promise<{ id: string; createdAt: number }> =>
     call('/db', { action: 'alertComment', alertId, text }),
-
-  // ---------- Reels (videos de TikTok embebidos) ----------
-  reelsFeed: (before?: number, limit = 5): Promise<{ reels: ApiReel[]; hasMore: boolean }> =>
-    call('/db', { action: 'reelsFeed', before, limit }),
-  reelDetail: (reelId: string): Promise<{ reel: ApiReel }> => call('/db', { action: 'reelDetail', reelId }),
-  reelComments: (reelId: string): Promise<{ comments: ApiComment[] }> =>
-    call('/db', { action: 'reelComments', reelId }),
-  createReel: (tiktokUrl: string): Promise<{ reel: ApiReel }> => call('/db', { action: 'createReel', tiktokUrl }),
-  reelLike: (reelId: string, value: boolean): Promise<{ likeCount: number }> =>
-    call('/db', { action: 'reelLike', reelId, value }),
-  reelComment: (reelId: string, text: string): Promise<{ id: string; createdAt: number }> =>
-    call('/db', { action: 'reelComment', reelId, text }),
-  // Contadores best-effort: se llaman "fire and forget" desde la UI,
-  // nunca deben bloquear ni interrumpir la reproducción.
-  reelView: (reelId: string): Promise<{ ok: boolean }> => call('/db', { action: 'reelView', reelId }),
-  reelShare: (reelId: string): Promise<{ ok: boolean }> => call('/db', { action: 'reelShare', reelId }),
-  reportReel: (reelId: string, reason?: string): Promise<{ ok: boolean }> =>
-    call('/db', { action: 'reportReel', reelId, reason }),
-  deleteReel: (reelId: string): Promise<{ ok: boolean }> => call('/db', { action: 'deleteReel', reelId }),
 };
 
 // ---------- Helpers ----------
