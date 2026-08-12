@@ -362,7 +362,25 @@ export default {
     }
 
     // 2) Usuarios normales: servir los archivos estáticos de la SPA.
-    const assetResponse = await env.ASSETS.fetch(request);
+    //
+    // Nota: "wrangler pages deploy" respeta .gitignore al subir archivos,
+    // y el proyecto ignora "node_modules/" (patrón universal) -> los assets
+    // vendorizados por Metro bajo assets/node_modules/... (ej. la fuente de
+    // Ionicons, íconos de @react-navigation/elements) NUNCA se suben, y
+    // Cloudflare responde con el fallback de la SPA (200 + index.html)
+    // *silenciosamente* en vez de un 404 -> la fuente de Ionicons nunca
+    // carga -> pantalla en blanco infinita (fontsLoaded nunca pasa a true).
+    // El script de deploy genera copias "espejo" de esos archivos sin la
+    // palabra "node_modules" ni "@" en el path; aquí reescribimos la
+    // request para pedir esa copia en vez de la ruta original problemática.
+    let assetRequest = request;
+    if (url.pathname.includes('node_modules') || url.pathname.includes('@')) {
+      const safeUrl = new URL(url.toString());
+      safeUrl.pathname = url.pathname.replace(/node_modules/g, 'vendor_modules').replace(/@/g, '_');
+      assetRequest = new Request(safeUrl.toString(), request);
+    }
+
+    const assetResponse = await env.ASSETS.fetch(assetRequest);
     if (assetResponse.status !== 404) return assetResponse;
 
     // 3) Ruta sin archivo estático correspondiente (ej. /alertas, /mercado,
