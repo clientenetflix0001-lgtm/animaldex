@@ -12,12 +12,17 @@ export type RootStackParamList = {
   AdminTags: undefined;
   CreateAlert: undefined;
   AlertDetail: { alertId: string };
+  CreateListing: undefined;
+  ListingDetail: { listingId: string };
+  SellerShop: { userId: string };
+  MarketFavorites: undefined;
 };
 
 export type TabParamList = {
   Inicio: undefined;
   Reels: undefined;
   Alertas: undefined;
+  Mercado: undefined;
   Explorar: undefined;
   Crear: undefined;
   Actividad: undefined;

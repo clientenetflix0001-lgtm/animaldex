@@ -131,6 +131,66 @@ export interface ApiAlert {
   userAvatar: string | null;
 }
 
+export interface ApiListing {
+  id: string;
+  userId: string;
+  kind: 'product' | 'service';
+  title: string;
+  category: string;
+  description: string;
+  pricePatitas: number;
+  priceArs: number | null;
+  stock: number | null;
+  deliveryMethod: string | null;
+  modality: string | null;
+  availability: string | null;
+  images: string[];
+  locality: string;
+  province: string;
+  country: string;
+  lat: number | null;
+  lon: number | null;
+  status: 'active' | 'removed';
+  featured: boolean;
+  viewsCount: number;
+  createdAt: number;
+  favoriteCount: number;
+  commentCount: number;
+  isFavorited: boolean;
+  username: string | null;
+  userName: string | null;
+  userAvatar: string | null;
+  sellerRating: number | null;
+  sellerReviewCount: number;
+}
+
+export interface ApiSeller {
+  id: string;
+  username: string;
+  name: string;
+  avatarUrl: string | null;
+  bio: string;
+  location: string;
+}
+
+export interface ApiSellerStats {
+  products: number;
+  services: number;
+  rating: number | null;
+  reviewCount: number;
+  followers: number;
+}
+
+export interface ApiSellerReview {
+  id: string;
+  rating: number;
+  text: string;
+  createdAt: number;
+  username: string;
+  userName: string;
+  avatarUrl: string | null;
+}
+
 export interface ApiTag {
   code: number;
   status: 'unclaimed' | 'claimed';
@@ -279,6 +339,53 @@ export const db = {
     call('/db', { action: 'alertLike', alertId, value }),
   alertComment: (alertId: string, text: string): Promise<{ id: string; createdAt: number }> =>
     call('/db', { action: 'alertComment', alertId, text }),
+
+  // ---------- Mercado (productos y servicios) ----------
+  listingsFeed: (params: {
+    kind: 'product' | 'service';
+    locality?: string;
+    category?: string;
+    section?: 'featured' | 'nearby' | 'top_rated' | 'recent';
+    q?: string;
+    before?: number;
+    limit?: number;
+  }): Promise<{ listings: ApiListing[]; hasMore: boolean }> => call('/db', { action: 'listingsFeed', ...params }),
+  listingDetail: (listingId: string): Promise<{ listing: ApiListing }> =>
+    call('/db', { action: 'listingDetail', listingId }),
+  listingComments: (listingId: string): Promise<{ comments: ApiComment[] }> =>
+    call('/db', { action: 'listingComments', listingId }),
+  listingView: (listingId: string): Promise<{ ok: boolean }> => call('/db', { action: 'listingView', listingId }),
+  createListing: (listing: {
+    kind: 'product' | 'service';
+    title: string;
+    category: string;
+    description: string;
+    pricePatitas: number;
+    priceArs?: number;
+    stock?: number;
+    deliveryMethod?: string;
+    modality?: string;
+    availability?: string;
+    images: string[];
+    locality: string;
+    province?: string;
+    lat?: number | null;
+    lon?: number | null;
+  }): Promise<{ listing: ApiListing }> => call('/db', { action: 'createListing', ...listing }),
+  deleteListing: (listingId: string): Promise<{ ok: boolean }> => call('/db', { action: 'deleteListing', listingId }),
+  listingFavorite: (listingId: string, value: boolean): Promise<{ favoriteCount: number }> =>
+    call('/db', { action: 'listingFavorite', listingId, value }),
+  myFavoriteListings: (): Promise<{ listings: ApiListing[] }> => call('/db', { action: 'myFavoriteListings' }),
+  listingComment: (listingId: string, text: string): Promise<{ id: string; createdAt: number }> =>
+    call('/db', { action: 'listingComment', listingId, text }),
+  sellerProfile: (targetUserId: string): Promise<{ seller: ApiSeller; stats: ApiSellerStats }> =>
+    call('/db', { action: 'sellerProfile', targetUserId }),
+  sellerListings: (targetUserId: string, kind: 'product' | 'service'): Promise<{ listings: ApiListing[] }> =>
+    call('/db', { action: 'sellerListings', targetUserId, kind }),
+  sellerReviews: (targetUserId: string): Promise<{ reviews: ApiSellerReview[] }> =>
+    call('/db', { action: 'sellerReviews', targetUserId }),
+  sellerReview: (targetUserId: string, rating: number, text?: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'sellerReview', targetUserId, rating, text }),
 };
 
 // ---------- Helpers ----------

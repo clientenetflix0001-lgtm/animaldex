@@ -33,6 +33,11 @@ import AlertsScreen from './screens/AlertsScreen';
 import CreateAlertScreen from './screens/CreateAlertScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
 import FeedReelsSwiper from './screens/FeedReelsSwiper';
+import MarketScreen from './screens/MarketScreen';
+import CreateListingScreen from './screens/CreateListingScreen';
+import ListingDetailScreen from './screens/ListingDetailScreen';
+import SellerShopScreen from './screens/SellerShopScreen';
+import MarketFavoritesScreen from './screens/MarketFavoritesScreen';
 
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
@@ -63,6 +68,7 @@ const TAB_ICONS: Record<keyof TabParamList, { on: keyof typeof Ionicons.glyphMap
   Inicio: { on: 'home', off: 'home-outline' },
   Reels: { on: 'film', off: 'film-outline' },
   Alertas: { on: 'warning', off: 'warning-outline' },
+  Mercado: { on: 'storefront', off: 'storefront-outline' },
   Explorar: { on: 'compass', off: 'compass-outline' },
   Crear: { on: 'add-circle', off: 'add-circle-outline' },
   Actividad: { on: 'heart', off: 'heart-outline' },
@@ -101,6 +107,7 @@ function Tabs() {
         <Tab.Screen name="Inicio">{() => <FeedReelsSwiper initialPage={0} />}</Tab.Screen>
         <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
         <Tab.Screen name="Alertas" component={AlertsScreen} />
+        <Tab.Screen name="Mercado" component={MarketScreen} />
         <Tab.Screen name="Explorar" component={ExploreScreen} />
         <Tab.Screen name="Crear" component={CreatePostScreen} />
         <Tab.Screen name="Actividad" component={ActivityScreen} />
@@ -135,6 +142,7 @@ function Tabs() {
       <Tab.Screen name="Inicio">{() => <FeedReelsSwiper initialPage={0} />}</Tab.Screen>
       <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
       <Tab.Screen name="Alertas" component={AlertsScreen} />
+      <Tab.Screen name="Mercado" component={MarketScreen} />
       <Tab.Screen name="Explorar" component={ExploreScreen} />
       <Tab.Screen name="Crear" component={CreatePostScreen} options={{ tabBarLabel: '' }} />
       <Tab.Screen
@@ -160,6 +168,7 @@ const linking: LinkingOptions<RootStackParamList> = {
           Inicio: '',
           Reels: 'reels',
           Alertas: 'alertas',
+          Mercado: 'mercado',
           Explorar: 'explorar',
           Crear: 'crear',
           Actividad: 'actividad',
@@ -176,6 +185,10 @@ const linking: LinkingOptions<RootStackParamList> = {
       AdminTags: 'admin/chapitas',
       CreateAlert: 'crear-alerta',
       AlertDetail: 'a/:alertId',
+      CreateListing: 'vender',
+      ListingDetail: 'm/:listingId',
+      SellerShop: 'tienda/:userId',
+      MarketFavorites: 'mercado-favoritos',
       Auth: 'entrar',
     },
   },
@@ -298,6 +311,26 @@ function RootNavigator() {
         component={AlertDetailScreen}
         options={{ title: 'Alerta', ...screenHeaderOptions }}
       />
+      <Stack.Screen
+        name="CreateListing"
+        component={CreateListingScreen}
+        options={{ title: 'Vender', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="ListingDetail"
+        component={ListingDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SellerShop"
+        component={SellerShopScreen}
+        options={{ title: 'Tienda', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="MarketFavorites"
+        component={MarketFavoritesScreen}
+        options={{ title: 'Favoritos', ...screenHeaderOptions }}
+      />
     </Stack.Navigator>
   );
 }
@@ -359,7 +392,7 @@ const styles = StyleSheet.create({
     // de navegación de Android (Volver / Inicio / Cambiar app).
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
   },
 });

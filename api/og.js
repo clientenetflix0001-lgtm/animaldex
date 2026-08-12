@@ -253,6 +253,20 @@ module.exports = async (req, res) => {
         url: `${origin}/a/${a.id}`,
       };
     }
+  } else if (type === 'listing' && id) {
+    const rows = await d1Query('SELECT * FROM listings WHERE id = ?', [String(id)]);
+    if (rows[0]) {
+      const l = rows[0];
+      let images = [];
+      try { images = JSON.parse(l.images || '[]'); } catch {}
+      const kindLabel = l.kind === 'service' ? 'Servicio' : 'Producto';
+      meta = {
+        title: `${l.kind === 'service' ? '🛠️' : '🛍️'} ${l.title} · Mercado Animaldex`,
+        description: `${kindLabel} · 🐾 ${Number(l.price_patitas || 0).toLocaleString('es-AR')} Patitas · 📍 ${l.locality}`,
+        image: images[0] || petImage('perro', 11, 600),
+        url: `${origin}/m/${l.id}`,
+      };
+    }
   } else if (type === 'post' && id) {
     const resolved = resolvePostMeta(id, d);
     if (resolved) {

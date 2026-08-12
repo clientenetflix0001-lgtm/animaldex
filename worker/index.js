@@ -293,6 +293,74 @@ async function attachLikedFlags(env, rows, viewerId) {
   return rows.map((r) => alertRow(r, likedSet.has(r.id)));
 }
 
+// ============================================================
+// MERCADO (productos y servicios) — cada usuario que publica
+// obtiene automáticamente una "mini-tienda" (su propio perfil +
+// sus publicaciones + reseñas agregadas), sin tabla de tiendas
+// separada. Precio en "Patitas" (unidad interna, sin billetera
+// real todavía). Preparado para agregar más adelante: pedidos,
+// pagos, envíos y publicidad destacada (columna `featured`).
+// ============================================================
+
+function listingRow(r, viewerFavorited) {
+  let images = [];
+  try {
+    images = JSON.parse(r.images || '[]');
+  } catch {}
+  return {
+    id: r.id,
+    userId: r.user_id,
+    kind: r.kind, // 'product' | 'service'
+    title: r.title,
+    category: r.category,
+    description: r.description || '',
+    pricePatitas: r.price_patitas || 0,
+    priceArs: r.price_ars ?? null,
+    stock: r.stock ?? null,
+    deliveryMethod: r.delivery_method || null,
+    modality: r.modality || null,
+    availability: r.availability || null,
+    images,
+    locality: r.locality,
+    province: r.province || '',
+    country: r.country || 'AR',
+    lat: r.lat ?? null,
+    lon: r.lon ?? null,
+    status: r.status,
+    featured: !!r.featured,
+    viewsCount: r.views_count || 0,
+    createdAt: r.created_at,
+    favoriteCount: r.favorite_count || 0,
+    commentCount: r.comment_count || 0,
+    isFavorited: !!viewerFavorited,
+    username: r.username || null,
+    userName: r.user_name || null,
+    userAvatar: r.user_avatar || null,
+    sellerRating: r.seller_rating != null ? Math.round(r.seller_rating * 10) / 10 : null,
+    sellerReviewCount: r.seller_review_count || 0,
+  };
+}
+
+const LISTING_SELECT = `
+  SELECT l.*,
+    (SELECT COUNT(*) FROM listing_favorites f WHERE f.listing_id = l.id) AS favorite_count,
+    (SELECT COUNT(*) FROM listing_comments c WHERE c.listing_id = l.id) AS comment_count,
+    u.username AS username, u.name AS user_name, u.avatar_url AS user_avatar,
+    (SELECT AVG(rating) FROM seller_reviews sr WHERE sr.seller_user_id = l.user_id) AS seller_rating,
+    (SELECT COUNT(*) FROM seller_reviews sr WHERE sr.seller_user_id = l.user_id) AS seller_review_count
+  FROM listings l
+  LEFT JOIN users u ON u.id = l.user_id
+`;
+
+async function attachFavoritedFlags(env, rows, viewerId) {
+  if (!viewerId || rows.length === 0) return rows.map((r) => listingRow(r, false));
+  const ids = rows.map((r) => r.id);
+  const ph = ids.map(() => '?').join(',');
+  const favs = await d1(env, `SELECT listing_id FROM listing_favorites WHERE user_id = ? AND listing_id IN (${ph})`, [viewerId, ...ids]);
+  const favSet = new Set(favs.map((f) => f.listing_id));
+  return rows.map((r) => listingRow(r, favSet.has(r.id)));
+}
+
 async function handleDb(request, env) {
   const body = await request.json().catch(() => ({}));
   const action = clean(body.action, 40);
@@ -508,6 +576,139 @@ async function handleDb(request, env) {
         comments: rows.map((c) => ({
           id: c.id, userId: c.user_id, username: c.username || 'usuario', userName: c.user_name || 'Usuario',
           avatarUrl: c.avatar_url || null, text: c.text, createdAt: c.created_at,
+        })),
+      });
+    }
+
+    // ---------- Mercado (productos y servicios) ----------
+    // Lectura pública; sesión opcional (isFavorited correcto si hay token).
+    // `section` ajusta el orden/filtro: 'nearby' (localidad), 'featured'
+    // (destacados, con fallback a recientes), 'top_rated' (mejor valorados),
+    // o el valor por defecto (recién publicados).
+    if (action === 'listingsFeed') {
+      const kind = body.kind === 'service' ? 'service' : 'product';
+      const locality = clean(body.locality, 100);
+      const category = clean(body.category, 40);
+      const section = clean(body.section, 20) || 'recent';
+      const q = clean(body.q, 80).toLowerCase();
+      const before = Number(body.before) || now + 1000;
+      const limit = Math.min(Number(body.limit) || 10, 30);
+      const viewerId = await authUser(request, env, body);
+
+      const conditions = ["l.status = 'active'", 'l.kind = ?'];
+      const params = [kind];
+      if (category) {
+        conditions.push('l.category = ?');
+        params.push(category);
+      }
+      if (q) {
+        conditions.push('(LOWER(l.title) LIKE ? OR LOWER(l.description) LIKE ?)');
+        params.push(`%${q}%`, `%${q}%`);
+      }
+      if (section === 'nearby' && locality) {
+        conditions.push('LOWER(l.locality) = LOWER(?)');
+        params.push(locality);
+      }
+      conditions.push('l.created_at < ?');
+      params.push(before);
+
+      let orderBy = 'l.created_at DESC';
+      if (section === 'featured') orderBy = 'l.featured DESC, l.created_at DESC';
+      if (section === 'top_rated') orderBy = 'seller_rating DESC, l.created_at DESC';
+
+      const sql = `${LISTING_SELECT} WHERE ${conditions.join(' AND ')} ORDER BY ${orderBy} LIMIT ?`;
+      params.push(limit + 1);
+      const rows = await d1(env, sql, params);
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const listings = await attachFavoritedFlags(env, page, viewerId);
+      return json({ ok: true, listings, hasMore });
+    }
+
+    if (action === 'listingDetail') {
+      const listingId = clean(body.listingId, 80);
+      const viewerId = await authUser(request, env, body);
+      const rows = await d1(env, `${LISTING_SELECT} WHERE l.id = ?`, [listingId]);
+      if (!rows[0]) return json({ error: 'Publicación no encontrada' }, 404);
+      const [listing] = await attachFavoritedFlags(env, rows, viewerId);
+      return json({ ok: true, listing });
+    }
+
+    if (action === 'listingComments') {
+      const listingId = clean(body.listingId, 80);
+      const rows = await d1(
+        env,
+        `SELECT c.*, u.username, u.name AS user_name, u.avatar_url
+         FROM listing_comments c LEFT JOIN users u ON u.id = c.user_id
+         WHERE c.listing_id = ? ORDER BY c.created_at ASC LIMIT 200`,
+        [listingId]
+      );
+      return json({
+        ok: true,
+        comments: rows.map((c) => ({
+          id: c.id, userId: c.user_id, username: c.username || 'usuario', userName: c.user_name || 'Usuario',
+          avatarUrl: c.avatar_url || null, text: c.text, createdAt: c.created_at,
+        })),
+      });
+    }
+
+    if (action === 'listingView') {
+      const listingId = clean(body.listingId, 80);
+      if (listingId) await d1(env, 'UPDATE listings SET views_count = views_count + 1 WHERE id = ?', [listingId]).catch(() => {});
+      return json({ ok: true });
+    }
+
+    if (action === 'sellerProfile') {
+      const targetId = clean(body.targetUserId, 80);
+      const [users, productCount, serviceCount, reviewStats, followerCount] = await Promise.all([
+        d1(env, 'SELECT id, username, name, avatar_url, bio, location FROM users WHERE id = ?', [targetId]),
+        d1(env, "SELECT COUNT(*) AS n FROM listings WHERE user_id = ? AND kind = 'product' AND status = 'active'", [targetId]),
+        d1(env, "SELECT COUNT(*) AS n FROM listings WHERE user_id = ? AND kind = 'service' AND status = 'active'", [targetId]),
+        d1(env, 'SELECT AVG(rating) AS avg_rating, COUNT(*) AS n FROM seller_reviews WHERE seller_user_id = ?', [targetId]),
+        d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'user' AND target_id = ?", [targetId]),
+      ]);
+      if (!users[0]) return json({ error: 'Vendedor no encontrado' }, 404);
+      const u = users[0];
+      return json({
+        ok: true,
+        seller: { id: u.id, username: u.username, name: u.name, avatarUrl: u.avatar_url || null, bio: u.bio || '', location: u.location || '' },
+        stats: {
+          products: productCount[0].n,
+          services: serviceCount[0].n,
+          rating: reviewStats[0].avg_rating != null ? Math.round(reviewStats[0].avg_rating * 10) / 10 : null,
+          reviewCount: reviewStats[0].n,
+          followers: followerCount[0].n,
+        },
+      });
+    }
+
+    if (action === 'sellerListings') {
+      const targetId = clean(body.targetUserId, 80);
+      const kind = body.kind === 'service' ? 'service' : 'product';
+      const viewerId = await authUser(request, env, body);
+      const rows = await d1(
+        env,
+        `${LISTING_SELECT} WHERE l.user_id = ? AND l.kind = ? AND l.status = 'active' ORDER BY l.created_at DESC LIMIT 60`,
+        [targetId, kind]
+      );
+      const listings = await attachFavoritedFlags(env, rows, viewerId);
+      return json({ ok: true, listings });
+    }
+
+    if (action === 'sellerReviews') {
+      const targetId = clean(body.targetUserId, 80);
+      const rows = await d1(
+        env,
+        `SELECT sr.*, u.username, u.name AS user_name, u.avatar_url
+         FROM seller_reviews sr LEFT JOIN users u ON u.id = sr.reviewer_user_id
+         WHERE sr.seller_user_id = ? ORDER BY sr.created_at DESC LIMIT 100`,
+        [targetId]
+      );
+      return json({
+        ok: true,
+        reviews: rows.map((r) => ({
+          id: r.id, rating: r.rating, text: r.text || '', createdAt: r.created_at,
+          username: r.username || 'usuario', userName: r.user_name || 'Usuario', avatarUrl: r.avatar_url || null,
         })),
       });
     }
@@ -738,6 +939,98 @@ async function handleDb(request, env) {
       const id = `ac-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(env, 'INSERT INTO alert_comments (id, alert_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, alertId, userId, text, now]);
       return json({ ok: true, id, createdAt: now });
+    }
+
+    // ---------- Mercado: escrituras (requieren sesión) ----------
+
+    if (action === 'createListing') {
+      const kind = body.kind === 'service' ? 'service' : 'product';
+      const title = clean(body.title, 100);
+      const category = clean(body.category, 40) || 'otros';
+      const description = clean(body.description, 1000);
+      const pricePatitas = Math.max(0, Math.round(Number(body.pricePatitas) || 0));
+      const priceArs =
+        body.priceArs != null && Number.isFinite(Number(body.priceArs)) ? Math.max(0, Math.round(Number(body.priceArs))) : null;
+      const stock =
+        body.stock != null && Number.isFinite(Number(body.stock)) ? Math.max(0, Math.round(Number(body.stock))) : null;
+      const deliveryMethod = clean(body.deliveryMethod, 20) || null;
+      const modality = clean(body.modality, 20) || null;
+      const availability = clean(body.availability, 200) || null;
+      const images = Array.isArray(body.images) ? body.images.slice(0, 6).map((x) => clean(x, 2000)).filter(Boolean) : [];
+      const locality = clean(body.locality, 100);
+      const province = clean(body.province, 100);
+      const lat = body.lat != null && Number.isFinite(Number(body.lat)) ? Number(body.lat) : null;
+      const lon = body.lon != null && Number.isFinite(Number(body.lon)) ? Number(body.lon) : null;
+
+      if (!title) return json({ error: 'Ponle un nombre a tu publicación' }, 400);
+      if (images.length === 0) return json({ error: 'Agrega al menos una foto' }, 400);
+      if (images.some((i) => i.startsWith('data:'))) return json({ error: 'Las imágenes deben subirse primero a Cloudflare' }, 400);
+      if (!description) return json({ error: 'Agrega una descripción' }, 400);
+      if (!locality) return json({ error: 'Falta la ubicación' }, 400);
+      if (pricePatitas <= 0) return json({ error: 'Ingresa un precio en Patitas' }, 400);
+
+      const id = `listing-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(
+        env,
+        `INSERT INTO listings (id, user_id, kind, title, category, description, price_patitas, price_ars, stock, delivery_method, modality, availability, images, locality, province, country, lat, lon, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+        [id, userId, kind, title, category, description, pricePatitas, priceArs, stock, deliveryMethod, modality, availability, JSON.stringify(images), locality, province || null, 'AR', lat, lon, now]
+      );
+      const rows = await d1(env, `${LISTING_SELECT} WHERE l.id = ?`, [id]);
+      const [listing] = await attachFavoritedFlags(env, rows, userId);
+      return json({ ok: true, listing });
+    }
+
+    if (action === 'deleteListing') {
+      const listingId = clean(body.listingId, 80);
+      const rows = await d1(env, 'SELECT id FROM listings WHERE id = ? AND user_id = ?', [listingId, userId]);
+      if (!rows[0]) return json({ error: 'Esa publicación no es tuya' }, 403);
+      await d1(env, "UPDATE listings SET status = 'removed', updated_at = ? WHERE id = ?", [now, listingId]);
+      return json({ ok: true });
+    }
+
+    if (action === 'listingFavorite') {
+      const listingId = clean(body.listingId, 80);
+      if (body.value) await d1(env, 'INSERT OR IGNORE INTO listing_favorites (user_id, listing_id, created_at) VALUES (?, ?, ?)', [userId, listingId, now]);
+      else await d1(env, 'DELETE FROM listing_favorites WHERE user_id = ? AND listing_id = ?', [userId, listingId]);
+      const count = await d1(env, 'SELECT COUNT(*) AS n FROM listing_favorites WHERE listing_id = ?', [listingId]);
+      return json({ ok: true, favoriteCount: count[0].n });
+    }
+
+    if (action === 'myFavoriteListings') {
+      const rows = await d1(
+        env,
+        `${LISTING_SELECT} WHERE l.id IN (SELECT listing_id FROM listing_favorites WHERE user_id = ?) AND l.status = 'active' ORDER BY l.created_at DESC LIMIT 60`,
+        [userId]
+      );
+      const listings = await attachFavoritedFlags(env, rows, userId);
+      return json({ ok: true, listings });
+    }
+
+    if (action === 'listingComment') {
+      const listingId = clean(body.listingId, 80);
+      const text = clean(body.text, 500);
+      if (!text) return json({ error: 'Escribe tu consulta' }, 400);
+      const id = `lc-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(env, 'INSERT INTO listing_comments (id, listing_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, listingId, userId, text, now]);
+      return json({ ok: true, id, createdAt: now });
+    }
+
+    if (action === 'sellerReview') {
+      const targetUserId = clean(body.targetUserId, 80);
+      const rating = Math.min(5, Math.max(1, Math.round(Number(body.rating) || 0)));
+      const text = clean(body.text, 500);
+      if (!targetUserId) return json({ error: 'Falta el vendedor' }, 400);
+      if (!Number.isFinite(Number(body.rating)) || rating < 1) return json({ error: 'Selecciona una calificación' }, 400);
+      if (targetUserId === userId) return json({ error: 'No puedes calificarte a ti mismo' }, 400);
+      const id = `sr-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(
+        env,
+        `INSERT INTO seller_reviews (id, seller_user_id, reviewer_user_id, rating, text, created_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(seller_user_id, reviewer_user_id) DO UPDATE SET rating = excluded.rating, text = excluded.text, created_at = excluded.created_at`,
+        [id, targetUserId, userId, rating, text || null, now]
+      );
+      return json({ ok: true });
     }
 
     if (action === 'createPost') {

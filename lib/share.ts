@@ -194,7 +194,7 @@ export async function sharePost(post: Post): Promise<void> {
 // NO crea una publicación/republicación interna: solo abre el share sheet
 // del sistema (WhatsApp, Estado de WhatsApp, Facebook, Instagram, copiar
 // enlace, etc.) con un link directo a la alerta dentro de Animaldex.
-import type { ApiAlert } from './db';
+import type { ApiAlert, ApiListing } from './db';
 
 export function alertShareUrl(alertId: string): string {
   return `${siteOrigin()}/a/${alertId}`;
@@ -206,6 +206,18 @@ export async function shareAlert(alert: ApiAlert): Promise<void> {
   const title = `🚨 ${typeLabel}${name} · Animaldex`;
   const text = `${alert.description}\n📍 ${alert.locality}`;
   const url = alertShareUrl(alert.id);
+  await shareLink(title, text, url);
+}
+
+// ---------- Mercado: compartir una publicación (producto/servicio) ----------
+export function listingShareUrl(listingId: string): string {
+  return `${siteOrigin()}/m/${listingId}`;
+}
+
+export async function shareListing(listing: ApiListing): Promise<void> {
+  const title = `${listing.kind === 'service' ? '🛠️' : '🛍️'} ${listing.title} · Mercado Animaldex`;
+  const text = `${listing.description}\n🐾 ${listing.pricePatitas.toLocaleString('es-AR')} Patitas · 📍 ${listing.locality}`;
+  const url = listingShareUrl(listing.id);
   await shareLink(title, text, url);
 }
 
