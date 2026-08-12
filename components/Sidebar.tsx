@@ -17,7 +17,6 @@ export const TAB_ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off
   Reels: { on: 'film', off: 'film-outline' },
   Alertas: { on: 'warning', off: 'warning-outline' },
   Mercado: { on: 'storefront', off: 'storefront-outline' },
-  Explorar: { on: 'compass', off: 'compass-outline' },
   Crear: { on: 'add-circle', off: 'add-circle-outline' },
   Actividad: { on: 'heart', off: 'heart-outline' },
   Perfil: { on: 'person', off: 'person-outline' },
@@ -28,7 +27,6 @@ const LABELS: Record<string, string> = {
   Reels: 'Reels',
   Alertas: 'Alertas',
   Mercado: 'Mercado',
-  Explorar: 'Explorar',
   Crear: 'Crear',
   Actividad: 'Actividad',
   Perfil: 'Perfil',
@@ -62,6 +60,20 @@ export function Sidebar({ state, navigation, mode }: Props) {
       >
         <Text style={styles.logoEmoji}>🐾</Text>
         {full && <Text style={styles.logoText}>Animaldex</Text>}
+      </Pressable>
+
+      {/* Buscar (antes viva como tab "Explorar"; ahora es una pantalla
+          del stack, accesible desde este botón dedicado) */}
+      <Pressable
+        style={(st: any) => [
+          styles.item,
+          !full && styles.itemRail,
+          (st.hovered || st.pressed) && styles.itemHover,
+        ]}
+        onPress={() => navigation.getParent()?.navigate('Explorar')}
+      >
+        <Ionicons name="search" size={26} color={colors.text} />
+        {full && <Text style={styles.itemLabel}>Buscar</Text>}
       </Pressable>
 
       {/* Navegación */}

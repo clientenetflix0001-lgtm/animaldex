@@ -69,7 +69,6 @@ const TAB_ICONS: Record<keyof TabParamList, { on: keyof typeof Ionicons.glyphMap
   Reels: { on: 'film', off: 'film-outline' },
   Alertas: { on: 'warning', off: 'warning-outline' },
   Mercado: { on: 'storefront', off: 'storefront-outline' },
-  Explorar: { on: 'compass', off: 'compass-outline' },
   Crear: { on: 'add-circle', off: 'add-circle-outline' },
   Actividad: { on: 'heart', off: 'heart-outline' },
   Perfil: { on: 'person', off: 'person-outline' },
@@ -108,7 +107,6 @@ function Tabs() {
         <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
         <Tab.Screen name="Alertas" component={AlertsScreen} />
         <Tab.Screen name="Mercado" component={MarketScreen} />
-        <Tab.Screen name="Explorar" component={ExploreScreen} />
         <Tab.Screen name="Crear" component={CreatePostScreen} />
         <Tab.Screen name="Actividad" component={ActivityScreen} />
         <Tab.Screen name="Perfil" component={MyProfileTab} />
@@ -143,7 +141,6 @@ function Tabs() {
       <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
       <Tab.Screen name="Alertas" component={AlertsScreen} />
       <Tab.Screen name="Mercado" component={MarketScreen} />
-      <Tab.Screen name="Explorar" component={ExploreScreen} />
       <Tab.Screen name="Crear" component={CreatePostScreen} options={{ tabBarLabel: '' }} />
       <Tab.Screen
         name="Actividad"
@@ -169,12 +166,12 @@ const linking: LinkingOptions<RootStackParamList> = {
           Reels: 'reels',
           Alertas: 'alertas',
           Mercado: 'mercado',
-          Explorar: 'explorar',
           Crear: 'crear',
           Actividad: 'actividad',
           Perfil: 'perfil',
         },
       },
+      Explorar: 'explorar',
       PostDetail: 'p/:postId',
       PetProfile: 'pet/:petId',
       UserProfile: 'user/:userId',
@@ -264,6 +261,11 @@ function RootNavigator() {
   return (
     <Stack.Navigator>
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="Explorar"
+        component={ExploreScreen}
+        options={{ title: 'Explorar', ...screenHeaderOptions }}
+      />
       <Stack.Screen name="PetProfile" component={PetProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="UserProfile" component={UserProfileRoute} options={{ headerShown: false }} />
       <Stack.Screen

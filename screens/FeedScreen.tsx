@@ -238,9 +238,19 @@ export default function FeedScreen() {
             <Ionicons name="qr-code-outline" size={22} color={colors.primary} />
           </Pressable>
         </View>
-        <Pressable hitSlop={8}>
-          <Ionicons name="paper-plane-outline" size={24} color={colors.text} />
-        </Pressable>
+        <View style={styles.headerRight}>
+          <Pressable
+            style={styles.searchBtn}
+            onPress={() => navigation.navigate('Explorar')}
+            hitSlop={8}
+            accessibilityLabel="Buscar"
+          >
+            <Ionicons name="search" size={22} color={colors.text} />
+          </Pressable>
+          <Pressable hitSlop={8}>
+            <Ionicons name="paper-plane-outline" size={24} color={colors.text} />
+          </Pressable>
+        </View>
       </View>
       <View style={{ flex: 1 }}>
         {feedList}
@@ -276,6 +286,14 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     backgroundColor: colors.primarysoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
+  searchBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },

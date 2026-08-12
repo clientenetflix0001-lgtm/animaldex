@@ -1,6 +1,7 @@
 export type RootStackParamList = {
   Auth: undefined;
   Tabs: undefined;
+  Explorar: undefined;
   PetProfile: { petId: string };
   UserProfile: { userId: string };
   PostDetail: { postId: string; d?: string };
@@ -23,7 +24,6 @@ export type TabParamList = {
   Reels: undefined;
   Alertas: undefined;
   Mercado: undefined;
-  Explorar: undefined;
   Crear: undefined;
   Actividad: undefined;
   Perfil: undefined;
