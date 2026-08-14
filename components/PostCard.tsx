@@ -85,21 +85,23 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         <Text style={styles.time}>{formatTime(post.minutesAgo)}</Text>
       </Pressable>
 
-      {/* Image */}
-      <Pressable onPress={handleImageTap}>
-        <View style={styles.imageWrap}>
-          <Image
-            source={{ uri: large(post.image) }}
-            style={styles.image}
-            contentFit="cover"
-            transition={300}
-            placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
-          />
-          <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">
-            <Ionicons name="heart" size={96} color="#fff" />
-          </Animated.View>
-        </View>
-      </Pressable>
+      {/* Image (solo si hay foto) */}
+      {!!post.image && (
+        <Pressable onPress={handleImageTap}>
+          <View style={styles.imageWrap}>
+            <Image
+              source={{ uri: large(post.image) }}
+              style={styles.image}
+              contentFit="cover"
+              transition={300}
+              placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
+            />
+            <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">
+              <Ionicons name="heart" size={96} color="#fff" />
+            </Animated.View>
+          </View>
+        </Pressable>
+      )}
 
       {/* Actions */}
       <View style={styles.actions}>

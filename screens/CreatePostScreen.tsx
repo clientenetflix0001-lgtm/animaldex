@@ -49,7 +49,9 @@ export default function CreatePostScreen() {
       allowsEditing: false,
       quality: 0.85,
       base64: true,
-    });
+      // Evita el recorte nativo de Android
+      legacy: false,
+    } as any);
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     const mime = asset.mimeType || 'image/jpeg';
@@ -81,17 +83,13 @@ export default function CreatePostScreen() {
       Alert.alert('Sin mascotas', 'Primero registra una mascota en tu perfil 🐾');
       return;
     }
-    if (!photo) {
-      Alert.alert('Falta la foto', 'Elige una foto de tu galería 📸');
-      return;
-    }
-    if (caption.trim().length === 0) {
-      Alert.alert('Falta el pie de foto', 'Escribe algo sobre este momento 🐾');
+    if (!photo && caption.trim().length === 0) {
+      Alert.alert('Publicación vacía', 'Escribe un texto o agrega una foto 🐾');
       return;
     }
     setPublishing(true);
     try {
-      const { post } = await db.createPost(activePetId, photo, caption.trim());
+      const { post } = await db.createPost(activePetId, photo || '', caption.trim());
       // Inserción incremental: el post aparece arriba del feed al instante,
       // sin recargar nada.
       notifyPostCreated(apiPostToPost(post));
@@ -192,10 +190,10 @@ export default function CreatePostScreen() {
             </Pressable>
           </ScrollView>
 
-          <Text style={styles.sectionLabel}>Foto</Text>
+          <Text style={styles.sectionLabel}>Foto (opcional)</Text>
           <Pressable style={styles.preview} onPress={pickFromGallery}>
             {photo ? (
-              <Image source={{ uri: photo }} style={styles.previewImg} contentFit="cover" transition={300} />
+              <Image source={{ uri: photo }} style={styles.previewImg} contentFit="contain" transition={300} />
             ) : (
               <View style={[styles.previewImg, styles.previewEmpty]}>
                 {uploading ? (
@@ -206,7 +204,8 @@ export default function CreatePostScreen() {
                 ) : (
                   <>
                     <Ionicons name="images-outline" size={44} color={colors.primary} />
-                    <Text style={styles.previewEmptyText}>Toca para elegir de tu galería</Text>
+                    <Text style={styles.previewEmptyText}>Toca para agregar una foto</Text>
+                    <Text style={styles.previewHint}>O publicá solo texto, sin recorte</Text>
                   </>
                 )}
               </View>
@@ -225,10 +224,10 @@ export default function CreatePostScreen() {
             </Pressable>
           )}
 
-          <Text style={styles.sectionLabel}>Pie de foto</Text>
+          <Text style={styles.sectionLabel}>Texto</Text>
           <TextInput
             style={styles.captionInput}
-            placeholder={`Cuenta qué está haciendo ${activePet?.name ?? 'tu mascota'}...`}
+            placeholder={`¿Qué está pasando, ${activePet?.name ?? 'peludo'}? Podés publicar solo texto.`}
             placeholderTextColor={colors.textMuted}
             multiline
             value={caption}
@@ -322,6 +321,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.md,
   },
+  previewHint: { color: colors.textMuted, fontSize: 12, marginTop: 6, fontWeight: '600' },
   previewEmptyText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
   uploadOverlay: {
     position: 'absolute',

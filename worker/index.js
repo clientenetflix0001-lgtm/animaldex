@@ -1051,8 +1051,9 @@ async function handleDb(request, env) {
       const petId = clean(body.petId, 80);
       const image = clean(body.image, 2000);
       const caption = clean(body.caption, 500);
-      if (!petId || !image) return json({ error: 'Faltan datos de la publicación' }, 400);
-      if (image.startsWith('data:')) return json({ error: 'La imagen debe subirse primero a Cloudflare' }, 400);
+      if (!petId) return json({ error: 'Faltan datos de la publicación' }, 400);
+      if (!image && !caption) return json({ error: 'Escribe algo o agrega una foto' }, 400);
+      if (image && image.startsWith('data:')) return json({ error: 'La imagen debe subirse primero a Cloudflare' }, 400);
       const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
       if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
       const id = `post-${now}-${Math.random().toString(36).slice(2, 8)}`;

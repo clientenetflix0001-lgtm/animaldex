@@ -409,6 +409,7 @@ function PostDetailContent({ post }: { post: Post }) {
     return (
       <View style={styles.dtRoot}>
         <View style={[styles.dtCard, { height: cardH }]}>
+          {!!post.image && (
           <View style={styles.dtImageCol}>
             <Image
               source={{ uri: large(post.image) }}
@@ -418,6 +419,7 @@ function PostDetailContent({ post }: { post: Post }) {
               placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
             />
           </View>
+          )}
           <View style={styles.dtSideCol}>
             {petHeader}
             <View style={styles.dtDivider} />
@@ -453,6 +455,7 @@ function PostDetailContent({ post }: { post: Post }) {
     <View>
       {petHeader}
 
+      {!!post.image && (
       <Image
         source={{ uri: large(post.image) }}
         style={styles.image}
@@ -460,6 +463,7 @@ function PostDetailContent({ post }: { post: Post }) {
         transition={300}
         placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
       />
+      )}
 
       {actionsRow}
 
