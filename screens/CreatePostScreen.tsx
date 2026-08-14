@@ -44,14 +44,15 @@ export default function CreatePostScreen() {
       Alert.alert('Permiso requerido', 'Necesitamos acceso a tu galería para elegir la foto.');
       return;
     }
+    // Android: el Photo Picker nuevo a veces abre recorte igual.
+    // legacy:true usa la galería clásica SIN editor de recorte.
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
-      quality: 0.85,
+      quality: 0.9,
       base64: true,
-      // Evita el recorte nativo de Android
-      legacy: false,
-    } as any);
+      ...(Platform.OS === 'android' ? { legacy: true } : {}),
+    });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     const mime = asset.mimeType || 'image/jpeg';
@@ -204,7 +205,7 @@ export default function CreatePostScreen() {
                 ) : (
                   <>
                     <Ionicons name="images-outline" size={44} color={colors.primary} />
-                    <Text style={styles.previewEmptyText}>Toca para agregar una foto</Text>
+                    <Text style={styles.previewEmptyText}>Elegí una foto (sin recorte)</Text>
                     <Text style={styles.previewHint}>O publicá solo texto, sin recorte</Text>
                   </>
                 )}
