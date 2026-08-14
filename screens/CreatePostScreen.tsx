@@ -46,9 +46,8 @@ export default function CreatePostScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
+      allowsEditing: false,
+      quality: 0.85,
       base64: true,
     });
     if (result.canceled || !result.assets?.[0]) return;
