@@ -38,6 +38,7 @@ interface DisplayPet {
   emoji: string;
   breed: string;
   avatarUri: string;
+  username?: string;
 }
 
 export default function UserProfileScreen({ userId, showBack = false }: Props) {
@@ -143,6 +144,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         emoji: p.emoji,
         breed: p.breed || p.species,
         avatarUri: p.avatarUrl ?? petFallbackAvatar(p.id),
+        username: p.username ?? undefined,
       }));
 
   const deletedSet = new Set(deletedPostIds);
@@ -272,11 +274,11 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
           renderItem={({ item }) => (
             <Pressable
               style={styles.petCard}
-              onPress={() => navigation.navigate('PetProfile', { petId: item.id })}
+              onPress={() => navigation.navigate('PetProfile', { petId: item.username || item.id })}
             >
               <Image source={{ uri: thumb(item.avatarUri, 150) }} style={styles.petImg} transition={250} />
               <Text style={styles.petName}>
-                {item.name} {item.emoji}
+                {item.username ? `@${item.username}` : item.name} {item.emoji}
               </Text>
               <Text style={styles.petBreed} numberOfLines={1}>
                 {item.breed}

@@ -47,6 +47,7 @@ export interface Post {
   petEmoji?: string;
   petSpecies?: string;
   petAvatarUrl?: string | null;
+  petUsername?: string;
   username?: string;
   commentCount?: number;
 }

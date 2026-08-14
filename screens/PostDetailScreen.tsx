@@ -271,9 +271,11 @@ function PostDetailContent({ post }: { post: Post }) {
         <Image source={{ uri: thumb(disp.avatarUri, 100) }} style={styles.avatar} transition={200} />
         <View>
           <Text style={styles.petName}>
-            {disp.petName} {disp.petEmoji}
+            @{disp.petUsername || disp.petName.toLowerCase()}{disp.petEmoji}
           </Text>
-          <Text style={styles.subText}>de @{disp.username}</Text>
+          <Text style={styles.subText}>
+            {(disp.speciesLabel || 'mascota').toLowerCase()} de (@{disp.username})
+          </Text>
         </View>
       </Pressable>
       <View style={styles.headerRight}>

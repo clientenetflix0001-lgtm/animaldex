@@ -13,6 +13,7 @@ import { CONTENT } from '../lib/responsive';
 
 interface Suggestion {
   id: string;
+  handle?: string | null;
   name: string;
   sub: string;
   avatarUri: string;
@@ -33,8 +34,9 @@ export function SuggestionsPanel() {
   const suggestions: Suggestion[] = [
     ...realPets.map((p) => ({
       id: p.id,
+      handle: p.username || null,
       name: `${p.name} ${p.emoji}`,
-      sub: `${p.breed || p.species} · Comunidad`,
+      sub: p.username ? `@${p.username}` : `${p.breed || p.species} · Comunidad`,
       avatarUri: p.avatarUrl ?? petFallbackAvatar(p.id),
       real: true,
     })),
@@ -76,7 +78,7 @@ export function SuggestionsPanel() {
           <View key={s.id} style={styles.suggRow}>
             <Pressable
               style={styles.suggInfo}
-              onPress={() => navigation.navigate('PetProfile', { petId: s.id })}
+              onPress={() => navigation.navigate('PetProfile', { petId: s.handle || s.id })}
             >
               <Image source={{ uri: thumb(s.avatarUri, 100) }} style={styles.suggAvatar} transition={200} />
               <View style={{ flex: 1 }}>

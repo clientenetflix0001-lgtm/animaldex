@@ -173,9 +173,10 @@ export function postShareUrl(post: Post): string {
   return `${siteOrigin()}/p/${params.postId}${query}`;
 }
 
-export async function sharePetProfile(petId: string): Promise<void> {
+export async function sharePetProfile(petId: string, handle?: string | null): Promise<void> {
   const demoPet = PETS.find((p) => p.id === petId);
-  const url = `${siteOrigin()}/pet/${petId}`;
+  const slug = (handle || demoPet?.name || petId).toString().toLowerCase();
+  const url = `${siteOrigin()}/pet/${encodeURIComponent(slug)}`;
   const title = demoPet
     ? `${demoPet.name} ${demoPet.emoji} en Animaldex`
     : 'Una mascota adorable en Animaldex 🐾';

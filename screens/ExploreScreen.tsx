@@ -179,7 +179,7 @@ export default function ExploreScreen() {
               return (
                 <Pressable
                   style={styles.petRow}
-                  onPress={() => navigation.navigate('PetProfile', { petId: item.pet.id })}
+                  onPress={() => navigation.navigate('PetProfile', { petId: item.pet.username || item.pet.id })}
                 >
                   <Image
                     source={{ uri: thumb(item.pet.avatarUrl ?? petFallbackAvatar(item.pet.id), 120) }}

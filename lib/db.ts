@@ -70,6 +70,7 @@ export interface ApiPet {
   id: string;
   userId: string;
   name: string;
+  username?: string | null;
   species: string;
   breed: string;
   age: string;
@@ -92,6 +93,7 @@ export interface ApiPost {
   petEmoji: string | null;
   petAvatar: string | null;
   petSpecies: string | null;
+  petUsername?: string | null;
   username: string | null;
   userName: string | null;
 }
@@ -272,8 +274,10 @@ export const db = {
     call('/db', { action: 'updatePost', postId, caption }),
   deletePost: (postId: string): Promise<{ imageDeleted: boolean }> =>
     call('/db', { action: 'deletePost', postId }),
-  createPet: (pet: { name: string; species: string; breed?: string; age?: string; bio?: string; emoji?: string; avatarUrl?: string }): Promise<{ pet: ApiPet }> =>
+  createPet: (pet: { name: string; username?: string; species: string; breed?: string; age?: string; bio?: string; emoji?: string; avatarUrl?: string }): Promise<{ pet: ApiPet }> =>
     call('/db', { action: 'createPet', ...pet }),
+  checkPetUsername: (username: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>
+    call('/db', { action: 'checkPetUsername', username }),
   updatePet: (petId: string, fields: Partial<ApiPet>) =>
     call('/db', { action: 'updatePet', petId, ...fields }),
   setPhone: (phone: string | null) => call('/db', { action: 'setPhone', phone }),

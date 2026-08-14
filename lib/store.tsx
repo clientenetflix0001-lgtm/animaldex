@@ -19,6 +19,7 @@ export function apiPostToPost(p: ApiPost): Post {
     petEmoji: p.petEmoji ?? '🐾',
     petSpecies: p.petSpecies ?? 'perro',
     petAvatarUrl: p.petAvatar,
+    petUsername: p.petUsername ?? undefined,
     username: p.username ?? 'usuario',
     commentCount: p.commentCount,
   };

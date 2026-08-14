@@ -8,6 +8,7 @@ export interface PostDisplay {
   petEmoji: string;
   avatarUri: string;
   username: string;
+  petUsername?: string;
   speciesLabel: string;
   isRealPet: boolean;
 }
@@ -23,6 +24,7 @@ export function getPostDisplay(post: Post): PostDisplay {
       petEmoji: post.petEmoji ?? '🐾',
       avatarUri: post.petAvatarUrl ?? petFallbackAvatar(post.petId),
       username: post.username ?? 'usuario',
+      petUsername: post.petUsername,
       speciesLabel:
         SPECIES_LABEL[(post.petSpecies as Species) ?? 'perro'] ??
         (post.petSpecies ? post.petSpecies.charAt(0).toUpperCase() + post.petSpecies.slice(1) : 'Mascota'),
@@ -36,6 +38,7 @@ export function getPostDisplay(post: Post): PostDisplay {
     petEmoji: pet.emoji,
     avatarUri: petAvatar(pet),
     username: owner.username,
+    petUsername: pet.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9_.]/g, ''),
     speciesLabel: SPECIES_LABEL[pet.species],
     isRealPet: false,
   };

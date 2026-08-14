@@ -70,15 +70,16 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
   return (
     <View style={styles.card}>
       {/* Header */}
-      <Pressable style={styles.header} onPress={() => onOpenPet(post.petId)}>
+      <Pressable style={styles.header} onPress={() => onOpenPet(disp.petUsername || post.petId)}>
         <Image source={{ uri: thumb(disp.avatarUri, 100) }} style={styles.avatar} transition={200} />
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
-            <Text style={styles.petName}>{disp.petName}</Text>
-            <Text style={styles.petEmoji}> {disp.petEmoji}</Text>
+            <Text style={styles.petName}>
+              @{disp.petUsername || disp.petName.toLowerCase()}{disp.petEmoji}
+            </Text>
           </View>
           <Text style={styles.subText}>
-            {disp.speciesLabel} · de @{disp.username}
+            {(disp.speciesLabel || 'mascota').toLowerCase()} de (@{disp.username})
           </Text>
         </View>
         <Text style={styles.time}>{formatTime(post.minutesAgo)}</Text>
@@ -171,7 +172,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primarysoft,
   },
   nameRow: { flexDirection: 'row', alignItems: 'center' },
-  petName: { fontWeight: '700', fontSize: 15, color: colors.text },
+  petName: { fontWeight: '800', fontSize: 16, color: colors.text },
   petEmoji: { fontSize: 13 },
   subText: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   time: { fontSize: 11, color: colors.textMuted },

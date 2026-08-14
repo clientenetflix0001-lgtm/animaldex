@@ -166,6 +166,7 @@ export default function PetProfileScreen() {
 
   // ---------- Presentación ----------
   const name = demoPet?.name ?? realPet?.name ?? '...';
+  const petHandle = realPet?.username ?? (demoPet ? demoPet.name.toLowerCase() : '');
   const emoji = demoPet?.emoji ?? realPet?.emoji ?? '🐾';
   const speciesLabel = demoPet
     ? SPECIES_LABEL[demoPet.species]
@@ -205,7 +206,7 @@ export default function PetProfileScreen() {
           <Text style={styles.topTitle} numberOfLines={1}>
             {name}
           </Text>
-          <Pressable style={styles.topBtn} hitSlop={8} onPress={() => sharePetProfile(petId)}>
+          <Pressable style={styles.topBtn} hitSlop={8} onPress={() => sharePetProfile(petId, petHandle)}>
             <Ionicons name="share-outline" size={20} color={colors.text} />
           </Pressable>
         </View>
@@ -254,6 +255,7 @@ export default function PetProfileScreen() {
       {/* Identity */}
       <View style={styles.identity}>
         <Text style={styles.petName}>{name}</Text>
+        {!!petHandle && <Text style={styles.petHandle}>@{petHandle}</Text>}
         <View style={styles.chipsRow}>
           {speciesLabel !== '' && (
             <View style={styles.chip}>
@@ -440,6 +442,7 @@ const styles = StyleSheet.create({
   changePhotoLink: { color: colors.primary, fontWeight: '700', fontSize: 14 },
   identity: { alignItems: 'center', marginTop: spacing.lg, paddingHorizontal: spacing.xl },
   petName: { fontSize: 28, fontWeight: '900', color: colors.text },
+  petHandle: { fontSize: 18, fontWeight: '800', color: colors.primary, marginTop: 4 },
   chipsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap', justifyContent: 'center' },
   chip: {
     backgroundColor: colors.secondarySoft,

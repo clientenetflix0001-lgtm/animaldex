@@ -208,16 +208,22 @@ function postRow(r) {
     petEmoji: r.pet_emoji || null,
     petAvatar: r.pet_avatar || null,
     petSpecies: r.pet_species || null,
+    petUsername: r.pet_username || null,
     username: r.username || null,
     userName: r.user_name || null,
   };
 }
 
+function slugHandle(name) {
+  const base = String(name || 'pet').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 16);
+  return (base.length >= 3 ? base : (base + 'pet')).slice(0, 16);
+}
 function petRow(r) {
   return {
     id: r.id,
     userId: r.user_id,
     name: r.name,
+    username: r.username || null,
     species: r.species,
     breed: r.breed || '',
     age: r.age || '',
@@ -232,7 +238,7 @@ const POST_SELECT = `
   SELECT p.*,
     (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count,
     (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
-    pet.name AS pet_name, pet.emoji AS pet_emoji, pet.avatar_url AS pet_avatar, pet.species AS pet_species,
+    pet.name AS pet_name, pet.emoji AS pet_emoji, pet.avatar_url AS pet_avatar, pet.species AS pet_species, pet.username AS pet_username,
     u.username AS username, u.name AS user_name
   FROM posts p
   LEFT JOIN pets pet ON pet.id = p.pet_id
@@ -383,7 +389,9 @@ async function handleDb(request, env) {
 
     if (action === 'petPosts') {
       const petId = clean(body.petId, 80);
-      const rows = await d1(env, `${POST_SELECT} WHERE p.pet_id = ? ORDER BY p.created_at DESC LIMIT 60`, [petId]);
+      const found = await d1(env, 'SELECT id FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1', [petId, petId]);
+      const realId = found[0]?.id || petId;
+      const rows = await d1(env, `${POST_SELECT} WHERE p.pet_id = ? ORDER BY p.created_at DESC LIMIT 60`, [realId]);
       return json({ ok: true, posts: rows.map(postRow) });
     }
 
@@ -436,13 +444,13 @@ async function handleDb(request, env) {
 
     if (action === 'petProfile') {
       const petId = clean(body.petId, 80);
-      const pets = await d1(env, 'SELECT * FROM pets WHERE id = ?', [petId]);
+      const pets = await d1(env, 'SELECT * FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1', [petId, petId]);
       if (!pets[0]) return json({ error: 'Mascota no encontrada' }, 404);
       const pet = pets[0];
       const [owners, postCount, followerCount] = await Promise.all([
         d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE id = ?', [pet.user_id]),
-        d1(env, 'SELECT COUNT(*) AS n FROM posts WHERE pet_id = ?', [petId]),
-        d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'pet' AND target_id = ?", [petId]),
+        d1(env, 'SELECT COUNT(*) AS n FROM posts WHERE pet_id = ?', [pet.id]),
+        d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'pet' AND target_id = ?", [pet.id]),
       ]);
       return json({
         ok: true,
@@ -461,6 +469,12 @@ async function handleDb(request, env) {
       return json({ ok: true, pets: pets.map(petRow), users: users.map((u) => ({ id: u.id, username: u.username, name: u.name, avatarUrl: u.avatar_url || null })) });
     }
 
+    if (action === 'checkPetUsername') {
+      const username = clean(body.username, 20).toLowerCase();
+      if (!USERNAME_RE.test(username)) return json({ ok: true, available: false, reason: 'invalid' });
+      const rows = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ? OR LOWER(name) = ?', [username, username]);
+      return json({ ok: true, available: rows.length === 0 });
+    }
     if (action === 'featuredPets') {
       const rows = await d1(env, 'SELECT * FROM pets ORDER BY created_at DESC LIMIT 20');
       return json({ ok: true, pets: rows.map(petRow) });
@@ -1094,8 +1108,15 @@ async function handleDb(request, env) {
       const emoji = clean(body.emoji, 8) || '🐾';
       const avatarUrl = clean(body.avatarUrl, 500) || null;
       if (name.length < 1) return json({ error: 'Ponle nombre a tu mascota' }, 400);
+      let username = clean(body.username, 20).toLowerCase();
+      if (!USERNAME_RE.test(username)) username = slugHandle(name);
+      if (!USERNAME_RE.test(username)) return json({ error: 'El usuario de la mascota debe tener 3-20 caracteres: letras, números, punto o _' }, 400);
+      const takenUser = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ?', [username]);
+      if (takenUser.length) return json({ error: 'Ese @ de mascota ya está en uso. Probá otro.' }, 409);
+      const takenName = await d1(env, 'SELECT id FROM pets WHERE LOWER(name) = LOWER(?)', [name]);
+      if (takenName.length) return json({ error: 'Ya existe una mascota con ese nombre. Elegí otro nombre o usuario.' }, 409);
       const id = `pet-${now}-${Math.random().toString(36).slice(2, 8)}`;
-      await d1(env, 'INSERT INTO pets (id, user_id, name, species, breed, age, bio, emoji, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, name, species, breed, age, bio, emoji, avatarUrl, now]);
+      await d1(env, 'INSERT INTO pets (id, user_id, name, username, species, breed, age, bio, emoji, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, name, username, species, breed, age, bio, emoji, avatarUrl, now]);
       const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [id]);
       return json({ ok: true, pet: petRow(rows[0]) });
     }

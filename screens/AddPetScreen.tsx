@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -23,7 +23,18 @@ import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 
+
+function normalizeHandle(raw: string): string {
+  return raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_.]/g, '').slice(0, 20);
+}
+function suggestHandle(name: string): string {
+  const base = normalizeHandle(name);
+  return base.length >= 3 ? base : (base + 'pet').slice(0, 20);
+}
+const HANDLE_RE = /^[a-z0-9_.]{3,20}$/;
+
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
 
 const SPECIES = [
   { id: 'perro', label: 'Perro', emoji: '🐶' },
@@ -40,6 +51,10 @@ export default function AddPetScreen() {
   const tagCode = route.params?.tagCode;
   const { refreshMyPets } = useStore();
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [userTouched, setUserTouched] = useState(false);
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [checking, setChecking] = useState(false);
   const [species, setSpecies] = useState('perro');
   const [breed, setBreed] = useState('');
   const [age, setAge] = useState('');
@@ -47,6 +62,22 @@ export default function AddPetScreen() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!userTouched) setUsername(suggestHandle(name));
+  }, [name, userTouched]);
+
+  useEffect(() => {
+    if (!HANDLE_RE.test(username)) { setAvailable(null); return; }
+    setChecking(true);
+    const t = setTimeout(() => {
+      db.checkPetUsername(username)
+        .then((r) => setAvailable(r.available))
+        .catch(() => setAvailable(null))
+        .finally(() => setChecking(false));
+    }, 280);
+    return () => clearTimeout(t);
+  }, [username]);
 
   const pickAvatar = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -87,11 +118,21 @@ export default function AddPetScreen() {
       Alert.alert('Falta el nombre', 'Ponle nombre a tu mascota 🐾');
       return;
     }
+    const handle = normalizeHandle(username || name);
+    if (!HANDLE_RE.test(handle)) {
+      Alert.alert('Usuario inválido', 'El @ de tu mascota debe tener 3-20 caracteres: letras, números, punto o _.');
+      return;
+    }
+    if (available === false) {
+      Alert.alert('Usuario ocupado', 'Ese nombre o @ ya lo tiene otra mascota. Probá otro.');
+      return;
+    }
     setSaving(true);
     try {
       const emoji = SPECIES.find((s) => s.id === species)?.emoji ?? '🐾';
       const { pet } = await db.createPet({
         name: name.trim(),
+        username: handle,
         species,
         breed: breed.trim(),
         age: age.trim(),
@@ -100,35 +141,30 @@ export default function AddPetScreen() {
         avatarUrl: avatarUrl ?? undefined,
       });
       await refreshMyPets();
-
-      // Si esta mascota se está registrando a partir de escanear una
-      // chapita QR sin asignar, la vinculamos ahora: a partir de este
-      // momento, ese mismo link/QR llevará directo al perfil de la mascota.
       if (tagCode != null) {
         try {
           await db.claimTag(tagCode, pet.id);
           Alert.alert(
             '¡Listo! 🎉',
-            `${pet.name} ya tiene su chapita QR activada. La próxima vez que alguien la escanee, llegará directo a su perfil.`,
-            [{ text: 'Ver perfil', onPress: () => navigation.replace('PetProfile', { petId: pet.id }) }]
+            `${pet.name} (@${pet.username || handle}) ya tiene su chapita QR activada.`,
+            [{ text: 'Ver perfil', onPress: () => navigation.replace('PetProfile', { petId: pet.username || pet.id }) }]
           );
         } catch (e: any) {
           Alert.alert(
             'Mascota guardada',
-            `${pet.name} se registró correctamente, pero no se pudo vincular la chapita: ${e?.message || 'inténtalo de nuevo desde el perfil.'}`,
-            [{ text: 'Ver perfil', onPress: () => navigation.replace('PetProfile', { petId: pet.id }) }]
+            `${pet.name} se registró, pero no se pudo vincular la chapita: ${e?.message || 'inténtalo de nuevo.'}`,
+            [{ text: 'Ver perfil', onPress: () => navigation.replace('PetProfile', { petId: pet.username || pet.id }) }]
           );
         }
         return;
       }
-
-      navigation.goBack();
+      navigation.replace('PetProfile', { petId: pet.username || pet.id });
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo guardar');
     } finally {
       setSaving(false);
     }
-  }, [name, species, breed, age, bio, avatarUrl, refreshMyPets, navigation, tagCode]);
+  }, [name, username, available, species, breed, age, bio, avatarUrl, refreshMyPets, navigation, tagCode]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -169,6 +205,29 @@ export default function AddPetScreen() {
             onChangeText={setName}
             maxLength={40}
           />
+
+          <Text style={styles.label}>Usuario único *</Text>
+          <View style={styles.handleWrap}>
+            <Text style={styles.handleAt}>@</Text>
+            <TextInput
+              style={styles.handleInput}
+              placeholder="tamy"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={username}
+              onChangeText={(t) => { setUserTouched(true); setUsername(normalizeHandle(t)); }}
+              maxLength={20}
+            />
+            <Text style={styles.handleStatus}>
+              {checking ? '…' : available === true ? '✓' : available === false ? '✕' : ''}
+            </Text>
+          </View>
+          <Text style={styles.handleHint}>
+            {available === false
+              ? 'Ese @ o nombre ya está tomado.'
+              : 'Se muestra en el feed y en el perfil. No se puede repetir.'}
+          </Text>
 
           <Text style={styles.label}>Especie</Text>
           <View style={styles.speciesGrid}>
@@ -264,6 +323,19 @@ const styles = StyleSheet.create({
   },
   avatarHint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.sm },
   label: { fontWeight: '700', fontSize: 14, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.sm },
+  handleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+  },
+  handleAt: { fontWeight: '900', fontSize: 18, color: colors.primary, marginRight: 4 },
+  handleInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: colors.text, fontWeight: '700' },
+  handleStatus: { fontWeight: '900', fontSize: 18, color: colors.secondary, width: 22, textAlign: 'center' },
+  handleHint: { marginTop: 6, fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   input: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
