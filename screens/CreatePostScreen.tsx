@@ -44,14 +44,13 @@ export default function CreatePostScreen() {
       Alert.alert('Permiso requerido', 'Necesitamos acceso a tu galería para elegir la foto.');
       return;
     }
-    // Android: el Photo Picker nuevo a veces abre recorte igual.
-    // legacy:true usa la galería clásica SIN editor de recorte.
+    // Importante: NO usar allowsEditing ni aspect ni legacy.
+    // En Android, legacy:true abre el editor de recorte de la galería OEM.
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: false,
       quality: 0.9,
       base64: true,
-      ...(Platform.OS === 'android' ? { legacy: true } : {}),
     });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
@@ -315,7 +314,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...shadow.card,
   },
-  previewImg: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
+  previewImg: { width: '100%', minHeight: 180, maxHeight: 420, backgroundColor: colors.border },
   previewEmpty: {
     backgroundColor: colors.primarysoft,
     alignItems: 'center',

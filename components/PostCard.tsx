@@ -13,7 +13,8 @@ import Animated, {
 import { Post, formatCount, formatTime } from '../lib/data';
 import { getPostDisplay } from '../lib/postDisplay';
 import { sharePost } from '../lib/share';
-import { thumb, large } from '../lib/images';
+import { thumb } from '../lib/images';
+import { AdaptivePostImage } from './AdaptivePostImage';
 import { useStore } from '../lib/store';
 import { colors, radius, shadow, spacing } from '../lib/theme';
 
@@ -89,13 +90,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
       {!!post.image && (
         <Pressable onPress={handleImageTap}>
           <View style={styles.imageWrap}>
-            <Image
-              source={{ uri: large(post.image) }}
-              style={styles.image}
-              contentFit="cover"
-              transition={300}
-              placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
-            />
+            <AdaptivePostImage uri={post.image} />
             <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">
               <Ionicons name="heart" size={96} color="#fff" />
             </Animated.View>

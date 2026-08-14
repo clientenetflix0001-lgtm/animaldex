@@ -23,6 +23,7 @@ import { usePolling } from '../lib/realtime';
 import { resolvePost, sharePost } from '../lib/share';
 import { getPostDisplay } from '../lib/postDisplay';
 import { thumb, large, userFallbackAvatar } from '../lib/images';
+import { AdaptivePostImage } from '../components/AdaptivePostImage';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint } from '../lib/responsive';
@@ -411,13 +412,7 @@ function PostDetailContent({ post }: { post: Post }) {
         <View style={[styles.dtCard, { height: cardH }]}>
           {!!post.image && (
           <View style={styles.dtImageCol}>
-            <Image
-              source={{ uri: large(post.image) }}
-              style={styles.dtImage}
-              contentFit="cover"
-              transition={300}
-              placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
-            />
+            <AdaptivePostImage uri={post.image} maxHeight={820} />
           </View>
           )}
           <View style={styles.dtSideCol}>
@@ -455,15 +450,7 @@ function PostDetailContent({ post }: { post: Post }) {
     <View>
       {petHeader}
 
-      {!!post.image && (
-      <Image
-        source={{ uri: large(post.image) }}
-        style={styles.image}
-        contentFit="cover"
-        transition={300}
-        placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
-      />
-      )}
+      {!!post.image && <AdaptivePostImage uri={post.image} />}
 
       {actionsRow}
 
