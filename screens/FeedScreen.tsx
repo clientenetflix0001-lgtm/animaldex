@@ -3,8 +3,9 @@ import { View, Text, StyleSheet, FlatList, RefreshControl, Pressable } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Post, generateFeedPage } from '../lib/data';
 import { db } from '../lib/db';
 import { apiPostToPost, useStore } from '../lib/store';
@@ -15,10 +16,13 @@ import { StoriesBar } from '../components/StoriesBar';
 import { LoadingFooter } from '../components/LoadingFooter';
 import { SuggestionsPanel } from '../components/SuggestionsPanel';
 import { colors, spacing, radius, shadow } from '../lib/theme';
-import { RootStackParamList } from '../lib/types';
+import { RootStackParamList, TabParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 
-type Nav = NativeStackNavigationProp<RootStackParamList>;
+type Nav = CompositeNavigationProp<
+  BottomTabNavigationProp<TabParamList, 'Inicio'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 export default function FeedScreen() {
   const navigation = useNavigation<Nav>();
@@ -247,6 +251,14 @@ export default function FeedScreen() {
           >
             <Ionicons name="search" size={22} color={colors.text} />
           </Pressable>
+          <Pressable
+            style={styles.searchBtn}
+            onPress={() => navigation.navigate('Actividad')}
+            hitSlop={8}
+            accessibilityLabel="Actividad"
+          >
+            <Ionicons name="heart-outline" size={22} color={colors.text} />
+          </Pressable>
         </View>
       </View>
       <View style={{ flex: 1 }}>
@@ -286,7 +298,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   searchBtn: {
     width: 32,
     height: 32,
