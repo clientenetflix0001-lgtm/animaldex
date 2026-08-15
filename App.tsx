@@ -140,17 +140,18 @@ function Tabs() {
       <Tab.Screen name="Inicio">{() => <FeedReelsSwiper initialPage={0} />}</Tab.Screen>
       <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
       <Tab.Screen name="Alertas" component={AlertsScreen} />
-      <Tab.Screen name="Mercado" component={MarketScreen} />
       <Tab.Screen name="Crear" component={CreatePostScreen} options={{ tabBarLabel: '' }} />
+      <Tab.Screen name="Mercado" component={MarketScreen} />
+      <Tab.Screen name="Perfil" component={MyProfileTab} />
       <Tab.Screen
         name="Actividad"
         component={ActivityScreen}
         options={{
-          tabBarBadge: unread > 0 ? (unread > 9 ? '9+' : unread) : undefined,
-          tabBarBadgeStyle: { backgroundColor: colors.heart, fontSize: 10, fontWeight: '700' },
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none', width: 0, height: 0 },
+          tabBarLabel: () => null,
         }}
       />
-      <Tab.Screen name="Perfil" component={MyProfileTab} />
     </Tab.Navigator>
   );
 }

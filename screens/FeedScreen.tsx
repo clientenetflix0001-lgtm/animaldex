@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Post, generateFeedPage } from '../lib/data';
 import { db } from '../lib/db';
 import { apiPostToPost, useStore } from '../lib/store';
-import { usePolling } from '../lib/realtime';
+import { usePolling, useNotifications } from '../lib/realtime';
 import { postNavParams } from '../lib/share';
 import { PostCard } from '../components/PostCard';
 import { StoriesBar } from '../components/StoriesBar';
@@ -23,6 +23,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function FeedScreen() {
   const navigation = useNavigation<Nav>();
   const { user, createdPosts, consumeCreatedPosts, deletedPostIds, editedCaptions } = useStore();
+  const { unread } = useNotifications();
   const { desktopWeb, showRightPanel } = useBreakpoint();
   const [realPosts, setRealPosts] = useState<Post[]>([]);
   const [demoPosts, setDemoPosts] = useState<Post[]>(() => [...generateFeedPage(0), ...generateFeedPage(1)]);
@@ -247,8 +248,18 @@ export default function FeedScreen() {
           >
             <Ionicons name="search" size={22} color={colors.text} />
           </Pressable>
-          <Pressable hitSlop={8}>
-            <Ionicons name="paper-plane-outline" size={24} color={colors.text} />
+          <Pressable
+            style={styles.activityBtn}
+            onPress={() => navigation.navigate('Actividad' as never)}
+            hitSlop={8}
+            accessibilityLabel="Actividad"
+          >
+            <Ionicons name="heart-outline" size={24} color={colors.text} />
+            {unread > 0 && (
+              <View style={styles.activityBadge}>
+                <Text style={styles.activityBadgeText}>{unread > 9 ? '9+' : unread}</Text>
+              </View>
+            )}
           </Pressable>
         </View>
       </View>
@@ -290,6 +301,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
+  activityBtn: { position: 'relative' },
+  activityBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    borderRadius: 8,
+    backgroundColor: colors.heart,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activityBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   searchBtn: {
     width: 32,
     height: 32,
