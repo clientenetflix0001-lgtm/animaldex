@@ -18,6 +18,7 @@ import { SuggestionsPanel } from '../components/SuggestionsPanel';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList, TabParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
+import { ProfileSwitcher } from '../features/profiles';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Inicio'>,
@@ -274,6 +275,7 @@ export default function FeedScreen() {
           </Pressable>
         </View>
       </View>
+      <ProfileSwitcher />
       <View style={{ flex: 1 }}>
         {feedList}
         {newPill}

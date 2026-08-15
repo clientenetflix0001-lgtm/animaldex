@@ -22,11 +22,13 @@ import { uploadImage } from '../lib/api';
 import { thumb, petFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
+import { ProfileSwitcher, useProfiles } from '../features/profiles';
 
 export default function CreatePostScreen() {
   const navigation = useNavigation<any>();
   const { desktopWeb } = useBreakpoint();
   const { myPets, refreshMyPets, notifyPostCreated } = useStore();
+  const { activeProfileId } = useProfiles();
 
   const [selectedPet, setSelectedPet] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
@@ -89,7 +91,7 @@ export default function CreatePostScreen() {
     }
     setPublishing(true);
     try {
-      const { post } = await db.createPost(activePetId, photo || '', caption.trim());
+      const { post } = await db.createPost(activePetId, photo || '', caption.trim(), activeProfileId);
       // Inserción incremental: el post aparece arriba del feed al instante,
       // sin recargar nada.
       notifyPostCreated(apiPostToPost(post));
@@ -102,7 +104,7 @@ export default function CreatePostScreen() {
     } finally {
       setPublishing(false);
     }
-  }, [activePetId, photo, caption, navigation, notifyPostCreated]);
+  }, [activePetId, photo, caption, navigation, notifyPostCreated, activeProfileId]);
 
   const wrapStyle = desktopWeb ? styles.desktopWrap : styles.mobileWrap;
 
@@ -162,6 +164,9 @@ export default function CreatePostScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          <Text style={styles.sectionLabel}>Publicar como</Text>
+          <ProfileSwitcher compact />
+
           <Text style={styles.sectionLabel}>¿Quién protagoniza esta foto?</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.petPicker}>
             {myPets.map((p) => {

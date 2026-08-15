@@ -17,6 +17,7 @@ import { thumb } from '../lib/images';
 import { AdaptivePostImage } from './AdaptivePostImage';
 import { useStore } from '../lib/store';
 import { colors, radius, shadow, spacing } from '../lib/theme';
+import ProfileBadge from '../features/profiles/ProfileBadge';
 
 interface Props {
   post: Post;
@@ -76,12 +77,17 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
             <Text style={styles.petName}>
-              @{disp.petUsername || disp.petName.toLowerCase()}{disp.petEmoji}
+              {post.authorProfileId
+                ? (post.authorProfileName || disp.username)
+                : `@${disp.petUsername || disp.petName.toLowerCase()}${disp.petEmoji}`}
             </Text>
           </View>
           <Text style={styles.subText}>
-            {(disp.speciesLabel || 'mascota').toLowerCase()} de (@{disp.username})
+            {post.authorProfileId
+              ? `@${post.authorProfileUsername || disp.username}`
+              : `${(disp.speciesLabel || 'mascota').toLowerCase()} de (@${disp.username})`}
           </Text>
+          {post.authorProfileId ? <ProfileBadge type={post.authorProfileType} /> : null}
         </View>
         <Text style={styles.time}>{formatTime(post.minutesAgo)}</Text>
       </Pressable>

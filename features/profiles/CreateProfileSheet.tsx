@@ -1,0 +1,199 @@
+import React, { useState } from 'react';
+import {
+  Modal,
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { colors, radius, spacing } from '../../lib/theme';
+import { useProfiles } from './ProfileContext';
+import { limitMessage, type ProfileType } from './profileTypes';
+
+interface Props {
+  visible: boolean;
+  onClose: () => void;
+}
+
+export default function CreateProfileSheet({ visible, onClose }: Props) {
+  const { canCreate, createProfile } = useProfiles();
+  const [step, setStep] = useState<'pick' | 'form'>('pick');
+  const [type, setType] = useState<Exclude<ProfileType, 'personal'> | null>(null);
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [bio, setBio] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => {
+    setStep('pick');
+    setType(null);
+    setName('');
+    setUsername('');
+    setBio('');
+    setSaving(false);
+  };
+
+  const close = () => {
+    reset();
+    onClose();
+  };
+
+  const pick = (next: Exclude<ProfileType, 'personal'>) => {
+    if (!canCreate(next)) {
+      Alert.alert('Límite alcanzado', limitMessage(next));
+      return;
+    }
+    setType(next);
+    setStep('form');
+  };
+
+  const submit = async () => {
+    if (!type) return;
+    const handle = username.trim().toLowerCase().replace(/^@/, '');
+    if (name.trim().length < 2) {
+      Alert.alert('Falta el nombre', 'Escribe el nombre del perfil.');
+      return;
+    }
+    if (!/^[a-z0-9_.]{3,20}$/.test(handle)) {
+      Alert.alert('Usuario inválido', 'El @ debe tener 3-20 caracteres: letras, números, punto o guion bajo.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await createProfile({ type, name: name.trim(), username: handle, bio: bio.trim() });
+      close();
+    } catch (e: any) {
+      Alert.alert('No se pudo crear', e?.message || 'Inténtalo de nuevo');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
+      <Pressable style={styles.backdrop} onPress={close} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetWrap}>
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          {step === 'pick' ? (
+            <>
+              <Text style={styles.title}>¿Qué perfil quieres crear?</Text>
+              <Pressable style={styles.option} onPress={() => pick('business')}>
+                <Text style={styles.optionEmoji}>🏪</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.optionTitle}>Empresa / Tienda</Text>
+                  <Text style={styles.optionSub}>Hasta 2 por cuenta</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Pressable>
+              <Pressable style={styles.option} onPress={() => pick('protector')}>
+                <Text style={styles.optionEmoji}>❤️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.optionTitle}>Proteccionista / Refugio</Text>
+                  <Text style={styles.optionSub}>Hasta 2 por cuenta</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable onPress={() => setStep('pick')} style={styles.back}>
+                <Ionicons name="chevron-back" size={18} color={colors.primary} />
+                <Text style={styles.backText}>Volver</Text>
+              </Pressable>
+              <Text style={styles.title}>
+                {type === 'business' ? 'Nueva tienda' : 'Nuevo perfil proteccionista'}
+              </Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="Nombre"
+                placeholderTextColor={colors.textMuted}
+                style={styles.input}
+              />
+              <TextInput
+                value={username}
+                onChangeText={setUsername}
+                placeholder="@usuario"
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholderTextColor={colors.textMuted}
+                style={styles.input}
+              />
+              <TextInput
+                value={bio}
+                onChangeText={setBio}
+                placeholder="Bio (opcional)"
+                placeholderTextColor={colors.textMuted}
+                style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                multiline
+              />
+              <Pressable style={styles.save} onPress={submit} disabled={saving}>
+                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Crear perfil</Text>}
+              </Pressable>
+            </>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(45,32,22,0.35)' },
+  sheetWrap: { flex: 1, justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: spacing.lg,
+    paddingBottom: 32,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  title: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: spacing.md },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: radius.md,
+    backgroundColor: colors.bg,
+    marginBottom: 10,
+  },
+  optionEmoji: { fontSize: 22 },
+  optionTitle: { fontWeight: '800', color: colors.text, fontSize: 15 },
+  optionSub: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  back: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  backText: { color: colors.primary, fontWeight: '700' },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+    color: colors.text,
+    backgroundColor: colors.bg,
+  },
+  save: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  saveText: { color: '#fff', fontWeight: '800' },
+});

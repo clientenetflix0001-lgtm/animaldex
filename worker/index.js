@@ -93,6 +93,70 @@ async function authUser(request, env, body) {
   return rows[0].user_id;
 }
 
+
+function profileRow(r) {
+  return {
+    id: r.id,
+    accountId: r.account_id,
+    type: r.type,
+    name: r.name,
+    username: r.username,
+    avatar: r.avatar_url || null,
+    bio: r.bio || '',
+    createdAt: r.created_at,
+  };
+}
+
+async function ensureProfilesSchema(env) {
+  if (env._profilesReady) return;
+  await d1(env, `CREATE TABLE IF NOT EXISTS profiles (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    username TEXT NOT NULL,
+    avatar_url TEXT,
+    bio TEXT DEFAULT '',
+    created_at INTEGER NOT NULL
+  )`);
+  await d1(env, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_username ON profiles (username)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_profiles_account ON profiles (account_id)');
+  try {
+    await env.DB.prepare('ALTER TABLE posts ADD COLUMN author_profile_id TEXT').run();
+  } catch (_) {}
+  env._profilesReady = true;
+}
+
+async function usernameTaken(env, username, allowAccountId) {
+  const handle = String(username || '').toLowerCase();
+  const users = await d1(env, 'SELECT id FROM users WHERE LOWER(username) = ?', [handle]);
+  if (users[0] && users[0].id !== allowAccountId) return true;
+  const profiles = await d1(env, 'SELECT id FROM profiles WHERE LOWER(username) = ?', [handle]);
+  if (profiles[0]) return true;
+  const pets = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ?', [handle]);
+  return pets.length > 0;
+}
+
+async function ensurePersonalProfile(env, userId) {
+  const existing = await d1(env, "SELECT * FROM profiles WHERE account_id = ? AND type = 'personal'", [userId]);
+  if (existing[0]) return existing[0];
+  const users = await d1(env, 'SELECT * FROM users WHERE id = ?', [userId]);
+  if (!users[0]) return null;
+  const u = users[0];
+  let username = String(u.username || 'user').toLowerCase();
+  if (await usernameTaken(env, username, userId)) {
+    username = (username.slice(0, 14) + Date.now().toString(36).slice(-4)).slice(0, 20);
+  }
+  const id = `prf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  await d1(
+    env,
+    'INSERT INTO profiles (id, account_id, type, name, username, avatar_url, bio, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, userId, 'personal', u.name, username, u.avatar_url || null, u.bio || '', Date.now()]
+  );
+  const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [id]);
+  return rows[0];
+}
+
 // ============================================================
 // AUTH
 // ============================================================
@@ -136,6 +200,10 @@ async function handleAuth(request, env) {
       await d1(env, 'INSERT INTO users (id, username, name, pass_hash, salt, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
         id, username, name, passHash, salt, Date.now(),
       ]);
+      try {
+        await ensureProfilesSchema(env);
+        await ensurePersonalProfile(env, id);
+      } catch (_) {}
       const token = await createSession(env, id);
       const rows = await d1(env, 'SELECT * FROM users WHERE id = ?', [id]);
       return json({ ok: true, token, user: publicUser(rows[0]) });
@@ -211,6 +279,11 @@ function postRow(r) {
     petUsername: r.pet_username || null,
     username: r.username || null,
     userName: r.user_name || null,
+    authorProfileId: r.author_profile_id || null,
+    authorProfileType: r.author_profile_type || null,
+    authorProfileName: r.author_profile_name || null,
+    authorProfileUsername: r.author_profile_username || null,
+    authorProfileAvatar: r.author_profile_avatar || null,
   };
 }
 
@@ -239,10 +312,13 @@ const POST_SELECT = `
     (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count,
     (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
     pet.name AS pet_name, pet.emoji AS pet_emoji, pet.avatar_url AS pet_avatar, pet.species AS pet_species, pet.username AS pet_username,
-    u.username AS username, u.name AS user_name
+    u.username AS username, u.name AS user_name,
+    ap.id AS author_profile_id, ap.type AS author_profile_type, ap.name AS author_profile_name,
+    ap.username AS author_profile_username, ap.avatar_url AS author_profile_avatar
   FROM posts p
   LEFT JOIN pets pet ON pet.id = p.pet_id
   LEFT JOIN users u ON u.id = p.user_id
+  LEFT JOIN profiles ap ON ap.id = p.author_profile_id
 `;
 
 // ============================================================
@@ -373,6 +449,15 @@ async function handleDb(request, env) {
   const now = Date.now();
 
   try {
+    await ensureProfilesSchema(env);
+
+    if (action === 'checkProfileUsername') {
+      const username = clean(body.username, 20).toLowerCase();
+      if (!USERNAME_RE.test(username)) return json({ ok: true, available: false, reason: 'invalid' });
+      const taken = await usernameTaken(env, username, null);
+      return json({ ok: true, available: !taken });
+    }
+
     // ---------- Lecturas públicas ----------
 
     if (action === 'health') {
@@ -1056,10 +1141,62 @@ async function handleDb(request, env) {
       if (image && image.startsWith('data:')) return json({ error: 'La imagen debe subirse primero a Cloudflare' }, 400);
       const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
       if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
+      let authorProfileId = clean(body.authorProfileId, 80) || null;
+      if (authorProfileId) {
+        const owned = await d1(env, 'SELECT id FROM profiles WHERE id = ? AND account_id = ?', [authorProfileId, userId]);
+        if (!owned[0]) return json({ error: 'Ese perfil no es tuyo' }, 403);
+      } else {
+        const personal = await ensurePersonalProfile(env, userId);
+        authorProfileId = personal ? personal.id : null;
+      }
       const id = `post-${now}-${Math.random().toString(36).slice(2, 8)}`;
-      await d1(env, 'INSERT INTO posts (id, user_id, pet_id, image, caption, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, userId, petId, image, caption, now]);
+      await d1(env, 'INSERT INTO posts (id, user_id, pet_id, image, caption, created_at, author_profile_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, userId, petId, image, caption, now, authorProfileId]);
       const rows = await d1(env, `${POST_SELECT} WHERE p.id = ?`, [id]);
       return json({ ok: true, post: postRow(rows[0]) });
+    }
+
+    if (action === 'listProfiles') {
+      await ensurePersonalProfile(env, userId);
+      const rows = await d1(env, 'SELECT * FROM profiles WHERE account_id = ? ORDER BY created_at ASC', [userId]);
+      return json({ ok: true, profiles: rows.map(profileRow) });
+    }
+
+    if (action === 'createProfile') {
+      const type = clean(body.type, 20);
+      const name = clean(body.name, 60);
+      const username = clean(body.username, 20).toLowerCase();
+      const bio = clean(body.bio, 200);
+      const avatar = clean(body.avatar, 500) || null;
+      if (type !== 'business' && type !== 'protector') {
+        return json({ error: 'Solo se pueden crear perfiles de tienda o proteccionista' }, 400);
+      }
+      if (name.length < 2) return json({ error: 'Escribe el nombre del perfil' }, 400);
+      if (!USERNAME_RE.test(username)) {
+        return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
+      }
+      await ensurePersonalProfile(env, userId);
+      const counts = await d1(env, 'SELECT type, COUNT(*) AS n FROM profiles WHERE account_id = ? GROUP BY type', [userId]);
+      const nOf = (t) => (counts.find((r) => r.type === t)?.n || 0);
+      if (type === 'business' && nOf('business') >= 2) {
+        return json({ error: 'Ya alcanzaste el límite de 2 perfiles empresariales.' }, 400);
+      }
+      if (type === 'protector' && nOf('protector') >= 2) {
+        return json({ error: 'Ya alcanzaste el límite de 2 perfiles de proteccionista.' }, 400);
+      }
+      if (nOf('personal') + nOf('business') + nOf('protector') >= 5) {
+        return json({ error: 'Ya alcanzaste el límite de 5 perfiles.' }, 400);
+      }
+      if (await usernameTaken(env, username, null)) {
+        return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
+      }
+      const id = `prf-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(
+        env,
+        'INSERT INTO profiles (id, account_id, type, name, username, avatar_url, bio, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, userId, type, name, username, avatar, bio, now]
+      );
+      const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [id]);
+      return json({ ok: true, profile: profileRow(rows[0]) });
     }
 
     if (action === 'updatePost') {

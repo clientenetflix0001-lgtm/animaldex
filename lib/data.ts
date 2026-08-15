@@ -50,6 +50,11 @@ export interface Post {
   petUsername?: string;
   username?: string;
   commentCount?: number;
+  authorProfileId?: string;
+  authorProfileType?: 'personal' | 'business' | 'protector';
+  authorProfileName?: string;
+  authorProfileUsername?: string;
+  authorProfileAvatar?: string | null;
 }
 
 export interface Notification {

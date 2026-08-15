@@ -41,6 +41,7 @@ import MarketFavoritesScreen from './screens/MarketFavoritesScreen';
 
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
+import { ProfileProvider } from './features/profiles';
 import { colors } from './lib/theme';
 import { RootStackParamList, TabParamList } from './lib/types';
 import { useBreakpoint } from './lib/responsive';
@@ -415,6 +416,7 @@ export default function App() {
           <View style={{ flex: 1, backgroundColor: colors.bg }} />
         ) : (
           <StoreProvider>
+            <ProfileProvider>
             <NotificationsProvider>
               <NavigationContainer
                 ref={navigationRef}
@@ -429,6 +431,7 @@ export default function App() {
                 <RootNavigator />
               </NavigationContainer>
             </NotificationsProvider>
+            </ProfileProvider>
           </StoreProvider>
         )}
       </SafeAreaProvider>

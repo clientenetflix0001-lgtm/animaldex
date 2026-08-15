@@ -22,6 +22,11 @@ export function apiPostToPost(p: ApiPost): Post {
     petUsername: p.petUsername ?? undefined,
     username: p.username ?? 'usuario',
     commentCount: p.commentCount,
+    authorProfileId: p.authorProfileId ?? undefined,
+    authorProfileType: p.authorProfileType ?? undefined,
+    authorProfileName: p.authorProfileName ?? undefined,
+    authorProfileUsername: p.authorProfileUsername ?? undefined,
+    authorProfileAvatar: p.authorProfileAvatar ?? undefined,
   };
 }
 

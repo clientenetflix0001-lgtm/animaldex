@@ -96,6 +96,11 @@ export interface ApiPost {
   petUsername?: string | null;
   username: string | null;
   userName: string | null;
+  authorProfileId?: string | null;
+  authorProfileType?: 'personal' | 'business' | 'protector' | null;
+  authorProfileName?: string | null;
+  authorProfileUsername?: string | null;
+  authorProfileAvatar?: string | null;
 }
 
 export interface ApiComment {
@@ -268,8 +273,20 @@ export const db = {
     call('/db', { action: 'follow', targetType, targetId, value }),
   comment: (postId: string, text: string): Promise<{ id: string; createdAt: number }> =>
     call('/db', { action: 'comment', postId, text }),
-  createPost: (petId: string, image: string, caption: string): Promise<{ post: ApiPost }> =>
-    call('/db', { action: 'createPost', petId, image, caption }),
+  createPost: (petId: string, image: string, caption: string, authorProfileId?: string | null): Promise<{ post: ApiPost }> =>
+    call('/db', { action: 'createPost', petId, image, caption, authorProfileId: authorProfileId ?? null }),
+  listProfiles: (): Promise<{ profiles: import('../features/profiles/profileTypes').PublicProfile[] }> =>
+    call('/db', { action: 'listProfiles' }),
+  createProfile: (input: {
+    type: 'business' | 'protector';
+    name: string;
+    username: string;
+    bio?: string;
+    avatar?: string | null;
+  }): Promise<{ profile: import('../features/profiles/profileTypes').PublicProfile }> =>
+    call('/db', { action: 'createProfile', ...input }),
+  checkProfileUsername: (username: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>
+    call('/db', { action: 'checkProfileUsername', username }),
   updatePost: (postId: string, caption: string): Promise<{ caption: string }> =>
     call('/db', { action: 'updatePost', postId, caption }),
   deletePost: (postId: string): Promise<{ imageDeleted: boolean }> =>
