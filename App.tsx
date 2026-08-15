@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Platform, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, StyleSheet, Platform, ActivityIndicator, Linking, Pressable } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
   NavigationContainer,
@@ -74,6 +74,60 @@ const TAB_ICONS: Record<keyof TabParamList, { on: keyof typeof Ionicons.glyphMap
   Perfil: { on: 'person', off: 'person-outline' },
 };
 
+const MOBILE_TAB_ORDER: (keyof TabParamList)[] = [
+  'Inicio',
+  'Reels',
+  'Alertas',
+  'Crear',
+  'Mercado',
+  'Perfil',
+];
+
+function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
+  const insets = useSafeAreaInsets();
+  const bottomInset = Platform.OS === 'web' ? 0 : insets.bottom;
+  const focusedName = state.routes[state.index]?.name as keyof TabParamList;
+
+  return (
+    <View
+      style={[
+        styles.tabBar,
+        {
+          height: 56 + bottomInset + 6,
+          paddingBottom: bottomInset + 6,
+          flexDirection: 'row',
+        },
+      ]}
+    >
+      {MOBILE_TAB_ORDER.map((name) => {
+        const focused = focusedName === name;
+        const icons = TAB_ICONS[name];
+        const size = name === 'Crear' ? 32 : 24;
+        return (
+          <Pressable
+            key={name}
+            onPress={() => navigation.navigate(name)}
+            style={styles.tabItem}
+            accessibilityRole="button"
+            accessibilityLabel={name === 'Crear' ? 'Crear' : name}
+          >
+            <Ionicons
+              name={focused ? icons.on : icons.off}
+              size={size}
+              color={name === 'Crear' ? colors.primary : focused ? colors.primary : colors.textMuted}
+            />
+            {name !== 'Crear' && (
+              <Text style={[styles.tabLabel, { color: focused ? colors.primary : colors.textMuted }]}>
+                {name}
+              </Text>
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function Tabs() {
   const { desktopWeb, sidebarMode, sidebarWidth } = useBreakpoint();
   const { unread } = useNotifications();
@@ -114,44 +168,21 @@ function Tabs() {
     );
   }
 
-  // ---------- Móvil / tablet: bottom tabs (sin cambios) ----------
+  // ---------- Móvil / tablet ----------
+  // Barra visible: Inicio | Reels | Alertas | + | Mercado | Perfil
+  // Actividad sigue registrada (misma pantalla) pero NO se muestra abajo.
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarShowLabel: true,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: tabBarStyleWithInsets,
-        tabBarLabelStyle: styles.tabLabel,
-        tabBarIcon: ({ focused, color }) => {
-          const icons = TAB_ICONS[route.name];
-          const size = route.name === 'Crear' ? 32 : 24;
-          return (
-            <Ionicons
-              name={focused ? icons.on : icons.off}
-              size={size}
-              color={route.name === 'Crear' ? colors.primary : color}
-            />
-          );
-        },
-      })}
+      tabBar={(props) => <MobileTabBar state={props.state} navigation={props.navigation} />}
+      screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Inicio">{() => <FeedReelsSwiper initialPage={0} />}</Tab.Screen>
       <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
       <Tab.Screen name="Alertas" component={AlertsScreen} />
-      <Tab.Screen name="Crear" component={CreatePostScreen} options={{ tabBarLabel: '' }} />
+      <Tab.Screen name="Crear" component={CreatePostScreen} />
       <Tab.Screen name="Mercado" component={MarketScreen} />
       <Tab.Screen name="Perfil" component={MyProfileTab} />
-      <Tab.Screen
-        name="Actividad"
-        component={ActivityScreen}
-        options={{
-          tabBarButton: () => null,
-          tabBarItemStyle: { display: 'none', width: 0, height: 0 },
-          tabBarLabel: () => null,
-        }}
-      />
+      <Tab.Screen name="Actividad" component={ActivityScreen} />
     </Tab.Navigator>
   );
 }
@@ -397,5 +428,10 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 9,
     fontWeight: '600',
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
