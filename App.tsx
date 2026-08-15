@@ -10,7 +10,7 @@ import {
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -386,29 +386,33 @@ export default function App() {
     ...Ionicons.font,
   });
 
-  if (!fontsLoaded) {
-    return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
-  }
-
+  // SafeAreaProvider tiene que montarse en el primer frame, con las métricas
+  // nativas ya conocidas. Si se monta DESPUÉS de useFonts, el primer paint
+  // del header usa insets.top = 0 (pegado al reloj) y un instante después
+  // baja al padding correcto. initialWindowMetrics evita ese salto.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <StoreProvider>
-          <NotificationsProvider>
-          <NavigationContainer
-            ref={navigationRef}
-            theme={navTheme}
-            linking={linking}
-            documentTitle={{
-              formatter: () => 'Animaldex · La red social de tus mascotas 🐾',
-            }}
-          >
-            <StatusBar style="dark" />
-            <TagDeepLinkHandler />
-            <RootNavigator />
-          </NavigationContainer>
-          </NotificationsProvider>
-        </StoreProvider>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        {!fontsLoaded ? (
+          <View style={{ flex: 1, backgroundColor: colors.bg }} />
+        ) : (
+          <StoreProvider>
+            <NotificationsProvider>
+              <NavigationContainer
+                ref={navigationRef}
+                theme={navTheme}
+                linking={linking}
+                documentTitle={{
+                  formatter: () => 'Animaldex · La red social de tus mascotas 🐾',
+                }}
+              >
+                <StatusBar style="dark" />
+                <TagDeepLinkHandler />
+                <RootNavigator />
+              </NavigationContainer>
+            </NotificationsProvider>
+          </StoreProvider>
+        )}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
