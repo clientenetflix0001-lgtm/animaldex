@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, FlatList, RefreshControl, Pressable, Platform, StatusBar } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
@@ -29,6 +29,11 @@ export default function FeedScreen() {
   const { user, createdPosts, consumeCreatedPosts, deletedPostIds, editedCaptions } = useStore();
   const { unread } = useNotifications();
   const { desktopWeb, showRightPanel } = useBreakpoint();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
+  );
   const [realPosts, setRealPosts] = useState<Post[]>([]);
   const [demoPosts, setDemoPosts] = useState<Post[]>(() => [...generateFeedPage(0), ...generateFeedPage(1)]);
   const [refreshing, setRefreshing] = useState(false);
@@ -225,7 +230,7 @@ export default function FeedScreen() {
 
   // ---------- Móvil / tablet ----------
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <View style={[styles.safe, { paddingTop: topInset }]}>
       <View style={styles.header}>
         <View style={styles.logoRow}>
           <Image
@@ -273,7 +278,7 @@ export default function FeedScreen() {
         {feedList}
         {newPill}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

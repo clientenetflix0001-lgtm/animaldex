@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Platform, ActivityIndicator, Linking, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Platform, ActivityIndicator, Linking, Pressable, StatusBar as RNStatusBar } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
   NavigationContainer,
@@ -369,6 +369,24 @@ function RootNavigator() {
   );
 }
 
+// En Android, initialWindowMetrics suele ser null / top:0 en el primer
+// tick de JS. StatusBar.currentHeight es la altura real de la barra de
+// estado y está disponible de forma síncrona. Lo usamos como semilla
+// para que SafeAreaView no pinte el header debajo del reloj.
+function initialSafeAreaMetrics() {
+  const native = initialWindowMetrics;
+  const androidTop = Platform.OS === 'android' ? RNStatusBar.currentHeight ?? 0 : 0;
+  return {
+    frame: native?.frame ?? { x: 0, y: 0, width: 0, height: 0 },
+    insets: {
+      top: Math.max(native?.insets.top ?? 0, androidTop),
+      left: native?.insets.left ?? 0,
+      right: native?.insets.right ?? 0,
+      bottom: native?.insets.bottom ?? 0,
+    },
+  };
+}
+
 const navTheme = {
   ...DefaultTheme,
   colors: {
@@ -392,7 +410,7 @@ export default function App() {
   // baja al padding correcto. initialWindowMetrics evita ese salto.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <SafeAreaProvider initialMetrics={initialSafeAreaMetrics()}>
         {!fontsLoaded ? (
           <View style={{ flex: 1, backgroundColor: colors.bg }} />
         ) : (
