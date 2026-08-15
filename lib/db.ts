@@ -299,6 +299,16 @@ export const db = {
     call('/db', { action: 'createProfile', ...input }),
   checkProfileUsername: (username: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>
     call('/db', { action: 'checkProfileUsername', username }),
+  updatePublicProfile: (input: {
+    profileId: string;
+    name: string;
+    username: string;
+    bio?: string;
+    location?: string;
+    phone?: string;
+    avatar?: string | null;
+  }): Promise<{ profile: import('../features/profiles/profileTypes').PublicProfile }> =>
+    call('/db', { action: 'updatePublicProfile', ...input }),
   updatePost: (postId: string, caption: string): Promise<{ caption: string }> =>
     call('/db', { action: 'updatePost', postId, caption }),
   deletePost: (postId: string): Promise<{ imageDeleted: boolean }> =>

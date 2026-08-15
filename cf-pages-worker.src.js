@@ -244,6 +244,8 @@ async function buildOgMeta(request, env, url) {
   const alertMatch = pathname.match(/^\/a\/([^/]+)\/?$/);
   const listingMatch = pathname.match(/^\/m\/([^/]+)\/?$/);
   const postMatch = pathname.match(/^\/p\/([^/]+)\/?$/);
+  const handleMatch = pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i);
+  const reserved = new Set(['p','pet','a','m','reels','alertas','mercado','crear','actividad','perfil','explorar','verificar','escanear','entrar','tienda']);
 
   if (petMatch) {
     const id = decodeURIComponent(petMatch[1]);
@@ -328,6 +330,25 @@ async function buildOgMeta(request, env, url) {
         };
       }
     }
+  } else if (handleMatch && !reserved.has(handleMatch[1].toLowerCase())) {
+    const handle = handleMatch[1].toLowerCase();
+    const rows = await d1Query(
+      env,
+      `SELECT pr.*,
+        (SELECT COUNT(*) FROM pets WHERE profile_id = pr.id AND care_status = 'en_adopcion') AS adoption
+       FROM profiles pr WHERE LOWER(pr.username) = ? LIMIT 1`,
+      [handle]
+    );
+    if (rows[0]) {
+      const pr = rows[0];
+      const adoption = Number(pr.adoption || 0);
+      meta = {
+        title: `${pr.name} | Animaldex`,
+        description: `🐾 @${pr.username} · Mascotas en adopción: ${adoption}${pr.bio ? '\n' + pr.bio : ''}`,
+        image: pr.avatar_url || petImage('perro', 11, 600),
+        url: `${origin}/${pr.username}`,
+      };
+    }
   }
 
   if (!meta) {
@@ -342,7 +363,7 @@ async function buildOgMeta(request, env, url) {
   return meta;
 }
 
-const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/)|^\/$/;
+const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/)|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
 
 export default {
   async fetch(request, env, ctx) {

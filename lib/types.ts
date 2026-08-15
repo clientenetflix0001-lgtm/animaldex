@@ -8,6 +8,7 @@ export type RootStackParamList = {
   VerifyPhone: undefined;
   AddPet: { tagCode?: number } | undefined;
   EditProfile: undefined;
+  EditPublicProfile: { profileId: string };
   QRScanner: undefined;
   TagWelcome: { code: number };
   AdminTags: undefined;
@@ -17,7 +18,7 @@ export type RootStackParamList = {
   ListingDetail: { listingId: string };
   SellerShop: { userId: string };
   MarketFavorites: undefined;
-  PublicProfile: { profileId: string };
+  PublicProfile: { profileId?: string; username?: string };
 };
 
 export type TabParamList = {

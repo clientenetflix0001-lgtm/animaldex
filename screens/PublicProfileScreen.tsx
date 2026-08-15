@@ -12,12 +12,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiPet } from '../lib/db';
 import { apiPostToPost } from '../lib/store';
 import { Post, formatCount } from '../lib/data';
-import { postNavParams } from '../lib/share';
+import { postNavParams, sharePublicProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
@@ -38,7 +38,9 @@ const TABS: { id: TabKey; label: string }[] = [
 
 export default function PublicProfileScreen() {
   const navigation = useNavigation<Nav>();
-  const { profileId } = useRoute<RouteProp<RootStackParamList, 'PublicProfile'>>().params;
+  const params = useRoute<RouteProp<RootStackParamList, 'PublicProfile'>>().params || {};
+  const routeProfileId = params.profileId;
+  const routeUsername = params.username;
   const { width } = useWindowDimensions();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [pets, setPets] = useState<ApiPet[]>([]);
@@ -51,10 +53,11 @@ export default function PublicProfileScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [pub, feed] = await Promise.all([
-        db.publicProfile({ profileId }),
-        db.profilePosts(profileId),
-      ]);
+      const pub = await db.publicProfile({
+        profileId: routeProfileId,
+        username: routeUsername,
+      });
+      const feed = await db.profilePosts(pub.profile.id);
       setProfile(pub.profile);
       setPets(pub.pets);
       setStats(pub.stats);
@@ -66,23 +69,29 @@ export default function PublicProfileScreen() {
     } finally {
       setLoading(false);
     }
-  }, [profileId]);
+  }, [routeProfileId, routeUsername]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!loading) load();
+    }, [load, loading])
+  );
 
   const toggleFollow = useCallback(async () => {
     const next = !following;
     setFollowing(next);
     setStats((s) => ({ ...s, followers: Math.max(0, s.followers + (next ? 1 : -1)) }));
     try {
-      await db.follow('profile', profileId, next);
+      await db.follow('profile', profile?.id || routeProfileId || '', next);
     } catch {
       setFollowing(!next);
       setStats((s) => ({ ...s, followers: Math.max(0, s.followers + (next ? -1 : 1)) }));
     }
-  }, [following, profileId]);
+  }, [following, profile?.id, routeProfileId]);
 
   const filteredPets = useMemo(
     () => pets.filter((p) => (p.careStatus || '') === tab),
@@ -114,7 +123,13 @@ export default function PublicProfileScreen() {
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
         <Text style={styles.topUser}>@{profile.username}</Text>
-        <View style={{ width: 24 }} />
+        <Pressable
+          style={styles.topBtn}
+          hitSlop={8}
+          onPress={() => sharePublicProfile(profile.name, profile.username, profile.bio)}
+        >
+          <Ionicons name="share-outline" size={20} color={colors.text} />
+        </Pressable>
       </View>
 
       <View style={styles.head}>
@@ -126,6 +141,12 @@ export default function PublicProfileScreen() {
         <Text style={styles.handle}>@{profile.username}</Text>
         <ProfileBadge type={profile.type} />
         {!!profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
+        {!!profile.phone && (
+          <View style={styles.loc}>
+            <Ionicons name="call-outline" size={13} color={colors.textMuted} />
+            <Text style={styles.locText}>{profile.phone}</Text>
+          </View>
+        )}
         {!!profile.location && (
           <View style={styles.loc}>
             <Ionicons name="location-outline" size={13} color={colors.textMuted} />
@@ -147,7 +168,7 @@ export default function PublicProfileScreen() {
           <>
             <Pressable
               style={styles.editBtn}
-              onPress={() => Alert.alert('Editar perfil', 'La edición de este perfil llega en la próxima etapa.')}
+              onPress={() => navigation.navigate('EditPublicProfile', { profileId: profile.id })}
             >
               <Text style={styles.editText}>Editar perfil</Text>
             </Pressable>
@@ -292,6 +313,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   topUser: { fontWeight: '800', fontSize: 16, color: colors.text },
+  topBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   head: { alignItems: 'center', paddingHorizontal: spacing.xl, paddingBottom: spacing.md },
   avatar: {
     width: 96,

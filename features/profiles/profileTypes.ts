@@ -9,6 +9,7 @@ export interface PublicProfile {
   avatar: string | null;
   bio: string;
   location?: string;
+  phone?: string;
   createdAt: number;
 }
 

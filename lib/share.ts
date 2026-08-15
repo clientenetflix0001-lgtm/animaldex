@@ -173,6 +173,19 @@ export function postShareUrl(post: Post): string {
   return `${siteOrigin()}/p/${params.postId}${query}`;
 }
 
+export function publicProfileShareUrl(username: string): string {
+  const handle = String(username || '').replace(/^@/, '').toLowerCase();
+  return `${siteOrigin()}/${encodeURIComponent(handle)}`;
+}
+
+export async function sharePublicProfile(name: string, username: string, bio?: string): Promise<void> {
+  const handle = String(username || '').replace(/^@/, '').toLowerCase();
+  const url = publicProfileShareUrl(handle);
+  const title = `${name} | Animaldex`;
+  const text = bio?.trim() || `Conocé ${name} en Animaldex 🐾`;
+  await shareLink(title, text, url);
+}
+
 export async function sharePetProfile(petId: string, handle?: string | null): Promise<void> {
   const demoPet = PETS.find((p) => p.id === petId);
   const slug = (handle || demoPet?.name || petId).toString().toLowerCase();

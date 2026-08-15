@@ -104,6 +104,7 @@ function profileRow(r) {
     avatar: r.avatar_url || null,
     bio: r.bio || '',
     location: r.location || '',
+    phone: r.phone || '',
     createdAt: r.created_at,
   };
 }
@@ -129,15 +130,16 @@ async function ensureProfilesSchema(env) {
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN care_status TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN sex TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN location TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN phone TEXT').run(); } catch (_) {}
   env._profilesReady = true;
 }
 
-async function usernameTaken(env, username, allowAccountId) {
+async function usernameTaken(env, username, allowAccountId, allowProfileId) {
   const handle = String(username || '').toLowerCase();
   const users = await d1(env, 'SELECT id FROM users WHERE LOWER(username) = ?', [handle]);
   if (users[0] && users[0].id !== allowAccountId) return true;
   const profiles = await d1(env, 'SELECT id FROM profiles WHERE LOWER(username) = ?', [handle]);
-  if (profiles[0]) return true;
+  if (profiles[0] && profiles[0].id !== allowProfileId) return true;
   const pets = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ?', [handle]);
   return pets.length > 0;
 }
@@ -1247,6 +1249,34 @@ async function handleDb(request, env) {
         [id, userId, type, name, username, avatar, bio, now]
       );
       const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [id]);
+      return json({ ok: true, profile: profileRow(rows[0]) });
+    }
+
+    if (action === 'updatePublicProfile') {
+      const profileId = clean(body.profileId, 80);
+      if (!profileId) return json({ error: 'Falta el perfil' }, 400);
+      const owned = await d1(env, 'SELECT * FROM profiles WHERE id = ? AND account_id = ?', [profileId, userId]);
+      if (!owned[0]) return json({ error: 'Ese perfil no es tuyo' }, 403);
+      if (owned[0].type === 'personal') return json({ error: 'El perfil personal se edita desde tu cuenta' }, 400);
+      const name = clean(body.name, 60);
+      const username = clean(String(body.username || '').replace(/^@/, ''), 20).toLowerCase();
+      const bio = clean(body.bio, 200);
+      const location = clean(body.location, 80);
+      const phone = clean(body.phone, 30);
+      const avatar = clean(body.avatar, 500) || null;
+      if (name.length < 2) return json({ error: 'Escribe el nombre del perfil' }, 400);
+      if (!USERNAME_RE.test(username)) {
+        return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
+      }
+      if (await usernameTaken(env, username, userId, profileId)) {
+        return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
+      }
+      await d1(
+        env,
+        'UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, phone = ?, avatar_url = COALESCE(?, avatar_url) WHERE id = ?',
+        [name, username, bio, location, phone, avatar, profileId]
+      );
+      const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId]);
       return json({ ok: true, profile: profileRow(rows[0]) });
     }
 

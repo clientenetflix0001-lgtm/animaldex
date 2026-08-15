@@ -21,6 +21,7 @@ import CreatePostScreen from './screens/CreatePostScreen';
 import ActivityScreen from './screens/ActivityScreen';
 import UserProfileScreen from './screens/UserProfileScreen';
 import PublicProfileScreen from './screens/PublicProfileScreen';
+import EditPublicProfileScreen from './screens/EditPublicProfileScreen';
 import PetProfileScreen from './screens/PetProfileScreen';
 import PostDetailScreen from './screens/PostDetailScreen';
 import VerifyPhoneScreen from './screens/VerifyPhoneScreen';
@@ -209,7 +210,8 @@ const linking: LinkingOptions<RootStackParamList> = {
       PostDetail: 'p/:postId',
       PetProfile: 'pet/:petId',
       UserProfile: 'user/:userId',
-      PublicProfile: 'perfil/:profileId',
+      PublicProfile: ':username',
+      EditPublicProfile: 'editar-perfil-publico',
       VerifyPhone: 'verificar',
       AddPet: 'nueva-mascota',
       EditProfile: 'editar-perfil',
@@ -322,6 +324,11 @@ function RootNavigator() {
       <Stack.Screen
         name="EditProfile"
         component={EditProfileScreen}
+        options={{ title: 'Editar perfil', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="EditPublicProfile"
+        component={EditPublicProfileScreen}
         options={{ title: 'Editar perfil', ...screenHeaderOptions }}
       />
       <Stack.Screen
