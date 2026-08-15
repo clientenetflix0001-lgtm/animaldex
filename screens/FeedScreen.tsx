@@ -9,7 +9,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Post, generateFeedPage } from '../lib/data';
 import { db } from '../lib/db';
 import { apiPostToPost, useStore } from '../lib/store';
-import { usePolling } from '../lib/realtime';
+import { usePolling, useNotifications } from '../lib/realtime';
 import { postNavParams } from '../lib/share';
 import { PostCard } from '../components/PostCard';
 import { StoriesBar } from '../components/StoriesBar';
@@ -27,6 +27,7 @@ type Nav = CompositeNavigationProp<
 export default function FeedScreen() {
   const navigation = useNavigation<Nav>();
   const { user, createdPosts, consumeCreatedPosts, deletedPostIds, editedCaptions } = useStore();
+  const { unread } = useNotifications();
   const { desktopWeb, showRightPanel } = useBreakpoint();
   const [realPosts, setRealPosts] = useState<Post[]>([]);
   const [demoPosts, setDemoPosts] = useState<Post[]>(() => [...generateFeedPage(0), ...generateFeedPage(1)]);
@@ -257,7 +258,14 @@ export default function FeedScreen() {
             hitSlop={8}
             accessibilityLabel="Actividad"
           >
-            <Ionicons name="heart-outline" size={22} color={colors.text} />
+            <View>
+              <Ionicons name="heart-outline" size={22} color={colors.text} />
+              {unread > 0 && (
+                <View style={styles.activityBadge}>
+                  <Text style={styles.activityBadgeText}>{unread > 9 ? '9+' : unread}</Text>
+                </View>
+              )}
+            </View>
           </Pressable>
         </View>
       </View>
@@ -306,6 +314,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  activityBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -8,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    backgroundColor: colors.heart,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: colors.card,
+  },
+  activityBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   newPill: {
     position: 'absolute',
     top: spacing.md,
