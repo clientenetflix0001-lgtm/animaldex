@@ -482,7 +482,7 @@ async function handleDb(request, env) {
         d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_recuperacion'", [pr.id]),
         d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'profile' AND target_id = ?", [pr.id]),
         viewerId
-          ? d1(env, "SELECT id FROM follows WHERE user_id = ? AND target_type = 'profile' AND target_id = ? LIMIT 1", [viewerId, pr.id])
+          ? d1(env, "SELECT 1 FROM follows WHERE user_id = ? AND target_type = 'profile' AND target_id = ? LIMIT 1", [viewerId, pr.id])
           : Promise.resolve([]),
       ]);
       return json({
