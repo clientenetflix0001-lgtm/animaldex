@@ -24,6 +24,8 @@ import { StatBlock } from '../components/StatBlock';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
+import { useProfiles, CreateProfileSheet } from '../features/profiles';
+import { PROFILE_TYPE_LABEL, type PublicProfile } from '../features/profiles/profileTypes';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -57,6 +59,9 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
     deletedPostIds,
     editedCaptions,
   } = useStore();
+  const { profiles: myProfiles } = useProfiles();
+  const [creatingProfile, setCreatingProfile] = useState(false);
+  const [accountProfiles, setAccountProfiles] = useState<PublicProfile[]>([]);
 
   const isMe = !userId || userId === me?.id;
   const targetId = isMe ? me?.id : userId;
@@ -89,6 +94,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
       ]);
       setProfile(prof.user);
       setProfilePets(prof.pets);
+      setAccountProfiles((prof.profiles || []).filter((x) => x.type !== 'personal'));
       setStats(prof.stats);
       setPosts(userPosts.posts.map(apiPostToPost));
       if (isMe) {
@@ -288,6 +294,47 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         />
       )}
 
+      <Text style={styles.sectionTitle}>
+        {isMe ? 'Mis perfiles' : 'Perfiles'}
+      </Text>
+      <FlatList
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        data={isMe ? myProfiles.filter((p) => p.type !== 'personal') : accountProfiles}
+        keyExtractor={(p) => p.id}
+        contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: spacing.md }}
+        ListFooterComponent={
+          isMe ? (
+            <Pressable style={styles.petCard} onPress={() => setCreatingProfile(true)}>
+              <View style={styles.addCircle}>
+                <Ionicons name="add" size={28} color={colors.primary} />
+              </View>
+              <Text style={styles.petName}>Crear perfil</Text>
+              <Text style={styles.petBreed}>Tienda o refugio</Text>
+            </Pressable>
+          ) : null
+        }
+        renderItem={({ item }) => (
+          <Pressable
+            style={styles.petCard}
+            onPress={() => navigation.navigate('PublicProfile', { profileId: item.id })}
+          >
+            <Image
+              source={{ uri: thumb(item.avatar || userFallbackAvatar(item.username), 150) }}
+              style={styles.petImg}
+              transition={250}
+            />
+            <Text style={styles.petName} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <Text style={styles.petBreed} numberOfLines={1}>
+              {PROFILE_TYPE_LABEL[item.type]}
+            </Text>
+          </Pressable>
+        )}
+      />
+      {isMe && <CreateProfileSheet visible={creatingProfile} onClose={() => setCreatingProfile(false)} />}
+
       {/* Tabs */}
       <View style={styles.tabRow}>
         <Pressable
@@ -443,6 +490,18 @@ const styles = StyleSheet.create({
   petImg: { width: 60, height: 60, borderRadius: 30, marginBottom: spacing.sm, backgroundColor: colors.border },
   petName: { fontWeight: '700', fontSize: 13, color: colors.text },
   petBreed: { fontSize: 11, color: colors.textMuted, marginTop: 2, textAlign: 'center' },
+  addCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    marginBottom: spacing.sm,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarysoft,
+  },
   tabRow: {
     flexDirection: 'row',
     marginTop: spacing.xl,

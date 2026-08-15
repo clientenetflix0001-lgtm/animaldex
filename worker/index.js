@@ -103,6 +103,7 @@ function profileRow(r) {
     username: r.username,
     avatar: r.avatar_url || null,
     bio: r.bio || '',
+    location: r.location || '',
     createdAt: r.created_at,
   };
 }
@@ -124,6 +125,10 @@ async function ensureProfilesSchema(env) {
   try {
     await env.DB.prepare('ALTER TABLE posts ADD COLUMN author_profile_id TEXT').run();
   } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN profile_id TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN care_status TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN sex TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN location TEXT').run(); } catch (_) {}
   env._profilesReady = true;
 }
 
@@ -304,6 +309,9 @@ function petRow(r) {
     emoji: r.emoji || '🐾',
     avatarUrl: r.avatar_url || null,
     createdAt: r.created_at,
+    profileId: r.profile_id || null,
+    careStatus: r.care_status || null,
+    sex: r.sex || null,
   };
 }
 
@@ -458,6 +466,47 @@ async function handleDb(request, env) {
       return json({ ok: true, available: !taken });
     }
 
+    if (action === 'publicProfile') {
+      const profileId = clean(body.profileId, 80);
+      const username = clean(body.username, 20).toLowerCase();
+      const rows = profileId
+        ? await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId])
+        : await d1(env, 'SELECT * FROM profiles WHERE LOWER(username) = ?', [username]);
+      if (!rows[0]) return json({ error: 'Perfil no encontrado' }, 404);
+      const pr = rows[0];
+      const viewerId = await authUser(request, env, body);
+      const [pets, adoption, adopted, recovering, followers, following] = await Promise.all([
+        d1(env, 'SELECT * FROM pets WHERE profile_id = ? ORDER BY created_at DESC', [pr.id]),
+        d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_adopcion'", [pr.id]),
+        d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'adoptado'", [pr.id]),
+        d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_recuperacion'", [pr.id]),
+        d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'profile' AND target_id = ?", [pr.id]),
+        viewerId
+          ? d1(env, "SELECT id FROM follows WHERE user_id = ? AND target_type = 'profile' AND target_id = ? LIMIT 1", [viewerId, pr.id])
+          : Promise.resolve([]),
+      ]);
+      return json({
+        ok: true,
+        profile: profileRow(pr),
+        pets: pets.map(petRow),
+        stats: {
+          adoption: adoption[0]?.n || 0,
+          adopted: adopted[0]?.n || 0,
+          recovering: recovering[0]?.n || 0,
+          followers: followers[0]?.n || 0,
+        },
+        isOwner: viewerId === pr.account_id,
+        isFollowing: following.length > 0,
+      });
+    }
+
+    if (action === 'profilePosts') {
+      const profileId = clean(body.profileId, 80);
+      if (!profileId) return json({ error: 'Falta el perfil' }, 400);
+      const rows = await d1(env, `${POST_SELECT} WHERE p.author_profile_id = ? ORDER BY p.created_at DESC LIMIT 60`, [profileId]);
+      return json({ ok: true, posts: rows.map(postRow) });
+    }
+
     // ---------- Lecturas públicas ----------
 
     if (action === 'health') {
@@ -511,11 +560,12 @@ async function handleDb(request, env) {
 
     if (action === 'userProfile') {
       const targetId = clean(body.targetUserId, 80);
-      const [users, pets, postCount, followerCount] = await Promise.all([
+      const [users, pets, postCount, followerCount, profiles] = await Promise.all([
         d1(env, 'SELECT id, username, name, avatar_url, bio, location, verified_phone, created_at FROM users WHERE id = ?', [targetId]),
         d1(env, 'SELECT * FROM pets WHERE user_id = ? ORDER BY created_at ASC', [targetId]),
         d1(env, 'SELECT COUNT(*) AS n FROM posts WHERE user_id = ?', [targetId]),
         d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'user' AND target_id = ?", [targetId]),
+        d1(env, "SELECT * FROM profiles WHERE account_id = ? AND type != 'personal' ORDER BY created_at ASC", [targetId]),
       ]);
       if (!users[0]) return json({ error: 'Usuario no encontrado' }, 404);
       const u = users[0];
@@ -523,6 +573,7 @@ async function handleDb(request, env) {
         ok: true,
         user: { id: u.id, username: u.username, name: u.name, avatarUrl: u.avatar_url || null, bio: u.bio || '', location: u.location || '', verifiedPhone: u.verified_phone || null },
         pets: pets.map(petRow),
+        profiles: profiles.map(profileRow),
         stats: { posts: postCount[0].n, followers: followerCount[0].n },
       });
     }
@@ -974,7 +1025,7 @@ async function handleDb(request, env) {
     }
 
     if (action === 'follow') {
-      const targetType = body.targetType === 'user' ? 'user' : 'pet';
+      const targetType = body.targetType === 'user' ? 'user' : body.targetType === 'profile' ? 'profile' : 'pet';
       const targetId = clean(body.targetId, 80);
       if (body.value) await d1(env, 'INSERT OR IGNORE INTO follows (user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?)', [userId, targetType, targetId, now]);
       else await d1(env, 'DELETE FROM follows WHERE user_id = ? AND target_type = ? AND target_id = ?', [userId, targetType, targetId]);

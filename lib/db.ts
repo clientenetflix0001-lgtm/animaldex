@@ -78,6 +78,9 @@ export interface ApiPet {
   emoji: string;
   avatarUrl: string | null;
   createdAt: number;
+  profileId?: string | null;
+  careStatus?: 'en_adopcion' | 'en_recuperacion' | 'adoptado' | null;
+  sex?: string | null;
 }
 
 export interface ApiPost {
@@ -253,7 +256,7 @@ export const db = {
     call('/db', { action: 'userPosts', targetUserId }),
   postDetail: (postId: string): Promise<{ post: ApiPost; comments: ApiComment[] }> =>
     call('/db', { action: 'postDetail', postId }),
-  userProfile: (targetUserId: string): Promise<{ user: ApiUser; pets: ApiPet[]; stats: { posts: number; followers: number } }> =>
+  userProfile: (targetUserId: string): Promise<{ user: ApiUser; pets: ApiPet[]; profiles?: import('../features/profiles/profileTypes').PublicProfile[]; stats: { posts: number; followers: number } }> =>
     call('/db', { action: 'userProfile', targetUserId }),
   petProfile: (petId: string): Promise<{ pet: ApiPet; owner: { id: string; username: string; name: string; avatarUrl: string | null } | null; stats: { posts: number; followers: number } }> =>
     call('/db', { action: 'petProfile', petId }),
@@ -269,8 +272,17 @@ export const db = {
     call('/db', { action: 'like', postId, value }),
   save: (postId: string, value: boolean) => call('/db', { action: 'save', postId, value }),
   savedPosts: (): Promise<{ posts: ApiPost[] }> => call('/db', { action: 'savedPosts' }),
-  follow: (targetType: 'pet' | 'user', targetId: string, value: boolean) =>
+  follow: (targetType: 'pet' | 'user' | 'profile', targetId: string, value: boolean) =>
     call('/db', { action: 'follow', targetType, targetId, value }),
+  publicProfile: (idOrUsername: { profileId?: string; username?: string }): Promise<{
+    profile: import('../features/profiles/profileTypes').PublicProfile;
+    pets: ApiPet[];
+    stats: { adoption: number; adopted: number; recovering: number; followers: number };
+    isOwner: boolean;
+    isFollowing: boolean;
+  }> => call('/db', { action: 'publicProfile', ...idOrUsername }),
+  profilePosts: (profileId: string): Promise<{ posts: ApiPost[] }> =>
+    call('/db', { action: 'profilePosts', profileId }),
   comment: (postId: string, text: string): Promise<{ id: string; createdAt: number }> =>
     call('/db', { action: 'comment', postId, text }),
   createPost: (petId: string, image: string, caption: string, authorProfileId?: string | null): Promise<{ post: ApiPost }> =>

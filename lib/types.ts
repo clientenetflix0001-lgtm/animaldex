@@ -17,6 +17,7 @@ export type RootStackParamList = {
   ListingDetail: { listingId: string };
   SellerShop: { userId: string };
   MarketFavorites: undefined;
+  PublicProfile: { profileId: string };
 };
 
 export type TabParamList = {

@@ -8,6 +8,7 @@ export interface PublicProfile {
   username: string;
   avatar: string | null;
   bio: string;
+  location?: string;
   createdAt: number;
 }
 
