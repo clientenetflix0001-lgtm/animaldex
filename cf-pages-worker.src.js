@@ -262,7 +262,7 @@ async function buildOgMeta(request, env, url) {
         url: `${origin}/pet/${demoPet.id}`,
       };
     } else {
-      const rows = await d1Query(env, 'SELECT * FROM pets WHERE id = ?', [id]);
+      const rows = await d1Query(env, 'SELECT * FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1', [id, id]);
       if (rows[0]) {
         const p = rows[0];
         meta = {
@@ -336,22 +336,54 @@ async function buildOgMeta(request, env, url) {
     }
   } else if (handleMatch && !reserved.has(handleMatch[1].toLowerCase())) {
     const handle = handleMatch[1].toLowerCase();
-    const rows = await d1Query(env, 'SELECT * FROM profiles WHERE LOWER(username) = ? LIMIT 1', [handle]);
-    if (rows[0]) {
-      const pr = rows[0];
-      const counts = await d1Query(
-        env,
-        "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_adopcion'",
-        [pr.id]
-      );
-      const adoption = Number((counts[0] && counts[0].n) || 0);
+    const profiles = await d1Query(env, 'SELECT * FROM profiles WHERE LOWER(username) = ? LIMIT 1', [handle]);
+    if (profiles[0]) {
+      const pr = profiles[0];
       const bio = String(pr.bio || '').replace(/\s+/g, ' ').trim();
-      meta = {
-        title: `${pr.name} | Animaldex`,
-        description: `🐾 @${pr.username} · Mascotas en adopción: ${adoption}${bio ? ' · ' + bio : ''}`,
-        image: pr.avatar_url || petImage('perro', 11, 600),
-        url: `${origin}/${pr.username}`,
-      };
+      if (pr.type === 'protector' || pr.type === 'business') {
+        const counts = await d1Query(
+          env,
+          "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_adopcion'",
+          [pr.id]
+        );
+        const adoption = Number((counts[0] && counts[0].n) || 0);
+        meta = {
+          title: `${pr.name} | Animaldex`,
+          description: `🐾 @${pr.username} · Mascotas en adopción: ${adoption}${bio ? ' · ' + bio : ''}`,
+          image: pr.avatar_url || petImage('perro', 11, 600),
+          url: `${origin}/${pr.username}`,
+        };
+      } else {
+        meta = {
+          title: `${pr.name} | Animaldex`,
+          description: `🐾 @${pr.username}${bio ? ' · ' + bio : ''}`,
+          image: pr.avatar_url || petImage('perro', 11, 600),
+          url: `${origin}/${pr.username}`,
+        };
+      }
+    } else {
+      const pets = await d1Query(env, 'SELECT * FROM pets WHERE LOWER(username) = ? LIMIT 1', [handle]);
+      if (pets[0]) {
+        const p = pets[0];
+        meta = {
+          title: `${p.name} ${p.emoji || '🐾'} en Animaldex`,
+          description: `${p.breed || p.species}${p.bio ? ' · ' + p.bio : ''}`,
+          image: p.avatar_url || petImage('perro', 11, 600),
+          url: `${origin}/pet/${p.username || p.id}`,
+        };
+      } else {
+        const users = await d1Query(env, 'SELECT * FROM users WHERE LOWER(username) = ? LIMIT 1', [handle]);
+        if (users[0]) {
+          const u = users[0];
+          const bio = String(u.bio || '').replace(/\s+/g, ' ').trim();
+          meta = {
+            title: `${u.name} | Animaldex`,
+            description: `🐾 @${u.username}${bio ? ' · ' + bio : ''}`,
+            image: u.avatar_url || petImage('perro', 11, 600),
+            url: `${origin}/${u.username}`,
+          };
+        }
+      }
     }
   }
 
@@ -415,17 +447,23 @@ export default {
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
     ]);
     const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase());
+    const maybePet = /^\/pet\/[^/]+\/?$/.test(url.pathname);
     const assetType = (assetResponse.headers.get('content-type') || '').toLowerCase();
     const assetIsHtml = assetResponse.status === 404 || assetType.includes('text/html');
 
-    // 3) /{username} para humanos (o crawlers que no matchean BOT_RE):
+    // 3) /{username} y /pet/:id para humanos (o crawlers que no matchean BOT_RE):
     //    inyectar las mismas meta OG que ogHtml(), reutilizando buildOgMeta.
-    if (maybeProfile && assetIsHtml) {
+    if ((maybeProfile || maybePet) && assetIsHtml) {
       const meta = await buildOgMeta(request, env, url);
-      const expectedPath = '/' + spaHandle.toLowerCase();
+      const expectedPath = maybePet
+        ? url.pathname.replace(/\/$/, '')
+        : '/' + spaHandle.toLowerCase();
       let metaPath = '';
       try { metaPath = new URL(meta.url).pathname.replace(/\/$/, '') || '/'; } catch (_) {}
-      if (meta && metaPath === expectedPath) {
+      const matched = maybePet
+        ? metaPath.indexOf('/pet/') === 0
+        : metaPath === expectedPath;
+      if (meta && matched) {
         const source = assetResponse.status === 404
           ? await env.ASSETS.fetch(new Request(new URL('/index.html', url.origin).toString(), request))
           : assetResponse;

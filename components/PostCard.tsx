@@ -82,8 +82,8 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
       <Pressable
         style={styles.header}
         onPress={() => {
-          if (hasPet) onOpenPet(disp.petUsername || post.petId);
-          else if (orgType && profileHandle) navigation.navigate('PublicProfile', { username: profileHandle });
+          if (orgType && profileHandle) navigation.navigate('PublicProfile', { username: profileHandle });
+          else if (hasPet) onOpenPet(disp.petUsername || post.petId);
           else if (post.authorUserId) navigation.navigate('UserProfile', { userId: post.authorUserId });
         }}
       >

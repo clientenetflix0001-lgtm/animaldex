@@ -267,7 +267,13 @@ function PostDetailContent({ post }: { post: Post }) {
     <View style={styles.postHeader}>
       <Pressable
         style={styles.headerLeft}
-        onPress={() => navigation.navigate('PetProfile', { petId: post.petId })}
+        onPress={() => {
+          const org = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
+          const handle = post.authorProfileUsername;
+          if (org && handle) navigation.navigate('PublicProfile', { username: handle });
+          else if (post.petId) navigation.navigate('PetProfile', { petId: post.petId });
+          else if (post.authorUserId) navigation.navigate('UserProfile', { userId: post.authorUserId });
+        }}
       >
         <Image source={{ uri: thumb(disp.avatarUri, 100) }} style={styles.avatar} transition={200} />
         <View>
