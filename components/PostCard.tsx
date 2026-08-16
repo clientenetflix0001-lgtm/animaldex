@@ -13,8 +13,9 @@ import Animated, {
 import { Post, formatCount, formatTime } from '../lib/data';
 import { getPostDisplay } from '../lib/postDisplay';
 import { sharePost } from '../lib/share';
-import { thumb } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from './AdaptivePostImage';
+import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../lib/store';
 import { colors, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
@@ -26,10 +27,16 @@ interface Props {
 }
 
 function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
+  const navigation = useNavigation<any>();
   const { likedPosts, savedPosts, toggleLike, toggleSave, myComments } = useStore();
   const liked = likedPosts.includes(post.id);
   const saved = savedPosts.includes(post.id);
   const disp = getPostDisplay(post);
+  const hasPet = !!(post.petId && post.petName);
+  const orgType = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
+  const asProfile = orgType || (!hasPet && !!post.authorProfileId);
+  const profileHandle = post.authorProfileUsername || disp.username;
+  const profileAvatar = post.authorProfileAvatar || userFallbackAvatar(profileHandle || 'usuario');
 
   const heartScale = useSharedValue(1);
   const bigHeart = useSharedValue(0);
@@ -72,22 +79,34 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
   return (
     <View style={styles.card}>
       {/* Header */}
-      <Pressable style={styles.header} onPress={() => onOpenPet(disp.petUsername || post.petId)}>
-        <Image source={{ uri: thumb(disp.avatarUri, 100) }} style={styles.avatar} transition={200} />
+      <Pressable
+        style={styles.header}
+        onPress={() => {
+          if (hasPet) onOpenPet(disp.petUsername || post.petId);
+          else if (orgType && profileHandle) navigation.navigate('PublicProfile', { username: profileHandle });
+          else if (post.authorUserId) navigation.navigate('UserProfile', { userId: post.authorUserId });
+        }}
+      >
+        <Image
+          source={{ uri: thumb(asProfile ? profileAvatar : disp.avatarUri, 100) }}
+          style={styles.avatar}
+          transition={200}
+        />
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
             <Text style={styles.petName}>
-              {post.authorProfileId
-                ? (post.authorProfileName || disp.username)
+              {asProfile
+                ? `@${profileHandle}`
                 : `@${disp.petUsername || disp.petName.toLowerCase()}${disp.petEmoji}`}
             </Text>
           </View>
-          <Text style={styles.subText}>
-            {post.authorProfileId
-              ? `@${post.authorProfileUsername || disp.username}`
-              : `${(disp.speciesLabel || 'mascota').toLowerCase()} de (@${disp.username})`}
-          </Text>
-          {post.authorProfileId ? <ProfileBadge type={post.authorProfileType} /> : null}
+          {asProfile ? (
+            orgType ? <ProfileBadge type={post.authorProfileType} /> : null
+          ) : (
+            <Text style={styles.subText}>
+              {(disp.speciesLabel || 'mascota').toLowerCase()} de (@{disp.username})
+            </Text>
+          )}
         </View>
         <Text style={styles.time}>{formatTime(post.minutesAgo)}</Text>
       </Pressable>
@@ -134,10 +153,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
       {/* Meta */}
       <View style={styles.meta}>
         <Text style={styles.likes}>{formatCount(likeCount)} me gusta</Text>
-        <Text style={styles.caption}>
-          <Text style={styles.captionName}>{disp.petName} </Text>
-          {post.caption}
-        </Text>
+        <Text style={styles.caption}>{post.caption}</Text>
         {totalComments > 0 && (
           <Pressable onPress={() => onOpenPost(post)}>
             <Text style={styles.viewComments}>

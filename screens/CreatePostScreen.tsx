@@ -28,7 +28,8 @@ export default function CreatePostScreen() {
   const navigation = useNavigation<any>();
   const { desktopWeb } = useBreakpoint();
   const { myPets, refreshMyPets, notifyPostCreated } = useStore();
-  const { activeProfileId } = useProfiles();
+  const { activeProfileId, activeProfile } = useProfiles();
+  const isOrg = activeProfile?.type === 'business' || activeProfile?.type === 'protector';
 
   const [selectedPet, setSelectedPet] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
@@ -37,7 +38,7 @@ export default function CreatePostScreen() {
   const [publishing, setPublishing] = useState(false);
   const [uploadNote, setUploadNote] = useState('');
 
-  const activePetId = selectedPet ?? myPets[0]?.id ?? null;
+  const activePetId = isOrg ? null : selectedPet;
   const activePet = myPets.find((p) => p.id === activePetId);
 
   const pickFromGallery = useCallback(async () => {
@@ -81,17 +82,13 @@ export default function CreatePostScreen() {
   }, []);
 
   const publish = useCallback(async () => {
-    if (!activePetId) {
-      Alert.alert('Sin mascotas', 'Primero registra una mascota en tu perfil 🐾');
-      return;
-    }
     if (!photo && caption.trim().length === 0) {
       Alert.alert('Publicación vacía', 'Escribe un texto o agrega una foto 🐾');
       return;
     }
     setPublishing(true);
     try {
-      const { post } = await db.createPost(activePetId, photo || '', caption.trim(), activeProfileId);
+      const { post } = await db.createPost(activePetId || '', photo || '', caption.trim(), activeProfileId);
       // Inserción incremental: el post aparece arriba del feed al instante,
       // sin recargar nada.
       notifyPostCreated(apiPostToPost(post));
@@ -107,36 +104,6 @@ export default function CreatePostScreen() {
   }, [activePetId, photo, caption, navigation, notifyPostCreated, activeProfileId]);
 
   const wrapStyle = desktopWeb ? styles.desktopWrap : styles.mobileWrap;
-
-  // ---------- Sin mascotas: invitar a crear una ----------
-  if (myPets.length === 0) {
-    return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <View style={wrapStyle}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Nueva publicación</Text>
-        </View>
-        <View style={styles.emptyWrap}>
-          <Text style={styles.emptyEmoji}>🐾</Text>
-          <Text style={styles.emptyTitle}>Aún no tienes mascotas</Text>
-          <Text style={styles.emptyText}>
-            Registra a tu peludito para empezar a publicar sus mejores momentos.
-          </Text>
-          <Pressable
-            style={styles.addPetBtn}
-            onPress={() => navigation.navigate('AddPet')}
-          >
-            <Ionicons name="add-circle-outline" size={19} color="#fff" />
-            <Text style={styles.addPetText}>Registrar mi mascota</Text>
-          </Pressable>
-          <Pressable onPress={refreshMyPets}>
-            <Text style={styles.refreshLink}>Ya la registré, actualizar</Text>
-          </Pressable>
-        </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -167,8 +134,20 @@ export default function CreatePostScreen() {
           <Text style={styles.sectionLabel}>Publicar como</Text>
           <ProfileSwitcher compact />
 
+          {!isOrg && (
+            <>
           <Text style={styles.sectionLabel}>¿Quién protagoniza esta foto?</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.petPicker}>
+            <Pressable
+              style={[styles.petOption, !activePetId && styles.petOptionActive]}
+              onPress={() => setSelectedPet(null)}
+            >
+              <View style={[styles.petOptionImg, styles.noneAvatar]}>
+                <Ionicons name="person" size={18} color={colors.textMuted} />
+              </View>
+              <Text style={[styles.petOptionName, !activePetId && { color: colors.primary }]}>Ninguno</Text>
+              {!activePetId && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
+            </Pressable>
             {myPets.map((p) => {
               const active = p.id === activePetId;
               return (
@@ -194,6 +173,8 @@ export default function CreatePostScreen() {
               <Text style={styles.petOptionAddText}>Nueva</Text>
             </Pressable>
           </ScrollView>
+            </>
+          )}
 
           <Text style={styles.sectionLabel}>Foto (opcional)</Text>
           <Pressable style={styles.preview} onPress={pickFromGallery}>
@@ -232,7 +213,7 @@ export default function CreatePostScreen() {
           <Text style={styles.sectionLabel}>Texto</Text>
           <TextInput
             style={styles.captionInput}
-            placeholder={`¿Qué está pasando, ${activePet?.name ?? 'peludo'}? Podés publicar solo texto.`}
+            placeholder={isOrg || !activePet ? 'Escribí tu publicación. Podés publicar solo texto.' : `¿Qué está pasando, ${activePet.name}? Podés publicar solo texto.`}
             placeholderTextColor={colors.textMuted}
             multiline
             value={caption}
@@ -300,6 +281,7 @@ const styles = StyleSheet.create({
   },
   petOptionActive: { borderColor: colors.primary, backgroundColor: colors.primarysoft },
   petOptionImg: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.border },
+  noneAvatar: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarysoft },
   petOptionName: { fontWeight: '700', fontSize: 14, color: colors.text },
   petOptionAdd: {
     flexDirection: 'row',

@@ -330,7 +330,6 @@ function PostDetailContent({ post }: { post: Post }) {
     </View>
   ) : (
     <Text style={styles.caption}>
-      <Text style={styles.captionName}>{disp.petName} </Text>
       {effectiveCaption}
     </Text>
   );

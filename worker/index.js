@@ -1189,11 +1189,12 @@ async function handleDb(request, env) {
       const petId = clean(body.petId, 80);
       const image = clean(body.image, 2000);
       const caption = clean(body.caption, 500);
-      if (!petId) return json({ error: 'Faltan datos de la publicación' }, 400);
       if (!image && !caption) return json({ error: 'Escribe algo o agrega una foto' }, 400);
       if (image && image.startsWith('data:')) return json({ error: 'La imagen debe subirse primero a Cloudflare' }, 400);
-      const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
-      if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
+      if (petId) {
+        const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
+        if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
+      }
       let authorProfileId = clean(body.authorProfileId, 80) || null;
       if (authorProfileId) {
         const owned = await d1(env, 'SELECT id FROM profiles WHERE id = ? AND account_id = ?', [authorProfileId, userId]);
