@@ -26,7 +26,7 @@
 // ============================================================
 
 const BOT_RE =
-  /facebookexternalhit|facebot|facebookcatalog|twitterbot|whatsapp|telegrambot|linkedinbot|slackbot|slack-imgproxy|discordbot|pinterest|googlebot|bingbot|yandex|baiduspider|vkshare|redditbot|applebot|flipboard|tumblr|skypeuripreview|nuzzel|quora|bitlybot|embedly|iframely|snap url preview|viber|line-poker|kakaotalk/i;
+  /facebookexternalhit|facebot|facebookcatalog|meta-externalagent|meta-externalads|twitterbot|whatsapp|telegrambot|linkedinbot|slackbot|slack-imgproxy|discordbot|pinterest|googlebot|bingbot|yandex|baiduspider|vkshare|redditbot|applebot|flipboard|tumblr|skypeuripreview|nuzzel|quora|bitlybot|embedly|iframely|snap url preview|viber|line-poker|kakaotalk|google-pagerenderer|preview/i;
 
 // ---------- RNG determinista (idéntico a lib/data.ts, para posts demo) ----------
 function mulberry32(seed) {
@@ -245,7 +245,11 @@ async function buildOgMeta(request, env, url) {
   const listingMatch = pathname.match(/^\/m\/([^/]+)\/?$/);
   const postMatch = pathname.match(/^\/p\/([^/]+)\/?$/);
   const handleMatch = pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i);
-  const reserved = new Set(['p','pet','a','m','reels','alertas','mercado','crear','actividad','perfil','explorar','verificar','escanear','entrar','tienda']);
+  const reserved = new Set([
+    'p','pet','a','m','reels','alertas','mercado','crear','actividad','perfil',
+    'explorar','verificar','escanear','entrar','tienda','admin','vender',
+    'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
+  ]);
 
   if (petMatch) {
     const id = decodeURIComponent(petMatch[1]);
@@ -332,19 +336,19 @@ async function buildOgMeta(request, env, url) {
     }
   } else if (handleMatch && !reserved.has(handleMatch[1].toLowerCase())) {
     const handle = handleMatch[1].toLowerCase();
-    const rows = await d1Query(
-      env,
-      `SELECT pr.*,
-        (SELECT COUNT(*) FROM pets WHERE profile_id = pr.id AND care_status = 'en_adopcion') AS adoption
-       FROM profiles pr WHERE LOWER(pr.username) = ? LIMIT 1`,
-      [handle]
-    );
+    const rows = await d1Query(env, 'SELECT * FROM profiles WHERE LOWER(username) = ? LIMIT 1', [handle]);
     if (rows[0]) {
       const pr = rows[0];
-      const adoption = Number(pr.adoption || 0);
+      const counts = await d1Query(
+        env,
+        "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_adopcion'",
+        [pr.id]
+      );
+      const adoption = Number((counts[0] && counts[0].n) || 0);
+      const bio = String(pr.bio || '').replace(/\s+/g, ' ').trim();
       meta = {
         title: `${pr.name} | Animaldex`,
-        description: `🐾 @${pr.username} · Mascotas en adopción: ${adoption}${pr.bio ? '\n' + pr.bio : ''}`,
+        description: `🐾 @${pr.username} · Mascotas en adopción: ${adoption}${bio ? ' · ' + bio : ''}`,
         image: pr.avatar_url || petImage('perro', 11, 600),
         url: `${origin}/${pr.username}`,
       };
@@ -378,6 +382,7 @@ export default {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'public, max-age=300, s-maxage=3600',
+          'Vary': 'User-Agent',
         },
       });
     }
@@ -402,12 +407,65 @@ export default {
     }
 
     const assetResponse = await env.ASSETS.fetch(assetRequest);
+
+    const spaHandle = (url.pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i) || [])[1];
+    const spaReserved = new Set([
+      'p','pet','a','m','reels','alertas','mercado','crear','actividad','perfil',
+      'explorar','verificar','escanear','entrar','tienda','admin','vender',
+      'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
+    ]);
+    const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase());
+    const assetType = (assetResponse.headers.get('content-type') || '').toLowerCase();
+    const assetIsHtml = assetResponse.status === 404 || assetType.includes('text/html');
+
+    // 3) /{username} para humanos (o crawlers que no matchean BOT_RE):
+    //    inyectar las mismas meta OG que ogHtml(), reutilizando buildOgMeta.
+    if (maybeProfile && assetIsHtml) {
+      const meta = await buildOgMeta(request, env, url);
+      const expectedPath = '/' + spaHandle.toLowerCase();
+      let metaPath = '';
+      try { metaPath = new URL(meta.url).pathname.replace(/\/$/, '') || '/'; } catch (_) {}
+      if (meta && metaPath === expectedPath) {
+        const source = assetResponse.status === 404
+          ? await env.ASSETS.fetch(new Request(new URL('/index.html', url.origin).toString(), request))
+          : assetResponse;
+        const html = await source.text();
+        return new Response(injectOgIntoSpa(html, meta), {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'public, max-age=0, must-revalidate',
+            'Vary': 'User-Agent',
+          },
+        });
+      }
+    }
+
     if (assetResponse.status !== 404) return assetResponse;
 
-    // 3) Ruta sin archivo estático correspondiente (ej. /alertas, /mercado,
-    //    /p/xyz para un humano) → fallback a index.html, igual que el
-    //    "rewrites" de vercel.json (comportamiento estándar de SPA).
     const indexUrl = new URL('/index.html', url.origin);
     return env.ASSETS.fetch(new Request(indexUrl.toString(), request));
   },
 };
+
+function injectOgIntoSpa(html, meta) {
+  const tags = `
+  <title>${esc(meta.title)}</title>
+  <meta name="description" content="${esc(meta.description)}" />
+  <meta property="og:site_name" content="Animaldex" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="${esc(meta.title)}" />
+  <meta property="og:description" content="${esc(meta.description)}" />
+  <meta property="og:image" content="${esc(meta.image)}" />
+  <meta property="og:image:width" content="600" />
+  <meta property="og:image:height" content="600" />
+  <meta property="og:url" content="${esc(meta.url)}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${esc(meta.title)}" />
+  <meta name="twitter:description" content="${esc(meta.description)}" />
+  <meta name="twitter:image" content="${esc(meta.image)}" />
+`;
+  let out = html.replace(/<title>[\s\S]*?<\/title>/i, '');
+  if (out.includes('</head>')) return out.replace('</head>', tags + '</head>');
+  return tags + out;
+}
