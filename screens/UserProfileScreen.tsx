@@ -317,7 +317,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         renderItem={({ item }) => (
           <Pressable
             style={styles.petCard}
-            onPress={() => navigation.navigate('PublicProfile', { profileId: item.id })}
+            onPress={() => navigation.navigate('PublicProfile', { username: item.username })}
           >
             <Image
               source={{ uri: thumb(item.avatar || userFallbackAvatar(item.username), 150) }}

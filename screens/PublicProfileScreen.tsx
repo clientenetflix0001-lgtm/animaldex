@@ -64,12 +64,17 @@ export default function PublicProfileScreen() {
       setIsOwner(pub.isOwner);
       setFollowing(pub.isFollowing);
       setPosts(feed.posts.map(apiPostToPost));
+      const handle = pub.profile.username;
+      if (handle && routeUsername !== handle) {
+        navigation.replace('PublicProfile', { username: handle });
+        return;
+      }
     } catch (e: any) {
       Alert.alert('Perfil', e?.message || 'No se pudo abrir el perfil');
     } finally {
       setLoading(false);
     }
-  }, [routeProfileId, routeUsername]);
+  }, [routeProfileId, routeUsername, navigation]);
 
   useEffect(() => {
     load();
