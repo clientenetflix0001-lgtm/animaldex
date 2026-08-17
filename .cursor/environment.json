@@ -1,0 +1,17 @@
+{
+  "name": "Animaldex",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "expo-web",
+      "command": "npx expo start --web --port 8081",
+      "description": "Expo (Metro) web dev server for the Animaldex app, served at http://localhost:8081."
+    }
+  ],
+  "ports": [
+    {
+      "name": "Expo web",
+      "port": 8081
+    }
+  ]
+}
