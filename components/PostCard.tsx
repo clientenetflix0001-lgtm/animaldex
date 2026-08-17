@@ -115,7 +115,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
       {!!post.image && (
         <Pressable onPress={handleImageTap}>
           <View style={styles.imageWrap}>
-            <AdaptivePostImage uri={post.image} />
+            <AdaptivePostImage uri={post.image} variant="feed" />
             <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">
               <Ionicons name="heart" size={96} color="#fff" />
             </Animated.View>
