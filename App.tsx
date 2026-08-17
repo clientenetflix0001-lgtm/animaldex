@@ -191,7 +191,11 @@ function Tabs() {
 }
 
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ['animaldex://'],
+  // `animaldex://` (esquema propio, no se toca) + el dominio HTTPS público.
+  // El prefijo HTTPS permite que un Android App Link verificado
+  // (https://animaldex-web.pages.dev/p/<id>) abra la app y resuelva la
+  // misma configuración de rutas de abajo (p/:postId, pet/:petId, etc.).
+  prefixes: ['animaldex://', 'https://animaldex-web.pages.dev'],
   config: {
     screens: {
       Tabs: {

@@ -25,6 +25,27 @@
 // cada build). Ver scripts/deploy-cf-pages.sh.
 // ============================================================
 
+// ---------- Android App Links: Digital Asset Links ----------
+// Se sirve en /.well-known/assetlinks.json para verificar la asociación
+// entre este dominio y la app Android (package com.lucasap123.animaldex).
+// El SHA-256 corresponde al keystore de firma gestionado por EAS
+// (obtenido desde las credenciales reales de EAS, no inventado). Si en el
+// futuro se publica en Google Play con "Play App Signing", hay que AÑADIR
+// además el SHA-256 de la clave de firma de Google (Play Console) a este
+// array; admite múltiples huellas.
+const ASSETLINKS_JSON = JSON.stringify([
+  {
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: {
+      namespace: 'android_app',
+      package_name: 'com.lucasap123.animaldex',
+      sha256_cert_fingerprints: [
+        'AF:CE:8E:B1:04:D3:4C:6F:DF:61:C3:5F:15:73:3D:58:D9:F3:AE:90:41:2F:BA:BE:0C:FC:FB:C9:C0:C5:17:E6',
+      ],
+    },
+  },
+]);
+
 const BOT_RE =
   /facebookexternalhit|facebot|facebookcatalog|meta-externalagent|meta-externalads|twitterbot|whatsapp|telegrambot|linkedinbot|slackbot|slack-imgproxy|discordbot|pinterest|googlebot|bingbot|yandex|baiduspider|vkshare|redditbot|applebot|flipboard|tumblr|skypeuripreview|nuzzel|quora|bitlybot|embedly|iframely|snap url preview|viber|line-poker|kakaotalk|google-pagerenderer|preview/i;
 
@@ -405,6 +426,19 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const ua = request.headers.get('user-agent') || '';
+
+    // 0) Android App Links: servir el archivo de verificación de dominio
+    //    con content-type application/json (requisito de Google/Android).
+    //    Debe ir antes de cualquier otra lógica (bots, assets, SPA).
+    if (url.pathname === '/.well-known/assetlinks.json') {
+      return new Response(ASSETLINKS_JSON, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
+    }
 
     // 1) Bots de redes sociales en rutas con preview: servir OG HTML.
     if (BOT_RE.test(ua) && OG_PATH_RE.test(url.pathname)) {

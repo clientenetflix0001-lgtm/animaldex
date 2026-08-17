@@ -28,6 +28,19 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "CAMERA"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/p/" },
+            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/pet/" },
+            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/a/" },
+            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/m/" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ]
     },
     "web": {
