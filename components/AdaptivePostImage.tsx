@@ -19,7 +19,17 @@ import { useBreakpoint } from '../lib/responsive';
  * lugar de depender del evento onLoad, que no siempre entrega dimensiones en
  * web y dejaba el contenedor cuadrado (causando el letterbox lateral).
  */
-export function AdaptivePostImage({ uri, maxHeight = 520 }: { uri: string; maxHeight?: number }) {
+export function AdaptivePostImage({
+  uri,
+  maxHeight = 520,
+  variant = 'detail',
+}: {
+  uri: string;
+  maxHeight?: number;
+  /** 'detail' = full-bleed en móvil (vista de publicación). 'feed' = conserva
+   *  el comportamiento contenido de la tarjeta del feed (sin cambiar su diseño). */
+  variant?: 'detail' | 'feed';
+}) {
   const { desktopWeb } = useBreakpoint();
   const [ratio, setRatio] = useState(1);
   const src = large(uri);
@@ -40,27 +50,27 @@ export function AdaptivePostImage({ uri, maxHeight = 520 }: { uri: string; maxHe
     };
   }, [src]);
 
-  if (desktopWeb) {
+  // Full-bleed solo en la vista de detalle en móvil/tablet: el contenedor toma
+  // la proporción exacta de la imagen y ocupa el 100% del ancho, de borde a
+  // borde, sin franjas laterales ni recorte.
+  const fullBleed = !desktopWeb && variant === 'detail';
+
+  if (fullBleed) {
     return (
-      <View style={[styles.wrapDesktop, { maxHeight }]}>
-        <Image
-          source={{ uri: src }}
-          style={{ width: '100%', aspectRatio: ratio, maxHeight }}
-          contentFit="contain"
-          transition={200}
-        />
+      <View style={[styles.wrapMobile, { aspectRatio: ratio }]}>
+        <Image source={{ uri: src }} style={styles.fill} contentFit="cover" transition={200} />
       </View>
     );
   }
 
-  // Móvil / tablet: contenedor con la proporción exacta de la imagen → la
-  // foto llena el ancho completo sin bandas ni recorte.
+  // Escritorio, y feed (móvil/escritorio): se contiene dentro de un alto
+  // máximo razonable (comportamiento previo, no cambia el diseño del feed).
   return (
-    <View style={[styles.wrapMobile, { aspectRatio: ratio }]}>
+    <View style={[styles.wrapDesktop, { maxHeight }]}>
       <Image
         source={{ uri: src }}
-        style={styles.fill}
-        contentFit="cover"
+        style={{ width: '100%', aspectRatio: ratio, maxHeight }}
+        contentFit="contain"
         transition={200}
       />
     </View>
