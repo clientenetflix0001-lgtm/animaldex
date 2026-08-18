@@ -92,9 +92,9 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
           style={styles.avatar}
           transition={200}
         />
-        <View style={{ flex: 1 }}>
+        <View style={styles.userBlock}>
           <View style={styles.nameRow}>
-            <Text style={styles.petName}>
+            <Text style={styles.petName} numberOfLines={1}>
               {asProfile
                 ? `@${profileHandle}`
                 : `@${disp.petUsername || disp.petName.toLowerCase()}${disp.petEmoji}`}
@@ -103,7 +103,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
           {asProfile ? (
             orgType ? <ProfileBadge type={post.authorProfileType} /> : null
           ) : (
-            <Text style={styles.subText}>
+            <Text style={styles.subText} numberOfLines={1}>
               {(disp.speciesLabel || 'mascota').toLowerCase()} de (@{disp.username})
             </Text>
           )}
@@ -140,7 +140,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         <Pressable hitSlop={8} style={styles.actionBtn} onPress={() => sharePost(post)}>
           <Ionicons name="paper-plane-outline" size={24} color={colors.text} />
         </Pressable>
-        <View style={{ flex: 1 }} />
+        <View style={styles.actionsSpacer} />
         <Pressable onPress={() => toggleSave(post.id)} hitSlop={8}>
           <Ionicons
             name={saved ? 'bookmark' : 'bookmark-outline'}
@@ -173,13 +173,16 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     backgroundColor: colors.bg,
+    margin: 0,
     paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    width: '100%',
+    alignSelf: 'stretch',
+    margin: 0,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     gap: spacing.md,
@@ -191,12 +194,20 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primarysoft,
   },
+  userBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
   nameRow: { flexDirection: 'row', alignItems: 'center' },
   petName: { fontWeight: '800', fontSize: 16, color: colors.text },
-  petEmoji: { fontSize: 13 },
   subText: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
-  time: { fontSize: 11, color: colors.textMuted },
-  imageWrap: { position: 'relative', width: '100%' },
+  time: {
+    fontSize: 11,
+    color: colors.textMuted,
+    flexShrink: 0,
+    textAlign: 'right',
+  },
+  imageWrap: { position: 'relative', width: '100%', margin: 0 },
   bigHeart: {
     position: 'absolute',
     top: 0,
@@ -209,16 +220,25 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start',
     width: '100%',
+    alignSelf: 'stretch',
+    margin: 0,
     backgroundColor: colors.bg,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingVertical: spacing.md,
     gap: spacing.lg,
   },
+  actionsSpacer: { flex: 1 },
   actionBtn: {},
-  meta: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, paddingTop: spacing.sm },
+  meta: {
+    width: '100%',
+    margin: 0,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    paddingTop: 0,
+  },
   likes: { fontWeight: '700', fontSize: 14, color: colors.text, marginBottom: 4 },
   caption: { fontSize: 14, color: colors.text, lineHeight: 20 },
-  captionName: { fontWeight: '700' },
   viewComments: { color: colors.textMuted, fontSize: 13, marginTop: 6 },
 });
