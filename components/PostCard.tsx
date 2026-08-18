@@ -16,21 +16,37 @@ import { sharePost } from '../lib/share';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from './AdaptivePostImage';
 import { useNavigation } from '@react-navigation/native';
-import { useStore } from '../lib/store';
 import { colors, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 
 interface Props {
   post: Post;
+  /**
+   * El estado social llega por props (patrón de AlertCard) en lugar de
+   * leerse del store dentro de la tarjeta. Así un like solo re-renderiza
+   * su propia publicación y no todas las montadas.
+   */
+  liked: boolean;
+  saved: boolean;
+  /** Comentarios propios aún no confirmados por el servidor. */
+  extraComments: number;
+  onToggleLike: (postId: string) => void;
+  onToggleSave: (postId: string) => void;
   onOpenPet: (petId: string) => void;
   onOpenPost: (post: Post) => void;
 }
 
-function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
+function PostCardInner({
+  post,
+  liked,
+  saved,
+  extraComments,
+  onToggleLike,
+  onToggleSave,
+  onOpenPet,
+  onOpenPost,
+}: Props) {
   const navigation = useNavigation<any>();
-  const { likedPosts, savedPosts, toggleLike, toggleSave, myComments } = useStore();
-  const liked = likedPosts.includes(post.id);
-  const saved = savedPosts.includes(post.id);
   const disp = getPostDisplay(post);
   const hasPet = !!(post.petId && post.petName);
   const orgType = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
@@ -54,14 +70,14 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
 
   const handleLikePress = useCallback(() => {
     if (!liked) animateLike();
-    toggleLike(post.id);
-  }, [liked, post.id, toggleLike, animateLike]);
+    onToggleLike(post.id);
+  }, [liked, post.id, onToggleLike, animateLike]);
 
   const handleImageTap = useCallback(() => {
     const now = Date.now();
     if (now - lastTap < 280) {
       if (!liked) {
-        toggleLike(post.id);
+        onToggleLike(post.id);
         animateLike();
       }
       bigHeart.value = withSequence(
@@ -70,10 +86,9 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
       );
     }
     setLastTap(now);
-  }, [lastTap, liked, post.id, toggleLike, animateLike, bigHeart]);
+  }, [lastTap, liked, post.id, onToggleLike, animateLike, bigHeart]);
 
-  const totalComments =
-    (post.commentCount ?? post.comments.length) + (myComments[post.id]?.length ?? 0);
+  const totalComments = (post.commentCount ?? post.comments.length) + extraComments;
   const likeCount = post.real ? post.likes + (liked ? 1 : 0) : post.likes + (liked ? 1 : 0);
 
   return (
@@ -141,7 +156,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
           <Ionicons name="paper-plane-outline" size={24} color={colors.text} />
         </Pressable>
         <View style={{ flex: 1 }} />
-        <Pressable onPress={() => toggleSave(post.id)} hitSlop={8}>
+        <Pressable onPress={() => onToggleSave(post.id)} hitSlop={8}>
           <Ionicons
             name={saved ? 'bookmark' : 'bookmark-outline'}
             size={24}
