@@ -17,7 +17,7 @@ import { thumb, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from './AdaptivePostImage';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../lib/store';
-import { colors, spacing } from '../lib/theme';
+import { colors, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 
 interface Props {
@@ -77,8 +77,8 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
   const likeCount = post.real ? post.likes + (liked ? 1 : 0) : post.likes + (liked ? 1 : 0);
 
   return (
-    <View style={styles.post}>
-      {/* Header: full width, internal padding only */}
+    <View style={styles.card}>
+      {/* Header */}
       <Pressable
         style={styles.header}
         onPress={() => {
@@ -92,9 +92,9 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
           style={styles.avatar}
           transition={200}
         />
-        <View style={styles.userBlock}>
+        <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
-            <Text style={styles.petName} numberOfLines={1}>
+            <Text style={styles.petName}>
               {asProfile
                 ? `@${profileHandle}`
                 : `@${disp.petUsername || disp.petName.toLowerCase()}${disp.petEmoji}`}
@@ -103,7 +103,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
           {asProfile ? (
             orgType ? <ProfileBadge type={post.authorProfileType} /> : null
           ) : (
-            <Text style={styles.subText} numberOfLines={1}>
+            <Text style={styles.subText}>
               {(disp.speciesLabel || 'mascota').toLowerCase()} de (@{disp.username})
             </Text>
           )}
@@ -111,7 +111,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         <Text style={styles.time}>{formatTime(post.minutesAgo)}</Text>
       </Pressable>
 
-      {/* Media: edge to edge of the post column */}
+      {/* Image (solo si hay foto) */}
       {!!post.image && (
         <Pressable onPress={handleImageTap}>
           <View style={styles.imageWrap}>
@@ -123,7 +123,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         </Pressable>
       )}
 
-      {/* Actions: full width, Animaldex background, internal padding */}
+      {/* Actions */}
       <View style={styles.actions}>
         <Pressable onPress={handleLikePress} hitSlop={8} style={styles.actionBtn}>
           <Animated.View style={heartStyle}>
@@ -140,7 +140,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         <Pressable hitSlop={8} style={styles.actionBtn} onPress={() => sharePost(post)}>
           <Ionicons name="paper-plane-outline" size={24} color={colors.text} />
         </Pressable>
-        <View style={styles.actionsSpacer} />
+        <View style={{ flex: 1 }} />
         <Pressable onPress={() => toggleSave(post.id)} hitSlop={8}>
           <Ionicons
             name={saved ? 'bookmark' : 'bookmark-outline'}
@@ -150,7 +150,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         </Pressable>
       </View>
 
-      {/* Caption keeps Instagram-like horizontal padding; does not shrink media */}
+      {/* Meta */}
       <View style={styles.meta}>
         <Text style={styles.likes}>{formatCount(likeCount)} me gusta</Text>
         <Text style={styles.caption}>{post.caption}</Text>
@@ -162,7 +162,6 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
           </Pressable>
         )}
       </View>
-      <View style={styles.feedSeparator} />
     </View>
   );
 }
@@ -170,22 +169,18 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
 export const PostCard = memo(PostCardInner);
 
 const styles = StyleSheet.create({
-  post: {
-    width: '100%',
-    alignSelf: 'stretch',
-    backgroundColor: colors.bg,
-    margin: 0,
-    paddingBottom: 0,
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+    overflow: 'hidden',
+    ...shadow.card,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    width: '100%',
-    alignSelf: 'stretch',
-    margin: 0,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    padding: spacing.md,
     gap: spacing.md,
   },
   avatar: {
@@ -195,20 +190,13 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primarysoft,
   },
-  userBlock: {
-    flex: 1,
-    minWidth: 0,
-  },
   nameRow: { flexDirection: 'row', alignItems: 'center' },
   petName: { fontWeight: '800', fontSize: 16, color: colors.text },
+  petEmoji: { fontSize: 13 },
   subText: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
-  time: {
-    fontSize: 11,
-    color: colors.textMuted,
-    flexShrink: 0,
-    textAlign: 'right',
-  },
-  imageWrap: { position: 'relative', width: '100%', margin: 0 },
+  time: { fontSize: 11, color: colors.textMuted },
+  imageWrap: { position: 'relative' },
+  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   bigHeart: {
     position: 'absolute',
     top: 0,
@@ -221,34 +209,14 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    width: '100%',
-    alignSelf: 'stretch',
-    margin: 0,
-    backgroundColor: colors.bg,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.md,
     gap: spacing.lg,
   },
-  actionsSpacer: { flex: 1 },
   actionBtn: {},
-  meta: {
-    width: '100%',
-    margin: 0,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    paddingTop: 0,
-  },
+  meta: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, paddingTop: spacing.sm },
   likes: { fontWeight: '700', fontSize: 14, color: colors.text, marginBottom: 4 },
   caption: { fontSize: 14, color: colors.text, lineHeight: 20 },
+  captionName: { fontWeight: '700' },
   viewComments: { color: colors.textMuted, fontSize: 13, marginTop: 6 },
-  feedSeparator: {
-    width: '100%',
-    alignSelf: 'stretch',
-    height: 10,
-    minHeight: 10,
-    flexShrink: 0,
-    backgroundColor: '#DCC8B4',
-    margin: 0,
-  },
 });

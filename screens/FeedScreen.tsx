@@ -201,7 +201,6 @@ export default function FeedScreen() {
       ref={listRef}
       data={data}
       keyExtractor={(item) => item.id}
-      style={styles.list}
       renderItem={({ item }) => <PostCard post={item} onOpenPet={openPet} onOpenPost={openPost} />}
       ListHeaderComponent={<StoriesBar onOpenPet={openPet} />}
       ListFooterComponent={<LoadingFooter />}
@@ -211,12 +210,7 @@ export default function FeedScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />
       }
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{
-        paddingBottom: spacing.xl,
-        paddingTop: desktopWeb ? spacing.xl : 0,
-        paddingHorizontal: 0,
-        width: '100%',
-      }}
+      contentContainerStyle={{ paddingBottom: spacing.xl, paddingTop: desktopWeb ? spacing.xl : 0 }}
     />
   );
 
@@ -237,54 +231,52 @@ export default function FeedScreen() {
 
   // ---------- Móvil / tablet ----------
   return (
-    <View style={[styles.safe, { paddingTop: topInset }]} collapsable={false}>
-      <View style={styles.topChrome} collapsable={false}>
-        <View style={styles.header}>
-          <View style={styles.logoRow}>
-            <Image
-              source={require('../assets/images/animaldex-logo-mark.png')}
-              style={styles.logoMark}
-              contentFit="contain"
-            />
-            <Text style={styles.logo}>Animaldex</Text>
-            <Pressable
-              style={styles.qrBtn}
-              onPress={() => navigation.navigate('QRScanner')}
-              hitSlop={8}
-              accessibilityLabel="Escanear código QR"
-            >
-              <Ionicons name="qr-code-outline" size={22} color={colors.primary} />
-            </Pressable>
-          </View>
-          <View style={styles.headerRight}>
-            <Pressable
-              style={styles.searchBtn}
-              onPress={() => navigation.navigate('Explorar')}
-              hitSlop={8}
-              accessibilityLabel="Buscar"
-            >
-              <Ionicons name="search" size={22} color={colors.text} />
-            </Pressable>
-            <Pressable
-              style={styles.searchBtn}
-              onPress={() => navigation.navigate('Actividad')}
-              hitSlop={8}
-              accessibilityLabel="Actividad"
-            >
-              <View>
-                <Ionicons name="heart-outline" size={22} color={colors.text} />
-                {unread > 0 && (
-                  <View style={styles.activityBadge}>
-                    <Text style={styles.activityBadgeText}>{unread > 9 ? '9+' : unread}</Text>
-                  </View>
-                )}
-              </View>
-            </Pressable>
-          </View>
+    <View style={[styles.safe, { paddingTop: topInset }]}>
+      <View style={styles.header}>
+        <View style={styles.logoRow}>
+          <Image
+            source={require('../assets/images/animaldex-logo-mark.png')}
+            style={styles.logoMark}
+            contentFit="contain"
+          />
+          <Text style={styles.logo}>Animaldex</Text>
+          <Pressable
+            style={styles.qrBtn}
+            onPress={() => navigation.navigate('QRScanner')}
+            hitSlop={8}
+            accessibilityLabel="Escanear código QR"
+          >
+            <Ionicons name="qr-code-outline" size={22} color={colors.primary} />
+          </Pressable>
         </View>
-        <ProfileSwitcher />
+        <View style={styles.headerRight}>
+          <Pressable
+            style={styles.searchBtn}
+            onPress={() => navigation.navigate('Explorar')}
+            hitSlop={8}
+            accessibilityLabel="Buscar"
+          >
+            <Ionicons name="search" size={22} color={colors.text} />
+          </Pressable>
+          <Pressable
+            style={styles.searchBtn}
+            onPress={() => navigation.navigate('Actividad')}
+            hitSlop={8}
+            accessibilityLabel="Actividad"
+          >
+            <View>
+              <Ionicons name="heart-outline" size={22} color={colors.text} />
+              {unread > 0 && (
+                <View style={styles.activityBadge}>
+                  <Text style={styles.activityBadgeText}>{unread > 9 ? '9+' : unread}</Text>
+                </View>
+              )}
+            </View>
+          </Pressable>
+        </View>
       </View>
-      <View style={styles.listWrap} collapsable={false}>
+      <ProfileSwitcher />
+      <View style={{ flex: 1 }}>
         {feedList}
         {newPill}
       </View>
@@ -293,12 +285,7 @@ export default function FeedScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg, overflow: 'hidden' },
-  topChrome: {
-    backgroundColor: colors.bg,
-    zIndex: 2,
-  },
-  listWrap: { flex: 1, position: 'relative' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   desktopRoot: { flex: 1, backgroundColor: colors.bg },
   desktopCenter: {
     flex: 1,
@@ -306,8 +293,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xl,
   },
-  list: { flex: 1, width: '100%' },
-  desktopFeedCol: { flex: 1, maxWidth: CONTENT.feed, width: '100%' },
+  desktopFeedCol: { flex: 1, maxWidth: CONTENT.feed },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

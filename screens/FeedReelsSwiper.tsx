@@ -52,10 +52,10 @@ export default function FeedReelsSwiper({ initialPage }: Props) {
           scrollEventThrottle={16}
           style={{ width: size.width, height: size.height }}
         >
-          <View style={{ width: size.width, height: size.height, overflow: 'hidden' }} collapsable={false}>
+          <View style={{ width: size.width, height: size.height }}>
             <FeedScreen />
           </View>
-          <View style={{ width: size.width, height: size.height, overflow: 'hidden' }} collapsable={false}>
+          <View style={{ width: size.width, height: size.height }}>
             <ReelsScreen />
           </View>
         </ScrollView>
