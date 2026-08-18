@@ -283,11 +283,13 @@ export default function FeedScreen() {
       refreshControl={refreshCtrl}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={contentStyle}
-      // Ventana de render moderada. No se usa removeClippedSubviews
-      // (sin validar en Android) ni getItemLayout (alturas variables).
+      // Ventana de render moderada: menos celdas vivas a la vez (menos
+      // memoria en gama baja) sin bajar la velocidad de relleno, que es
+      // lo que provoca celdas en blanco al hacer scroll rápido. Por eso
+      // maxToRenderPerBatch se deja en su valor por defecto.
+      // No se usa removeClippedSubviews (no validado en Android) ni
+      // getItemLayout (las alturas de publicación son variables).
       initialNumToRender={4}
-      maxToRenderPerBatch={4}
-      updateCellsBatchingPeriod={50}
       windowSize={7}
     />
   );
