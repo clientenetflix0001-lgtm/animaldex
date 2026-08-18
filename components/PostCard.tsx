@@ -246,7 +246,9 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     height: 8,
-    backgroundColor: colors.border,
+    minHeight: 8,
+    flexShrink: 0,
+    backgroundColor: '#E8D4C0',
     margin: 0,
   },
 });
