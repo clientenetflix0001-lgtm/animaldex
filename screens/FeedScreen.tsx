@@ -201,6 +201,7 @@ export default function FeedScreen() {
       ref={listRef}
       data={data}
       keyExtractor={(item) => item.id}
+      style={styles.list}
       renderItem={({ item }) => <PostCard post={item} onOpenPet={openPet} onOpenPost={openPost} />}
       ListHeaderComponent={<StoriesBar onOpenPet={openPet} />}
       ListFooterComponent={<LoadingFooter />}
@@ -210,7 +211,12 @@ export default function FeedScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />
       }
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: spacing.xl, paddingTop: desktopWeb ? spacing.xl : 0 }}
+      contentContainerStyle={{
+        paddingBottom: spacing.xl,
+        paddingTop: desktopWeb ? spacing.xl : 0,
+        paddingHorizontal: 0,
+        width: '100%',
+      }}
     />
   );
 
@@ -293,7 +299,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xl,
   },
-  desktopFeedCol: { flex: 1, maxWidth: CONTENT.feed },
+  list: { flex: 1, width: '100%' },
+  desktopFeedCol: { flex: 1, maxWidth: CONTENT.feed, width: '100%' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -89,19 +89,19 @@ export function hashStr(s: string): number {
 }
 
 // ---------- Images ----------
-export function petImage(species: Species, seed: number, size = 600): string {
+export function petImage(species: Species, seed: number, size = 600, height = size): string {
   const n = Math.abs(seed) % 900;
   switch (species) {
     case 'perro':
-      return `https://placedog.net/${size}/${size}?id=${(n % 200) + 1}`;
+      return `https://placedog.net/${size}/${height}?id=${(n % 200) + 1}`;
     case 'gato':
-      return `https://loremflickr.com/${size}/${size}/cat?lock=${n}`;
+      return `https://loremflickr.com/${size}/${height}/cat?lock=${n}`;
     case 'conejo':
-      return `https://loremflickr.com/${size}/${size}/rabbit,bunny?lock=${n}`;
+      return `https://loremflickr.com/${size}/${height}/rabbit,bunny?lock=${n}`;
     case 'loro':
-      return `https://loremflickr.com/${size}/${size}/parrot?lock=${n}`;
+      return `https://loremflickr.com/${size}/${height}/parrot?lock=${n}`;
     case 'hámster':
-      return `https://loremflickr.com/${size}/${size}/hamster,rodent?lock=${n}`;
+      return `https://loremflickr.com/${size}/${height}/hamster,rodent?lock=${n}`;
   }
 }
 
@@ -310,6 +310,9 @@ export function makePost(id: string, seed: number, forcePet?: Pet): Post {
   const captions = CAPTIONS[pet.species];
   const caption = captions[Math.floor(rng() * captions.length)];
   const imgSeed = Math.floor(rng() * 900) + seed;
+  const kind = imgSeed % 5;
+  const imgW = kind === 3 ? 1066 : kind === 4 ? 800 : 600;
+  const imgH = kind === 1 ? 750 : kind === 2 ? 1066 : 600;
   const nComments = Math.floor(rng() * 4);
   const comments: Comment[] = [];
   for (let c = 0; c < nComments; c++) {
@@ -324,7 +327,7 @@ export function makePost(id: string, seed: number, forcePet?: Pet): Post {
   return {
     id,
     petId: pet.id,
-    image: petImage(pet.species, imgSeed),
+    image: petImage(pet.species, imgSeed, imgW, imgH),
     caption,
     likes: 40 + Math.floor(rng() * 4200),
     minutesAgo: 12 + Math.floor(seed * 38 + rng() * 30),

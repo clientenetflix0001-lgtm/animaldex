@@ -417,7 +417,7 @@ function PostDetailContent({ post }: { post: Post }) {
         <View style={[styles.dtCard, { height: cardH }]}>
           {!!post.image && (
           <View style={styles.dtImageCol}>
-            <AdaptivePostImage uri={post.image} maxHeight={820} />
+            <AdaptivePostImage uri={post.image} maxHeight={820} contentFit="contain" capPortrait={false} />
           </View>
           )}
           <View style={styles.dtSideCol}>
@@ -450,7 +450,7 @@ function PostDetailContent({ post }: { post: Post }) {
     );
   }
 
-  // ---------- Móvil / tablet (sin cambios) ----------
+  // ---------- Móvil / tablet: media a ancho completo, mismo AdaptivePostImage del feed ----------
   const header = (
     <View>
       {petHeader}

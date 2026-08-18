@@ -17,7 +17,7 @@ import { thumb, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from './AdaptivePostImage';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../lib/store';
-import { colors, radius, shadow, spacing } from '../lib/theme';
+import { colors, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 
 interface Props {
@@ -77,8 +77,8 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
   const likeCount = post.real ? post.likes + (liked ? 1 : 0) : post.likes + (liked ? 1 : 0);
 
   return (
-    <View style={styles.card}>
-      {/* Header */}
+    <View style={styles.post}>
+      {/* Header: full width, internal padding only */}
       <Pressable
         style={styles.header}
         onPress={() => {
@@ -111,7 +111,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         <Text style={styles.time}>{formatTime(post.minutesAgo)}</Text>
       </Pressable>
 
-      {/* Image (solo si hay foto) */}
+      {/* Media: edge to edge of the post column */}
       {!!post.image && (
         <Pressable onPress={handleImageTap}>
           <View style={styles.imageWrap}>
@@ -123,7 +123,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         </Pressable>
       )}
 
-      {/* Actions */}
+      {/* Actions: full width, Animaldex background, internal padding */}
       <View style={styles.actions}>
         <Pressable onPress={handleLikePress} hitSlop={8} style={styles.actionBtn}>
           <Animated.View style={heartStyle}>
@@ -150,7 +150,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         </Pressable>
       </View>
 
-      {/* Meta */}
+      {/* Caption keeps Instagram-like horizontal padding; does not shrink media */}
       <View style={styles.meta}>
         <Text style={styles.likes}>{formatCount(likeCount)} me gusta</Text>
         <Text style={styles.caption}>{post.caption}</Text>
@@ -169,18 +169,19 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
 export const PostCard = memo(PostCardInner);
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.xl,
-    overflow: 'hidden',
-    ...shadow.card,
+  post: {
+    width: '100%',
+    alignSelf: 'stretch',
+    backgroundColor: colors.bg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     gap: spacing.md,
   },
   avatar: {
@@ -195,8 +196,7 @@ const styles = StyleSheet.create({
   petEmoji: { fontSize: 13 },
   subText: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   time: { fontSize: 11, color: colors.textMuted },
-  imageWrap: { position: 'relative' },
-  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
+  imageWrap: { position: 'relative', width: '100%' },
   bigHeart: {
     position: 'absolute',
     top: 0,
@@ -209,12 +209,14 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
+    width: '100%',
+    backgroundColor: colors.bg,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     gap: spacing.lg,
   },
   actionBtn: {},
-  meta: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, paddingTop: spacing.sm },
+  meta: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, paddingTop: spacing.sm },
   likes: { fontWeight: '700', fontSize: 14, color: colors.text, marginBottom: 4 },
   caption: { fontSize: 14, color: colors.text, lineHeight: 20 },
   captionName: { fontWeight: '700' },
