@@ -245,10 +245,10 @@ const styles = StyleSheet.create({
   feedSeparator: {
     width: '100%',
     alignSelf: 'stretch',
-    height: 8,
-    minHeight: 8,
+    height: 10,
+    minHeight: 10,
     flexShrink: 0,
-    backgroundColor: '#E8D4C0',
+    backgroundColor: '#DCC8B4',
     margin: 0,
   },
 });
