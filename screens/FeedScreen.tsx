@@ -47,11 +47,11 @@ export default function FeedScreen() {
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
   const [realPosts, setRealPosts] = useState<Post[]>([]);
-  const [demoPosts, setDemoPosts] = useState<Post[]>(() => [...generateFeedPage(0), ...generateFeedPage(1)]);
+  const [demoPosts, setDemoPosts] = useState<Post[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [pendingNew, setPendingNew] = useState(0);
-  const pageRef = useRef(2);
+  const pageRef = useRef(0);
   const oldestRef = useRef<number | undefined>(undefined);
   const newestRef = useRef<number>(0);
   const realDoneRef = useRef(false);
@@ -77,9 +77,19 @@ export default function FeedScreen() {
         });
       }
       if (reset && newestRef.current === 0) newestRef.current = Date.now();
-      realDoneRef.current = posts.length < 10;
+      const isDone = posts.length < 10;
+      realDoneRef.current = isDone;
+      // Si en el reset inicial no hay posts reales en D1, sembramos los primeros demo de inmediato
+      if (reset && isDone && posts.length === 0) {
+        setDemoPosts([...generateFeedPage(0), ...generateFeedPage(1)]);
+        pageRef.current = 2;
+      }
     } catch {
       realDoneRef.current = true;
+      if (reset) {
+        setDemoPosts([...generateFeedPage(0), ...generateFeedPage(1)]);
+        pageRef.current = 2;
+      }
     }
   }, []);
 
@@ -166,27 +176,32 @@ export default function FeedScreen() {
     } catch {}
   }, [user?.id]);
 
-  const loadMore = useCallback(() => {
+  const loadMore = useCallback(async () => {
     if (loadingMore) return;
     setLoadingMore(true);
-    const tasks: Promise<any>[] = [];
-    if (!realDoneRef.current) tasks.push(loadReal(false));
-    Promise.all(tasks).finally(() => {
-      setTimeout(() => {
+    try {
+      if (!realDoneRef.current) {
+        // Modo 1: Mientras existan posts reales en D1, paginamos exclusivamente posts reales.
+        // Se añaden al final de realPosts mediante setRealPosts.
+        await loadReal(false);
+      } else {
+        // Modo 2: Cuando los posts reales se agotaron (realDoneRef es true),
+        // comenzamos a paginar demoPosts de forma síncrona y determinista al final.
         const next = generateFeedPage(pageRef.current);
         pageRef.current += 1;
         setDemoPosts((p) => [...p, ...next]);
-        setLoadingMore(false);
-      }, 400);
-    });
+      }
+    } finally {
+      setLoadingMore(false);
+    }
   }, [loadingMore, loadReal]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
+    pageRef.current = 0;
+    setDemoPosts([]);
+    setPendingNew(0);
     Promise.all([loadReal(true)]).finally(() => {
-      pageRef.current = 2;
-      setDemoPosts([...generateFeedPage(0), ...generateFeedPage(1)]);
-      setPendingNew(0);
       setRefreshing(false);
     });
   }, [loadReal]);
