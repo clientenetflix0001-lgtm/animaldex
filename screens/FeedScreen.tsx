@@ -237,52 +237,54 @@ export default function FeedScreen() {
 
   // ---------- Móvil / tablet ----------
   return (
-    <View style={[styles.safe, { paddingTop: topInset }]}>
-      <View style={styles.header}>
-        <View style={styles.logoRow}>
-          <Image
-            source={require('../assets/images/animaldex-logo-mark.png')}
-            style={styles.logoMark}
-            contentFit="contain"
-          />
-          <Text style={styles.logo}>Animaldex</Text>
-          <Pressable
-            style={styles.qrBtn}
-            onPress={() => navigation.navigate('QRScanner')}
-            hitSlop={8}
-            accessibilityLabel="Escanear código QR"
-          >
-            <Ionicons name="qr-code-outline" size={22} color={colors.primary} />
-          </Pressable>
+    <View style={[styles.safe, { paddingTop: topInset }]} collapsable={false}>
+      <View style={styles.topChrome} collapsable={false}>
+        <View style={styles.header}>
+          <View style={styles.logoRow}>
+            <Image
+              source={require('../assets/images/animaldex-logo-mark.png')}
+              style={styles.logoMark}
+              contentFit="contain"
+            />
+            <Text style={styles.logo}>Animaldex</Text>
+            <Pressable
+              style={styles.qrBtn}
+              onPress={() => navigation.navigate('QRScanner')}
+              hitSlop={8}
+              accessibilityLabel="Escanear código QR"
+            >
+              <Ionicons name="qr-code-outline" size={22} color={colors.primary} />
+            </Pressable>
+          </View>
+          <View style={styles.headerRight}>
+            <Pressable
+              style={styles.searchBtn}
+              onPress={() => navigation.navigate('Explorar')}
+              hitSlop={8}
+              accessibilityLabel="Buscar"
+            >
+              <Ionicons name="search" size={22} color={colors.text} />
+            </Pressable>
+            <Pressable
+              style={styles.searchBtn}
+              onPress={() => navigation.navigate('Actividad')}
+              hitSlop={8}
+              accessibilityLabel="Actividad"
+            >
+              <View>
+                <Ionicons name="heart-outline" size={22} color={colors.text} />
+                {unread > 0 && (
+                  <View style={styles.activityBadge}>
+                    <Text style={styles.activityBadgeText}>{unread > 9 ? '9+' : unread}</Text>
+                  </View>
+                )}
+              </View>
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.headerRight}>
-          <Pressable
-            style={styles.searchBtn}
-            onPress={() => navigation.navigate('Explorar')}
-            hitSlop={8}
-            accessibilityLabel="Buscar"
-          >
-            <Ionicons name="search" size={22} color={colors.text} />
-          </Pressable>
-          <Pressable
-            style={styles.searchBtn}
-            onPress={() => navigation.navigate('Actividad')}
-            hitSlop={8}
-            accessibilityLabel="Actividad"
-          >
-            <View>
-              <Ionicons name="heart-outline" size={22} color={colors.text} />
-              {unread > 0 && (
-                <View style={styles.activityBadge}>
-                  <Text style={styles.activityBadgeText}>{unread > 9 ? '9+' : unread}</Text>
-                </View>
-              )}
-            </View>
-          </Pressable>
-        </View>
+        <ProfileSwitcher />
       </View>
-      <ProfileSwitcher />
-      <View style={{ flex: 1 }}>
+      <View style={styles.listWrap} collapsable={false}>
         {feedList}
         {newPill}
       </View>
@@ -291,7 +293,12 @@ export default function FeedScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1, backgroundColor: colors.bg, overflow: 'hidden' },
+  topChrome: {
+    backgroundColor: colors.bg,
+    zIndex: 2,
+  },
+  listWrap: { flex: 1, position: 'relative' },
   desktopRoot: { flex: 1, backgroundColor: colors.bg },
   desktopCenter: {
     flex: 1,

@@ -162,6 +162,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
           </Pressable>
         )}
       </View>
+      <View style={styles.feedSeparator} />
     </View>
   );
 }
@@ -174,7 +175,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     backgroundColor: colors.bg,
     margin: 0,
-    paddingBottom: spacing.md,
+    paddingBottom: 0,
   },
   header: {
     flexDirection: 'row',
@@ -235,10 +236,17 @@ const styles = StyleSheet.create({
     width: '100%',
     margin: 0,
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.md,
     paddingTop: 0,
   },
   likes: { fontWeight: '700', fontSize: 14, color: colors.text, marginBottom: 4 },
   caption: { fontSize: 14, color: colors.text, lineHeight: 20 },
   viewComments: { color: colors.textMuted, fontSize: 13, marginTop: 6 },
+  feedSeparator: {
+    width: '100%',
+    alignSelf: 'stretch',
+    height: 8,
+    backgroundColor: colors.border,
+    margin: 0,
+  },
 });
