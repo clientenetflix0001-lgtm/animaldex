@@ -36,6 +36,8 @@ export interface Post {
   id: string;
   petId: string;
   image: string;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
   caption: string;
   likes: number;
   minutesAgo: number;
@@ -325,6 +327,8 @@ export function makePost(id: string, seed: number, forcePet?: Pet): Post {
     id,
     petId: pet.id,
     image: petImage(pet.species, imgSeed),
+    imageWidth: 600,
+    imageHeight: 600,
     caption,
     likes: 40 + Math.floor(rng() * 4200),
     minutesAgo: 12 + Math.floor(seed * 38 + rng() * 30),

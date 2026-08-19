@@ -126,6 +126,8 @@ async function ensureProfilesSchema(env) {
   try {
     await env.DB.prepare('ALTER TABLE posts ADD COLUMN author_profile_id TEXT').run();
   } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE posts ADD COLUMN image_w INTEGER').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE posts ADD COLUMN image_h INTEGER').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN profile_id TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN care_status TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN sex TEXT').run(); } catch (_) {}
@@ -275,6 +277,8 @@ function postRow(r) {
     userId: r.user_id,
     petId: r.pet_id,
     image: r.image,
+    imageWidth: r.image_w ?? null,
+    imageHeight: r.image_h ?? null,
     caption: r.caption,
     createdAt: r.created_at,
     likeCount: r.like_count || 0,
@@ -324,7 +328,8 @@ const POST_SELECT = `
     pet.name AS pet_name, pet.emoji AS pet_emoji, pet.avatar_url AS pet_avatar, pet.species AS pet_species, pet.username AS pet_username,
     u.username AS username, u.name AS user_name,
     ap.id AS author_profile_id, ap.type AS author_profile_type, ap.name AS author_profile_name,
-    ap.username AS author_profile_username, ap.avatar_url AS author_profile_avatar
+    ap.username AS author_profile_username, ap.avatar_url AS author_profile_avatar,
+    p.image_w, p.image_h
   FROM posts p
   LEFT JOIN pets pet ON pet.id = p.pet_id
   LEFT JOIN users u ON u.id = p.user_id
@@ -1188,6 +1193,8 @@ async function handleDb(request, env) {
     if (action === 'createPost') {
       const petId = clean(body.petId, 80);
       const image = clean(body.image, 2000);
+      const imageWidth = Number.isInteger(body.imageWidth) && body.imageWidth > 0 ? body.imageWidth : null;
+      const imageHeight = Number.isInteger(body.imageHeight) && body.imageHeight > 0 ? body.imageHeight : null;
       const caption = clean(body.caption, 500);
       if (!image && !caption) return json({ error: 'Escribe algo o agrega una foto' }, 400);
       if (image && image.startsWith('data:')) return json({ error: 'La imagen debe subirse primero a Cloudflare' }, 400);
@@ -1204,7 +1211,7 @@ async function handleDb(request, env) {
         authorProfileId = personal ? personal.id : null;
       }
       const id = `post-${now}-${Math.random().toString(36).slice(2, 8)}`;
-      await d1(env, 'INSERT INTO posts (id, user_id, pet_id, image, caption, created_at, author_profile_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, userId, petId, image, caption, now, authorProfileId]);
+      await d1(env, 'INSERT INTO posts (id, user_id, pet_id, image, caption, created_at, author_profile_id, image_w, image_h) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, petId, image, caption, now, authorProfileId, imageWidth, imageHeight]);
       const rows = await d1(env, `${POST_SELECT} WHERE p.id = ?`, [id]);
       return json({ ok: true, post: postRow(rows[0]) });
     }

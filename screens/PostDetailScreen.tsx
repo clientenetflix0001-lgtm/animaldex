@@ -417,7 +417,12 @@ function PostDetailContent({ post }: { post: Post }) {
         <View style={[styles.dtCard, { height: cardH }]}>
           {!!post.image && (
           <View style={styles.dtImageCol}>
-            <AdaptivePostImage uri={post.image} maxHeight={820} />
+            <AdaptivePostImage
+              uri={post.image}
+              maxHeight={820}
+              imageWidth={post.imageWidth}
+              imageHeight={post.imageHeight}
+            />
           </View>
           )}
           <View style={styles.dtSideCol}>
@@ -455,7 +460,13 @@ function PostDetailContent({ post }: { post: Post }) {
     <View>
       {petHeader}
 
-      {!!post.image && <AdaptivePostImage uri={post.image} />}
+      {!!post.image && (
+        <AdaptivePostImage
+          uri={post.image}
+          imageWidth={post.imageWidth}
+          imageHeight={post.imageHeight}
+        />
+      )}
 
       {actionsRow}
 

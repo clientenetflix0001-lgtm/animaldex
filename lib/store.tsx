@@ -9,6 +9,8 @@ export function apiPostToPost(p: ApiPost): Post {
     id: p.id,
     petId: p.petId,
     image: p.image,
+    imageWidth: p.imageWidth ?? undefined,
+    imageHeight: p.imageHeight ?? undefined,
     caption: p.caption,
     likes: p.likeCount,
     minutesAgo: timeAgoMinutes(p.createdAt),
