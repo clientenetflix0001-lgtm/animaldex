@@ -514,11 +514,12 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   mobilePostCard: {
     backgroundColor: colors.card,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    borderRadius: radius.lg,
+    width: '100%',
+    marginTop: 0,
+    marginBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
     overflow: 'hidden',
-    ...shadow.card,
   },
   dtRoot: {
     flex: 1,

@@ -184,16 +184,18 @@ export const PostCard = memo(PostCardInner);
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    marginHorizontal: spacing.lg,
+    width: '100%',
     marginBottom: spacing.xl,
     overflow: 'hidden',
-    ...shadow.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     gap: spacing.md,
   },
   avatar: {

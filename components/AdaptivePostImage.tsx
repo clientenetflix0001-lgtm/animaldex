@@ -17,13 +17,9 @@ interface Props {
   onDoubleTap?: () => void;
 }
 
-// Cache global en memoria para URIs ya resueltas
-const resolvedRatioCache = new Map<string, number>();
-
 /**
  * Muestra la imagen dentro de un contenedor uniforme a ancho completo.
  * - Utiliza contentFit="cover" para llenar el contenedor sin bandas laterales ni deformación.
- * - Conoce su ratio de inmediato si la publicación trae imageWidth/imageHeight (A2).
  * - Permite tocar la imagen para abrir el visor en pantalla completa con la imagen completa sin recorte.
  * - Soporta doble tap para like si se proporciona onDoubleTap.
  */
@@ -38,13 +34,6 @@ export function AdaptivePostImage({
   const [modalVisible, setModalVisible] = useState(false);
   const lastTapRef = useRef(0);
   const singleTapTimerRef = useRef<any>(null);
-
-  const knownRatio =
-    imageWidth && imageHeight && imageWidth > 0 && imageHeight > 0
-      ? imageWidth / imageHeight
-      : resolvedRatioCache.get(uri);
-
-  const [ratio, setRatio] = useState<number>(knownRatio ?? 1);
 
   const handlePress = useCallback(() => {
     const now = Date.now();
@@ -83,18 +72,6 @@ export function AdaptivePostImage({
           contentPosition="center"
           transition={200}
           placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
-          onLoad={(e) => {
-            if (knownRatio) return;
-            const w = e.source?.width;
-            const h = e.source?.height;
-            if (w && h && w > 0 && h > 0) {
-              const newRatio = w / h;
-              resolvedRatioCache.set(uri, newRatio);
-              if (newRatio !== ratio) {
-                setRatio(newRatio);
-              }
-            }
-          }}
         />
       </Pressable>
 
