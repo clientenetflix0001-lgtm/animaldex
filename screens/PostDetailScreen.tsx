@@ -419,7 +419,7 @@ function PostDetailContent({ post }: { post: Post }) {
           <View style={styles.dtImageCol}>
             <AdaptivePostImage
               uri={post.image}
-              maxHeight={820}
+              containerHeight={cardH}
               imageWidth={post.imageWidth}
               imageHeight={post.imageHeight}
             />
@@ -457,12 +457,13 @@ function PostDetailContent({ post }: { post: Post }) {
 
   // ---------- Móvil / tablet (sin cambios) ----------
   const header = (
-    <View>
+    <View style={styles.mobilePostCard}>
       {petHeader}
 
       {!!post.image && (
         <AdaptivePostImage
           uri={post.image}
+          containerHeight={380}
           imageWidth={post.imageWidth}
           imageHeight={post.imageHeight}
         />
@@ -511,6 +512,14 @@ function PostDetailContent({ post }: { post: Post }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  mobilePostCard: {
+    backgroundColor: colors.card,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    ...shadow.card,
+  },
   dtRoot: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -553,7 +562,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   headerRight: { alignItems: 'flex-end', gap: 6 },
@@ -602,7 +612,6 @@ const styles = StyleSheet.create({
   petName: { fontWeight: '700', fontSize: 15, color: colors.text },
   subText: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   time: { fontSize: 11, color: colors.textMuted },
-  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -610,7 +619,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.lg,
   },
-  metaBlock: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  metaBlock: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, paddingTop: spacing.sm },
   likes: { fontWeight: '700', fontSize: 14, color: colors.text, marginBottom: 4 },
   caption: { fontSize: 14, color: colors.text, lineHeight: 20 },
   captionName: { fontWeight: '700' },

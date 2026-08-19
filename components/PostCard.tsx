@@ -56,8 +56,6 @@ function PostCardInner({
 
   const heartScale = useSharedValue(1);
   const bigHeart = useSharedValue(0);
-  const [lastTap, setLastTap] = useState(0);
-
   const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heartScale.value }] }));
   const bigHeartStyle = useAnimatedStyle(() => ({
     opacity: bigHeart.value,
@@ -73,20 +71,16 @@ function PostCardInner({
     onToggleLike(post.id);
   }, [liked, post.id, onToggleLike, animateLike]);
 
-  const handleImageTap = useCallback(() => {
-    const now = Date.now();
-    if (now - lastTap < 280) {
-      if (!liked) {
-        onToggleLike(post.id);
-        animateLike();
-      }
-      bigHeart.value = withSequence(
-        withSpring(1, { damping: 12 }),
-        withDelay(350, withTiming(0, { duration: 250 }))
-      );
+  const handleImageDoubleTap = useCallback(() => {
+    if (!liked) {
+      onToggleLike(post.id);
+      animateLike();
     }
-    setLastTap(now);
-  }, [lastTap, liked, post.id, onToggleLike, animateLike, bigHeart]);
+    bigHeart.value = withSequence(
+      withSpring(1, { damping: 12 }),
+      withDelay(350, withTiming(0, { duration: 250 }))
+    );
+  }, [liked, post.id, onToggleLike, animateLike, bigHeart]);
 
   const totalComments = (post.commentCount ?? post.comments.length) + extraComments;
   const likeCount = post.real ? post.likes + (liked ? 1 : 0) : post.likes + (liked ? 1 : 0);
@@ -128,18 +122,18 @@ function PostCardInner({
 
       {/* Image (solo si hay foto) */}
       {!!post.image && (
-        <Pressable onPress={handleImageTap}>
-          <View style={styles.imageWrap}>
-            <AdaptivePostImage
-              uri={post.image}
-              imageWidth={post.imageWidth}
-              imageHeight={post.imageHeight}
-            />
-            <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">
-              <Ionicons name="heart" size={96} color="#fff" />
-            </Animated.View>
-          </View>
-        </Pressable>
+        <View style={styles.imageWrap}>
+          <AdaptivePostImage
+            uri={post.image}
+            imageWidth={post.imageWidth}
+            imageHeight={post.imageHeight}
+            containerHeight={350}
+            onDoubleTap={handleImageDoubleTap}
+          />
+          <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">
+            <Ionicons name="heart" size={96} color="#fff" />
+          </Animated.View>
+        </View>
       )}
 
       {/* Actions */}
@@ -215,7 +209,6 @@ const styles = StyleSheet.create({
   subText: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   time: { fontSize: 11, color: colors.textMuted },
   imageWrap: { position: 'relative' },
-  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   bigHeart: {
     position: 'absolute',
     top: 0,
