@@ -16,21 +16,37 @@ import { sharePost } from '../lib/share';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from './AdaptivePostImage';
 import { useNavigation } from '@react-navigation/native';
-import { useStore } from '../lib/store';
 import { colors, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 
 interface Props {
   post: Post;
+  /**
+   * El estado social llega por props (patrón de AlertCard) en lugar de
+   * leerse del store dentro de la tarjeta. Así un like solo re-renderiza
+   * su propia publicación y no todas las montadas.
+   */
+  liked: boolean;
+  saved: boolean;
+  /** Comentarios propios aún no confirmados por el servidor. */
+  extraComments: number;
+  onToggleLike: (postId: string) => void;
+  onToggleSave: (postId: string) => void;
   onOpenPet: (petId: string) => void;
   onOpenPost: (post: Post) => void;
 }
 
-function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
+function PostCardInner({
+  post,
+  liked,
+  saved,
+  extraComments,
+  onToggleLike,
+  onToggleSave,
+  onOpenPet,
+  onOpenPost,
+}: Props) {
   const navigation = useNavigation<any>();
-  const { likedPosts, savedPosts, toggleLike, toggleSave, myComments } = useStore();
-  const liked = likedPosts.includes(post.id);
-  const saved = savedPosts.includes(post.id);
   const disp = getPostDisplay(post);
   const hasPet = !!(post.petId && post.petName);
   const orgType = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
@@ -40,8 +56,6 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
 
   const heartScale = useSharedValue(1);
   const bigHeart = useSharedValue(0);
-  const [lastTap, setLastTap] = useState(0);
-
   const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heartScale.value }] }));
   const bigHeartStyle = useAnimatedStyle(() => ({
     opacity: bigHeart.value,
@@ -54,26 +68,21 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
 
   const handleLikePress = useCallback(() => {
     if (!liked) animateLike();
-    toggleLike(post.id);
-  }, [liked, post.id, toggleLike, animateLike]);
+    onToggleLike(post.id);
+  }, [liked, post.id, onToggleLike, animateLike]);
 
-  const handleImageTap = useCallback(() => {
-    const now = Date.now();
-    if (now - lastTap < 280) {
-      if (!liked) {
-        toggleLike(post.id);
-        animateLike();
-      }
-      bigHeart.value = withSequence(
-        withSpring(1, { damping: 12 }),
-        withDelay(350, withTiming(0, { duration: 250 }))
-      );
+  const handleImageDoubleTap = useCallback(() => {
+    if (!liked) {
+      onToggleLike(post.id);
+      animateLike();
     }
-    setLastTap(now);
-  }, [lastTap, liked, post.id, toggleLike, animateLike, bigHeart]);
+    bigHeart.value = withSequence(
+      withSpring(1, { damping: 12 }),
+      withDelay(350, withTiming(0, { duration: 250 }))
+    );
+  }, [liked, post.id, onToggleLike, animateLike, bigHeart]);
 
-  const totalComments =
-    (post.commentCount ?? post.comments.length) + (myComments[post.id]?.length ?? 0);
+  const totalComments = (post.commentCount ?? post.comments.length) + extraComments;
   const likeCount = post.real ? post.likes + (liked ? 1 : 0) : post.likes + (liked ? 1 : 0);
 
   return (
@@ -113,14 +122,18 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
 
       {/* Image (solo si hay foto) */}
       {!!post.image && (
-        <Pressable onPress={handleImageTap}>
-          <View style={styles.imageWrap}>
-            <AdaptivePostImage uri={post.image} />
-            <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">
-              <Ionicons name="heart" size={96} color="#fff" />
-            </Animated.View>
-          </View>
-        </Pressable>
+        <View style={styles.imageWrap}>
+          <AdaptivePostImage
+            uri={post.image}
+            imageWidth={post.imageWidth}
+            imageHeight={post.imageHeight}
+            containerHeight={350}
+            onDoubleTap={handleImageDoubleTap}
+          />
+          <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">
+            <Ionicons name="heart" size={96} color="#fff" />
+          </Animated.View>
+        </View>
       )}
 
       {/* Actions */}
@@ -141,7 +154,7 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
           <Ionicons name="paper-plane-outline" size={24} color={colors.text} />
         </Pressable>
         <View style={{ flex: 1 }} />
-        <Pressable onPress={() => toggleSave(post.id)} hitSlop={8}>
+        <Pressable onPress={() => onToggleSave(post.id)} hitSlop={8}>
           <Ionicons
             name={saved ? 'bookmark' : 'bookmark-outline'}
             size={24}
@@ -171,16 +184,18 @@ export const PostCard = memo(PostCardInner);
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    marginHorizontal: spacing.lg,
+    width: '100%',
     marginBottom: spacing.xl,
     overflow: 'hidden',
-    ...shadow.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     gap: spacing.md,
   },
   avatar: {
@@ -196,7 +211,6 @@ const styles = StyleSheet.create({
   subText: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   time: { fontSize: 11, color: colors.textMuted },
   imageWrap: { position: 'relative' },
-  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   bigHeart: {
     position: 'absolute',
     top: 0,

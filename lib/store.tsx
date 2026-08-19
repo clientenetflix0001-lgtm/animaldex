@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Post, Comment, CURRENT_USER_ID } from './data';
 import { auth, db, setToken, loadToken, ApiUser, ApiPet, ApiPost, timeAgoMinutes } from './db';
@@ -9,6 +9,8 @@ export function apiPostToPost(p: ApiPost): Post {
     id: p.id,
     petId: p.petId,
     image: p.image,
+    imageWidth: p.imageWidth ?? undefined,
+    imageHeight: p.imageHeight ?? undefined,
     caption: p.caption,
     likes: p.likeCount,
     minutesAgo: timeAgoMinutes(p.createdAt),
@@ -251,44 +253,77 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setEditedCaptions((m) => ({ ...m, [postId]: caption }));
   }, []);
 
-  return (
-    <StoreContext.Provider
-      value={{
-        user,
-        authReady,
-        login,
-        register,
-        logout,
-        refreshUser,
-        myPets,
-        refreshMyPets,
-        likedPosts,
-        savedPosts,
-        followedPets,
-        followedUsers,
-        verifiedPhone,
-        toggleLike,
-        toggleSave,
-        toggleFollowPet,
-        toggleFollowUser,
-        addComment,
-        setVerifiedPhone,
-        myComments,
-        ready,
-        createdPosts,
-        notifyPostCreated,
-        consumeCreatedPosts,
-        deletedPostIds,
-        editedCaptions,
-        markPostDeleted,
-        markPostEdited,
-        pendingTagCode,
-        setPendingTagCode,
-      }}
-    >
-      {children}
-    </StoreContext.Provider>
+  // El valor del contexto se memoiza: como objeto literal se recreaba en
+  // cada render del provider y despertaba a todos los consumidores aunque
+  // ningún dato hubiera cambiado.
+  const value = useMemo<StoreState>(
+    () => ({
+      user,
+      authReady,
+      login,
+      register,
+      logout,
+      refreshUser,
+      myPets,
+      refreshMyPets,
+      likedPosts,
+      savedPosts,
+      followedPets,
+      followedUsers,
+      verifiedPhone,
+      toggleLike,
+      toggleSave,
+      toggleFollowPet,
+      toggleFollowUser,
+      addComment,
+      setVerifiedPhone,
+      myComments,
+      ready,
+      createdPosts,
+      notifyPostCreated,
+      consumeCreatedPosts,
+      deletedPostIds,
+      editedCaptions,
+      markPostDeleted,
+      markPostEdited,
+      pendingTagCode,
+      setPendingTagCode,
+    }),
+    [
+      user,
+      authReady,
+      login,
+      register,
+      logout,
+      refreshUser,
+      myPets,
+      refreshMyPets,
+      likedPosts,
+      savedPosts,
+      followedPets,
+      followedUsers,
+      verifiedPhone,
+      toggleLike,
+      toggleSave,
+      toggleFollowPet,
+      toggleFollowUser,
+      addComment,
+      setVerifiedPhone,
+      myComments,
+      ready,
+      createdPosts,
+      notifyPostCreated,
+      consumeCreatedPosts,
+      deletedPostIds,
+      editedCaptions,
+      markPostDeleted,
+      markPostEdited,
+      pendingTagCode,
+      setPendingTagCode,
+    ]
   );
+
+  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
 export function useStore(): StoreState {

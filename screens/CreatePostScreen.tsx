@@ -34,6 +34,7 @@ export default function CreatePostScreen() {
   const [selectedPet, setSelectedPet] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoDimensions, setPhotoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [uploadNote, setUploadNote] = useState('');
@@ -71,6 +72,11 @@ export default function CreatePostScreen() {
         Alert.alert('Error', 'No se pudo subir la imagen a Cloudflare Images');
       } else {
         setPhoto(up.url);
+        if (asset.width && asset.height && asset.width > 0 && asset.height > 0) {
+          setPhotoDimensions({ width: asset.width, height: asset.height });
+        } else {
+          setPhotoDimensions(null);
+        }
         setUploadNote('Subida a Cloudflare Images ☁️✓');
         db.registerImage(up.url, undefined, 'post').catch(() => {});
       }
@@ -88,12 +94,20 @@ export default function CreatePostScreen() {
     }
     setPublishing(true);
     try {
-      const { post } = await db.createPost(activePetId || '', photo || '', caption.trim(), activeProfileId);
+      const { post } = await db.createPost(
+        activePetId || '',
+        photo || '',
+        caption.trim(),
+        activeProfileId,
+        photoDimensions?.width ?? null,
+        photoDimensions?.height ?? null
+      );
       // Inserción incremental: el post aparece arriba del feed al instante,
       // sin recargar nada.
       notifyPostCreated(apiPostToPost(post));
       setCaption('');
       setPhoto(null);
+      setPhotoDimensions(null);
       setUploadNote('');
       navigation.navigate('Inicio');
     } catch (e: any) {
@@ -101,7 +115,7 @@ export default function CreatePostScreen() {
     } finally {
       setPublishing(false);
     }
-  }, [activePetId, photo, caption, navigation, notifyPostCreated, activeProfileId]);
+  }, [activePetId, photo, photoDimensions, caption, navigation, notifyPostCreated, activeProfileId]);
 
   const wrapStyle = desktopWeb ? styles.desktopWrap : styles.mobileWrap;
 
