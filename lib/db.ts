@@ -79,6 +79,7 @@ export interface ApiPet {
   avatarUrl: string | null;
   createdAt: number;
   profileId?: string | null;
+  /** Estado operativo en el refugio. No completa una adopción. */
   careStatus?: 'en_adopcion' | 'en_recuperacion' | 'adoptado' | null;
   sex?: string | null;
 }
@@ -280,7 +281,8 @@ export const db = {
   publicProfile: (idOrUsername: { profileId?: string; username?: string }): Promise<{
     profile: import('../features/profiles/profileTypes').PublicProfile;
     pets: ApiPet[];
-    stats: { adoption: number; adopted: number; recovering: number; followers: number };
+    stats: { pets: number; adoption: number; adopted: number; recovering: number; followers: number };
+    transferredPets?: ApiPet[];
     isOwner: boolean;
     isFollowing: boolean;
   }> => call('/db', { action: 'publicProfile', ...idOrUsername }),

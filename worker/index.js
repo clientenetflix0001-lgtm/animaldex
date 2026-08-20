@@ -150,6 +150,25 @@ async function ensureProfilesSchema(env) {
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN sex TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN location TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN phone TEXT').run(); } catch (_) {}
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_profile ON pets (profile_id)');
+  // Historial de adopciones completadas. Una fila = una transferencia real del
+  // MISMO pet_id (no se duplica el perfil). care_status no escribe acá.
+  // Futuro (no expuesto todavía):
+  //   INSERT pet_transfers (...);
+  //   UPDATE pets SET user_id = :nuevo, profile_id = :perfilNuevoONull WHERE id = :petId;
+  //   → Mascotas baja porque ya no tiene profile_id del refugio
+  //   → Adoptados sube porque hay fila en pet_transfers
+  await d1(env, `CREATE TABLE IF NOT EXISTS pet_transfers (
+    id TEXT PRIMARY KEY,
+    pet_id TEXT NOT NULL,
+    from_profile_id TEXT NOT NULL,
+    from_user_id TEXT NOT NULL,
+    to_user_id TEXT NOT NULL,
+    to_profile_id TEXT,
+    created_at INTEGER NOT NULL
+  )`);
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pet_transfers_from ON pet_transfers (from_profile_id)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pet_transfers_pet ON pet_transfers (pet_id)');
   env._profilesReady = true;
 }
 
@@ -500,24 +519,38 @@ async function handleDb(request, env) {
       if (!rows[0]) return json({ error: 'Perfil no encontrado' }, 404);
       const pr = rows[0];
       const viewerId = await authUser(request, env, body);
-      const [pets, adoption, adopted, recovering, followers, following] = await Promise.all([
+      // Mascotas = todas las asociadas HOY a este perfil (profile_id),
+      // sin importar care_status. Adoptados = transferencias históricas.
+      const [pets, petCount, adopted, recovering, transferred, followers, following] = await Promise.all([
         d1(env, 'SELECT * FROM pets WHERE profile_id = ? ORDER BY created_at DESC', [pr.id]),
-        d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_adopcion'", [pr.id]),
-        d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'adoptado'", [pr.id]),
+        d1(env, 'SELECT COUNT(*) AS n FROM pets WHERE profile_id = ?', [pr.id]),
+        d1(env, 'SELECT COUNT(*) AS n FROM pet_transfers WHERE from_profile_id = ?', [pr.id]),
         d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_recuperacion'", [pr.id]),
+        d1(
+          env,
+          `SELECT p.* FROM pet_transfers t
+           JOIN pets p ON p.id = t.pet_id
+           WHERE t.from_profile_id = ?
+           ORDER BY t.created_at DESC`,
+          [pr.id]
+        ),
         d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'profile' AND target_id = ?", [pr.id]),
         viewerId
           ? d1(env, "SELECT 1 FROM follows WHERE user_id = ? AND target_type = 'profile' AND target_id = ? LIMIT 1", [viewerId, pr.id])
           : Promise.resolve([]),
       ]);
+      const petsN = petCount[0]?.n || 0;
+      const recoveringN = recovering[0]?.n || 0;
       return json({
         ok: true,
         profile: profileRow(pr),
         pets: pets.map(petRow),
+        transferredPets: transferred.map(petRow),
         stats: {
-          adoption: adoption[0]?.n || 0,
+          pets: petsN,
+          adoption: Math.max(0, petsN - recoveringN),
           adopted: adopted[0]?.n || 0,
-          recovering: recovering[0]?.n || 0,
+          recovering: recoveringN,
           followers: followers[0]?.n || 0,
         },
         isOwner: viewerId === pr.account_id,
