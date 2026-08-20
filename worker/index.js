@@ -31,6 +31,22 @@ function json(data, status = 200) {
   });
 }
 
+const POST_CAPTION_MAX = 1000;
+const ALLOWED_POST_BACKGROUNDS = new Set([
+  'orange-gradient-01',
+  'pink-gradient-01',
+  'blue-gradient-01',
+  'teal-gradient-01',
+  'sunset-gradient-01',
+  'purple-gradient-01',
+  'forest-gradient-01',
+  'night-gradient-01',
+  'solid-coral-01',
+  'solid-teal-01',
+  'solid-navy-01',
+  'animaldex-paws-01',
+]);
+
 const clean = (s, max = 300) => String(s == null ? '' : s).slice(0, max).trim();
 
 // Usuarios con permiso para generar chapitas QR (links de invitación).
@@ -128,6 +144,7 @@ async function ensureProfilesSchema(env) {
   } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE posts ADD COLUMN image_w INTEGER').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE posts ADD COLUMN image_h INTEGER').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE posts ADD COLUMN background_id TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN profile_id TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN care_status TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN sex TEXT').run(); } catch (_) {}
@@ -295,6 +312,7 @@ function postRow(r) {
     authorProfileName: r.author_profile_name || null,
     authorProfileUsername: r.author_profile_username || null,
     authorProfileAvatar: r.author_profile_avatar || null,
+    backgroundId: r.background_id || null,
   };
 }
 
@@ -1195,9 +1213,17 @@ async function handleDb(request, env) {
       const image = clean(body.image, 2000);
       const imageWidth = Number.isInteger(body.imageWidth) && body.imageWidth > 0 ? body.imageWidth : null;
       const imageHeight = Number.isInteger(body.imageHeight) && body.imageHeight > 0 ? body.imageHeight : null;
-      const caption = clean(body.caption, 500);
+      const caption = clean(body.caption, POST_CAPTION_MAX);
+      let backgroundId = image ? null : clean(body.backgroundId, 80) || null;
       if (!image && !caption) return json({ error: 'Escribe algo o agrega una foto' }, 400);
       if (image && image.startsWith('data:')) return json({ error: 'La imagen debe subirse primero a Cloudflare' }, 400);
+      if (!image) {
+        if (!backgroundId || !ALLOWED_POST_BACKGROUNDS.has(backgroundId)) {
+          return json({ error: 'Elegí un fondo para la publicación de texto' }, 400);
+        }
+      } else {
+        backgroundId = null;
+      }
       if (petId) {
         const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
         if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
@@ -1211,7 +1237,7 @@ async function handleDb(request, env) {
         authorProfileId = personal ? personal.id : null;
       }
       const id = `post-${now}-${Math.random().toString(36).slice(2, 8)}`;
-      await d1(env, 'INSERT INTO posts (id, user_id, pet_id, image, caption, created_at, author_profile_id, image_w, image_h) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, petId, image, caption, now, authorProfileId, imageWidth, imageHeight]);
+      await d1(env, 'INSERT INTO posts (id, user_id, pet_id, image, caption, created_at, author_profile_id, image_w, image_h, background_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, petId, image, caption, now, authorProfileId, imageWidth, imageHeight, backgroundId]);
       const rows = await d1(env, `${POST_SELECT} WHERE p.id = ?`, [id]);
       return json({ ok: true, post: postRow(rows[0]) });
     }
@@ -1290,7 +1316,7 @@ async function handleDb(request, env) {
 
     if (action === 'updatePost') {
       const postId = clean(body.postId, 80);
-      const caption = clean(body.caption, 500);
+      const caption = clean(body.caption, POST_CAPTION_MAX);
       const rows = await d1(env, 'SELECT id FROM posts WHERE id = ? AND user_id = ?', [postId, userId]);
       if (!rows[0]) return json({ error: 'Esa publicación no es tuya' }, 403);
       await d1(env, 'UPDATE posts SET caption = ? WHERE id = ?', [caption, postId]);

@@ -21,6 +21,7 @@ import { postNavParams, sharePublicProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
+import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import ProfileBadge from '../features/profiles/ProfileBadge';
@@ -104,6 +105,7 @@ export default function PublicProfileScreen() {
   );
 
   const tile = (width - spacing.lg * 2 - 12) / 2;
+  const postTile = (width - spacing.lg * 2 - 4) / 3;
 
   if (loading || !profile) {
     return (
@@ -224,10 +226,7 @@ export default function PublicProfileScreen() {
           contentContainerStyle={{ paddingBottom: 40 }}
           renderItem={({ item }) => (
             <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item))}>
-              <Image
-                source={{ uri: thumb(item.image, 300) }}
-                style={{ width: (width - spacing.lg * 2 - 4) / 3, height: (width - spacing.lg * 2 - 4) / 3, borderRadius: 8, backgroundColor: colors.border }}
-              />
+              <PostGridMedia post={item} size={postTile} />
             </Pressable>
           )}
           ListEmptyComponent={
@@ -251,15 +250,7 @@ export default function PublicProfileScreen() {
           contentContainerStyle={{ paddingBottom: 40 }}
           renderItem={({ item }) => (
             <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item))}>
-              <Image
-                source={{ uri: thumb(item.image, 300) }}
-                style={{
-                  width: (width - spacing.lg * 2 - 4) / 3,
-                  height: (width - spacing.lg * 2 - 4) / 3,
-                  borderRadius: 8,
-                  backgroundColor: colors.border,
-                }}
-              />
+              <PostGridMedia post={item} size={postTile} />
             </Pressable>
           )}
           ListEmptyComponent={<Text style={styles.empty}>Este perfil todavía no publicó.</Text>}

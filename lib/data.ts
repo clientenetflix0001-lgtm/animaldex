@@ -42,6 +42,8 @@ export interface Post {
   likes: number;
   minutesAgo: number;
   comments: Comment[];
+  /** Id de catálogo para posts de solo texto. Null/ausente = foto o texto legado. */
+  backgroundId?: string | null;
   // Campos presentes solo en publicaciones reales (base de datos)
   real?: boolean;
   authorUserId?: string;

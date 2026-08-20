@@ -12,6 +12,7 @@ export function apiPostToPost(p: ApiPost): Post {
     imageWidth: p.imageWidth ?? undefined,
     imageHeight: p.imageHeight ?? undefined,
     caption: p.caption,
+    backgroundId: p.backgroundId ?? null,
     likes: p.likeCount,
     minutesAgo: timeAgoMinutes(p.createdAt),
     comments: [],
