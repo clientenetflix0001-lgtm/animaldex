@@ -18,6 +18,7 @@ import { db, ApiPet } from '../lib/db';
 import { postNavParams } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { LoadingFooter } from '../components/LoadingFooter';
+import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
@@ -252,12 +253,7 @@ export default function ExploreScreen() {
           ListFooterComponent={<LoadingFooter />}
           renderItem={({ item }) => (
             <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item))}>
-              <Image
-                source={{ uri: thumb(item.image, 300) }}
-                style={{ width: tile, height: tile, borderRadius: radius.sm, backgroundColor: colors.border }}
-                contentFit="cover"
-                transition={250}
-              />
+              <PostGridMedia post={item} size={tile} />
             </Pressable>
           )}
           showsVerticalScrollIndicator={false}

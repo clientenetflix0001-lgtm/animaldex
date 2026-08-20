@@ -24,6 +24,12 @@ import { resolvePost, sharePost } from '../lib/share';
 import { getPostDisplay } from '../lib/postDisplay';
 import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from '../components/AdaptivePostImage';
+import { PostBackgroundCard } from '../components/PostBackgroundCard';
+import {
+  POST_CAPTION_MAX,
+  backgroundTextNeedsSeeMore,
+  isTextBackgroundPost,
+} from '../lib/postBackgrounds';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint } from '../lib/responsive';
@@ -312,7 +318,7 @@ function PostDetailContent({ post }: { post: Post }) {
         value={captionDraft}
         onChangeText={setCaptionDraft}
         multiline
-        maxLength={280}
+        maxLength={POST_CAPTION_MAX}
         autoFocus
         placeholder="Escribe el nuevo pie de foto..."
         placeholderTextColor={colors.textMuted}
@@ -409,6 +415,11 @@ function PostDetailContent({ post }: { post: Post }) {
     </View>
   );
 
+  const isBgPost = isTextBackgroundPost(post);
+  const showFullCaptionBelow = isBgPost && !editing && backgroundTextNeedsSeeMore(effectiveCaption);
+  const detailCaption =
+    editing || !isBgPost || showFullCaptionBelow ? captionContent : null;
+
   // ---------- Escritorio: dos columnas (imagen + conversación) ----------
   if (desktopWeb) {
     const cardH = Math.min(height - 140, 820);
@@ -420,6 +431,11 @@ function PostDetailContent({ post }: { post: Post }) {
             <AdaptivePostImage uri={post.image} maxHeight={820} />
           </View>
           )}
+          {isBgPost && post.backgroundId ? (
+            <View style={styles.dtImageCol}>
+              <PostBackgroundCard backgroundId={post.backgroundId} text={effectiveCaption} />
+            </View>
+          ) : null}
           <View style={styles.dtSideCol}>
             {petHeader}
             <View style={styles.dtDivider} />
@@ -427,7 +443,9 @@ function PostDetailContent({ post }: { post: Post }) {
               style={{ flex: 1 }}
               data={allComments}
               keyExtractor={(c) => c.id}
-              ListHeaderComponent={<View style={styles.dtCaptionBlock}>{captionContent}</View>}
+              ListHeaderComponent={
+                detailCaption ? <View style={styles.dtCaptionBlock}>{detailCaption}</View> : null
+              }
               ListEmptyComponent={
                 <View style={styles.emptyComments}>
                   <Text style={styles.emptyEmoji}>💬</Text>
@@ -456,12 +474,15 @@ function PostDetailContent({ post }: { post: Post }) {
       {petHeader}
 
       {!!post.image && <AdaptivePostImage uri={post.image} />}
+      {isBgPost && post.backgroundId ? (
+        <PostBackgroundCard backgroundId={post.backgroundId} text={effectiveCaption} />
+      ) : null}
 
       {actionsRow}
 
       <View style={styles.metaBlock}>
         <Text style={styles.likes}>{formatCount(likeCount)} me gusta</Text>
-        {captionContent}
+        {detailCaption}
       </View>
 
       <Text style={styles.commentsTitle}>

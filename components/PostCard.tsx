@@ -15,6 +15,8 @@ import { getPostDisplay } from '../lib/postDisplay';
 import { sharePost } from '../lib/share';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from './AdaptivePostImage';
+import { PostBackgroundCard } from './PostBackgroundCard';
+import { isTextBackgroundPost } from '../lib/postBackgrounds';
 import { useNavigation } from '@react-navigation/native';
 import { useStore } from '../lib/store';
 import { colors, radius, shadow, spacing } from '../lib/theme';
@@ -123,6 +125,22 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
         </Pressable>
       )}
 
+      {/* Texto + fondo prediseñado (posts nuevos sin foto) */}
+      {isTextBackgroundPost(post) && post.backgroundId && (
+        <Pressable onPress={handleImageTap}>
+          <View style={styles.imageWrap}>
+            <PostBackgroundCard
+              backgroundId={post.backgroundId}
+              text={post.caption}
+              onSeeMore={() => onOpenPost(post)}
+            />
+            <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">
+              <Ionicons name="heart" size={96} color="#fff" />
+            </Animated.View>
+          </View>
+        </Pressable>
+      )}
+
       {/* Actions */}
       <View style={styles.actions}>
         <Pressable onPress={handleLikePress} hitSlop={8} style={styles.actionBtn}>
@@ -153,7 +171,9 @@ function PostCardInner({ post, onOpenPet, onOpenPost }: Props) {
       {/* Meta */}
       <View style={styles.meta}>
         <Text style={styles.likes}>{formatCount(likeCount)} me gusta</Text>
-        <Text style={styles.caption}>{post.caption}</Text>
+        {!isTextBackgroundPost(post) && (
+          <Text style={styles.caption}>{post.caption}</Text>
+        )}
         {totalComments > 0 && (
           <Pressable onPress={() => onOpenPost(post)}>
             <Text style={styles.viewComments}>
