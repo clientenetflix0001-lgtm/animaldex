@@ -10,6 +10,7 @@ export function apiPostToPost(p: ApiPost): Post {
     petId: p.petId,
     image: p.image,
     caption: p.caption,
+    backgroundId: p.backgroundId ?? null,
     likes: p.likeCount,
     minutesAgo: timeAgoMinutes(p.createdAt),
     comments: [],
