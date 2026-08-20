@@ -6,7 +6,6 @@ import {
   FlatList,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
@@ -25,6 +24,7 @@ import { getPostDisplay } from '../lib/postDisplay';
 import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from '../components/AdaptivePostImage';
 import { PostBackgroundCard } from '../components/PostBackgroundCard';
+import { CommentKeyboardView } from '../components/CommentKeyboardView';
 import {
   POST_CAPTION_MAX,
   backgroundTextNeedsSeeMore,
@@ -511,11 +511,7 @@ function PostDetailContent({ post }: { post: Post }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={90}
-      >
+      <CommentKeyboardView>
         <FlatList
           data={allComments}
           keyExtractor={(c) => c.id}
@@ -523,10 +519,11 @@ function PostDetailContent({ post }: { post: Post }) {
           contentContainerStyle={{ paddingBottom: spacing.xl }}
           renderItem={renderComment}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         />
 
         {inputBar}
-      </KeyboardAvoidingView>
+      </CommentKeyboardView>
     </SafeAreaView>
   );
 }
