@@ -25,9 +25,10 @@ import { colors, spacing, radius } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import type { PublicProfile } from '../features/profiles/profileTypes';
+import { filterShelterPets, type ShelterPetTab } from '../lib/protectorPets';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-type TabKey = 'en_adopcion' | 'en_recuperacion' | 'adoptado' | 'posts';
+type TabKey = ShelterPetTab;
 
 const TABS: { id: TabKey; label: string }[] = [
   { id: 'en_adopcion', label: 'En adopción' },
@@ -44,7 +45,8 @@ export default function PublicProfileScreen() {
   const { width } = useWindowDimensions();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [pets, setPets] = useState<ApiPet[]>([]);
-  const [stats, setStats] = useState({ adoption: 0, adopted: 0, recovering: 0, followers: 0 });
+  const [transferredPets, setTransferredPets] = useState<ApiPet[]>([]);
+  const [stats, setStats] = useState({ pets: 0, adoption: 0, adopted: 0, recovering: 0, followers: 0 });
   const [isOwner, setIsOwner] = useState(false);
   const [following, setFollowing] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -60,7 +62,14 @@ export default function PublicProfileScreen() {
       const feed = await db.profilePosts(pub.profile.id);
       setProfile(pub.profile);
       setPets(pub.pets);
-      setStats(pub.stats);
+      setTransferredPets(pub.transferredPets || []);
+      setStats({
+        pets: pub.stats.pets ?? (pub.pets?.length || 0),
+        adoption: pub.stats.adoption || 0,
+        adopted: pub.stats.adopted || 0,
+        recovering: pub.stats.recovering || 0,
+        followers: pub.stats.followers || 0,
+      });
       setIsOwner(pub.isOwner);
       setFollowing(pub.isFollowing);
       setPosts(feed.posts.map(apiPostToPost));
@@ -98,10 +107,10 @@ export default function PublicProfileScreen() {
     }
   }, [following, profile?.id, routeProfileId]);
 
-  const filteredPets = useMemo(
-    () => pets.filter((p) => (p.careStatus || '') === tab),
-    [pets, tab]
-  );
+  const filteredPets = useMemo(() => {
+    if (tab === 'adoptado') return transferredPets;
+    return filterShelterPets(pets, tab);
+  }, [pets, transferredPets, tab]);
 
   const tile = (width - spacing.lg * 2 - 12) / 2;
 
@@ -162,7 +171,7 @@ export default function PublicProfileScreen() {
 
       {isProtector && (
         <View style={styles.stats}>
-          <StatBlock value={String(stats.adoption)} label="En adopción" />
+          <StatBlock value={String(stats.pets)} label="Mascotas" />
           <StatBlock value={formatCount(stats.followers)} label="Seguidores" />
           <StatBlock value={String(stats.adopted)} label="Adoptados" />
         </View>
@@ -299,7 +308,7 @@ export default function PublicProfileScreen() {
                 ? 'No hay mascotas en adopción todavía.'
                 : tab === 'en_recuperacion'
                 ? 'No hay mascotas en recuperación.'
-                : 'Todavía no hay adoptados registrados.'}
+                : 'Las adopciones completadas aparecerán cuando se transfiera el perfil de la mascota al nuevo hogar.'}
             </Text>
           }
         />
