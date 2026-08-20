@@ -23,6 +23,13 @@ import { thumb, petFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ProfileSwitcher, useProfiles } from '../features/profiles';
+import { PostBackgroundCard, PostBackgroundChip } from '../components/PostBackgroundCard';
+import {
+  DEFAULT_POST_BACKGROUND_ID,
+  POST_CAPTION_MAX,
+  getActivePostBackgrounds,
+  isAllowedBackgroundId,
+} from '../lib/postBackgrounds';
 
 export default function CreatePostScreen() {
   const navigation = useNavigation<any>();
@@ -34,6 +41,8 @@ export default function CreatePostScreen() {
   const [selectedPet, setSelectedPet] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoDimensions, setPhotoDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [backgroundId, setBackgroundId] = useState(DEFAULT_POST_BACKGROUND_ID);
   const [uploading, setUploading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [uploadNote, setUploadNote] = useState('');
@@ -71,6 +80,11 @@ export default function CreatePostScreen() {
         Alert.alert('Error', 'No se pudo subir la imagen a Cloudflare Images');
       } else {
         setPhoto(up.url);
+        if (asset.width && asset.height && asset.width > 0 && asset.height > 0) {
+          setPhotoDimensions({ width: asset.width, height: asset.height });
+        } else {
+          setPhotoDimensions(null);
+        }
         setUploadNote('Subida a Cloudflare Images ☁️✓');
         db.registerImage(up.url, undefined, 'post').catch(() => {});
       }
@@ -86,14 +100,28 @@ export default function CreatePostScreen() {
       Alert.alert('Publicación vacía', 'Escribe un texto o agrega una foto 🐾');
       return;
     }
+    if (!photo && !isAllowedBackgroundId(backgroundId)) {
+      Alert.alert('Elegí un fondo', 'Las publicaciones de texto necesitan un fondo prediseñado.');
+      return;
+    }
     setPublishing(true);
     try {
-      const { post } = await db.createPost(activePetId || '', photo || '', caption.trim(), activeProfileId);
+      const { post } = await db.createPost(
+        activePetId || '',
+        photo || '',
+        caption.trim(),
+        activeProfileId,
+        photo ? photoDimensions?.width ?? null : null,
+        photo ? photoDimensions?.height ?? null : null,
+        photo ? null : backgroundId
+      );
       // Inserción incremental: el post aparece arriba del feed al instante,
       // sin recargar nada.
       notifyPostCreated(apiPostToPost(post));
       setCaption('');
       setPhoto(null);
+      setPhotoDimensions(null);
+      setBackgroundId(DEFAULT_POST_BACKGROUND_ID);
       setUploadNote('');
       navigation.navigate('Inicio');
     } catch (e: any) {
@@ -101,7 +129,7 @@ export default function CreatePostScreen() {
     } finally {
       setPublishing(false);
     }
-  }, [activePetId, photo, caption, navigation, notifyPostCreated, activeProfileId]);
+  }, [activePetId, photo, photoDimensions, caption, backgroundId, navigation, notifyPostCreated, activeProfileId]);
 
   const wrapStyle = desktopWeb ? styles.desktopWrap : styles.mobileWrap;
 
@@ -177,37 +205,74 @@ export default function CreatePostScreen() {
           )}
 
           <Text style={styles.sectionLabel}>Foto (opcional)</Text>
-          <Pressable style={styles.preview} onPress={pickFromGallery}>
-            {photo ? (
-              <Image source={{ uri: photo }} style={styles.previewImg} contentFit="contain" transition={300} />
-            ) : (
-              <View style={[styles.previewImg, styles.previewEmpty]}>
-                {uploading ? (
-                  <>
-                    <ActivityIndicator color={colors.primary} size="large" />
-                    <Text style={styles.previewEmptyText}>Subiendo a Cloudflare...</Text>
-                  </>
-                ) : (
-                  <>
-                    <Ionicons name="images-outline" size={44} color={colors.primary} />
-                    <Text style={styles.previewEmptyText}>Elegí una foto (sin recorte)</Text>
-                    <Text style={styles.previewHint}>O publicá solo texto, sin recorte</Text>
-                  </>
+          {photo ? (
+            <>
+              <Pressable style={styles.preview} onPress={pickFromGallery}>
+                <Image source={{ uri: photo }} style={styles.previewImg} contentFit="contain" transition={300} />
+                {uploading && (
+                  <View style={styles.uploadOverlay}>
+                    <ActivityIndicator color="#fff" size="large" />
+                  </View>
                 )}
+              </Pressable>
+              {uploadNote !== '' && <Text style={styles.uploadNote}>{uploadNote}</Text>}
+              <View style={styles.photoActions}>
+                <Pressable style={styles.changePhotoBtn} onPress={pickFromGallery}>
+                  <Ionicons name="swap-horizontal" size={15} color={colors.primary} />
+                  <Text style={styles.changePhotoText}>Cambiar foto</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.changePhotoBtn}
+                  onPress={() => {
+                    setPhoto(null);
+                    setPhotoDimensions(null);
+                    setUploadNote('');
+                    setBackgroundId((id) => id || DEFAULT_POST_BACKGROUND_ID);
+                  }}
+                >
+                  <Ionicons name="close-circle-outline" size={15} color={colors.primary} />
+                  <Text style={styles.changePhotoText}>Quitar foto</Text>
+                </Pressable>
               </View>
-            )}
-            {photo && uploading && (
-              <View style={styles.uploadOverlay}>
-                <ActivityIndicator color="#fff" size="large" />
+            </>
+          ) : (
+            <>
+              <Pressable style={styles.addPhotoBtn} onPress={pickFromGallery} disabled={uploading}>
+                {uploading ? (
+                  <ActivityIndicator color={colors.primary} size="small" />
+                ) : (
+                  <Ionicons name="images-outline" size={18} color={colors.primary} />
+                )}
+                <Text style={styles.addPhotoText}>
+                  {uploading ? 'Subiendo a Cloudflare...' : 'Agregar foto'}
+                </Text>
+              </Pressable>
+
+              <Text style={styles.sectionLabel}>Fondo</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.bgPicker}
+              >
+                {getActivePostBackgrounds().map((bg) => (
+                  <PostBackgroundChip
+                    key={bg.id}
+                    backgroundId={bg.id}
+                    selected={bg.id === backgroundId}
+                    onPress={() => setBackgroundId(bg.id)}
+                  />
+                ))}
+              </ScrollView>
+
+              <Text style={styles.sectionLabel}>Vista previa</Text>
+              <View style={styles.bgPreviewWrap}>
+                <PostBackgroundCard
+                  backgroundId={backgroundId}
+                  text={caption.trim() || 'Tu texto aparecerá aquí'}
+                  placeholder={!caption.trim()}
+                />
               </View>
-            )}
-          </Pressable>
-          {uploadNote !== '' && <Text style={styles.uploadNote}>{uploadNote}</Text>}
-          {photo && (
-            <Pressable style={styles.changePhotoBtn} onPress={pickFromGallery}>
-              <Ionicons name="swap-horizontal" size={15} color={colors.primary} />
-              <Text style={styles.changePhotoText}>Cambiar foto</Text>
-            </Pressable>
+            </>
           )}
 
           <Text style={styles.sectionLabel}>Texto</Text>
@@ -218,9 +283,9 @@ export default function CreatePostScreen() {
             multiline
             value={caption}
             onChangeText={setCaption}
-            maxLength={280}
+            maxLength={POST_CAPTION_MAX}
           />
-          <Text style={styles.counter}>{caption.length}/280</Text>
+          <Text style={styles.counter}>{caption.length}/{POST_CAPTION_MAX}</Text>
         </ScrollView>
       </KeyboardAvoidingView>
       </View>
@@ -336,6 +401,32 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   changePhotoText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
+  photoActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+  },
+  addPhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.card,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignSelf: 'flex-start',
+  },
+  addPhotoText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
+  bgPicker: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: 4 },
+  bgPreviewWrap: {
+    marginHorizontal: spacing.lg,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    ...shadow.card,
+  },
   captionInput: {
     marginHorizontal: spacing.lg,
     backgroundColor: colors.card,

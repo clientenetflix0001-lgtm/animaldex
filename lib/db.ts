@@ -88,7 +88,10 @@ export interface ApiPost {
   userId: string;
   petId: string;
   image: string;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
   caption: string;
+  backgroundId?: string | null;
   createdAt: number;
   likeCount: number;
   commentCount: number;
@@ -285,8 +288,25 @@ export const db = {
     call('/db', { action: 'profilePosts', profileId }),
   comment: (postId: string, text: string): Promise<{ id: string; createdAt: number }> =>
     call('/db', { action: 'comment', postId, text }),
-  createPost: (petId: string, image: string, caption: string, authorProfileId?: string | null): Promise<{ post: ApiPost }> =>
-    call('/db', { action: 'createPost', petId, image, caption, authorProfileId: authorProfileId ?? null }),
+  createPost: (
+    petId: string,
+    image: string,
+    caption: string,
+    authorProfileId?: string | null,
+    imageWidth?: number | null,
+    imageHeight?: number | null,
+    backgroundId?: string | null
+  ): Promise<{ post: ApiPost }> =>
+    call('/db', {
+      action: 'createPost',
+      petId,
+      image,
+      caption,
+      authorProfileId: authorProfileId ?? null,
+      imageWidth: imageWidth ?? null,
+      imageHeight: imageHeight ?? null,
+      backgroundId: backgroundId ?? null,
+    }),
   listProfiles: (): Promise<{ profiles: import('../features/profiles/profileTypes').PublicProfile[] }> =>
     call('/db', { action: 'listProfiles' }),
   createProfile: (input: {

@@ -6,7 +6,6 @@ import {
   FlatList,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
@@ -24,6 +23,13 @@ import { resolvePost, sharePost } from '../lib/share';
 import { getPostDisplay } from '../lib/postDisplay';
 import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from '../components/AdaptivePostImage';
+import { PostBackgroundCard } from '../components/PostBackgroundCard';
+import { CommentKeyboardView } from '../components/CommentKeyboardView';
+import {
+  POST_CAPTION_MAX,
+  backgroundTextNeedsSeeMore,
+  isTextBackgroundPost,
+} from '../lib/postBackgrounds';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint } from '../lib/responsive';
@@ -312,7 +318,7 @@ function PostDetailContent({ post }: { post: Post }) {
         value={captionDraft}
         onChangeText={setCaptionDraft}
         multiline
-        maxLength={280}
+        maxLength={POST_CAPTION_MAX}
         autoFocus
         placeholder="Escribe el nuevo pie de foto..."
         placeholderTextColor={colors.textMuted}
@@ -409,6 +415,11 @@ function PostDetailContent({ post }: { post: Post }) {
     </View>
   );
 
+  const isBgPost = isTextBackgroundPost(post);
+  const showFullCaptionBelow = isBgPost && !editing && backgroundTextNeedsSeeMore(effectiveCaption);
+  const detailCaption =
+    editing || !isBgPost || showFullCaptionBelow ? captionContent : null;
+
   // ---------- Escritorio: dos columnas (imagen + conversación) ----------
   if (desktopWeb) {
     const cardH = Math.min(height - 140, 820);
@@ -417,9 +428,19 @@ function PostDetailContent({ post }: { post: Post }) {
         <View style={[styles.dtCard, { height: cardH }]}>
           {!!post.image && (
           <View style={styles.dtImageCol}>
-            <AdaptivePostImage uri={post.image} maxHeight={820} />
+            <AdaptivePostImage
+              uri={post.image}
+              containerHeight={cardH}
+              imageWidth={post.imageWidth}
+              imageHeight={post.imageHeight}
+            />
           </View>
           )}
+          {isBgPost && post.backgroundId ? (
+            <View style={styles.dtImageCol}>
+              <PostBackgroundCard backgroundId={post.backgroundId} text={effectiveCaption} />
+            </View>
+          ) : null}
           <View style={styles.dtSideCol}>
             {petHeader}
             <View style={styles.dtDivider} />
@@ -427,7 +448,9 @@ function PostDetailContent({ post }: { post: Post }) {
               style={{ flex: 1 }}
               data={allComments}
               keyExtractor={(c) => c.id}
-              ListHeaderComponent={<View style={styles.dtCaptionBlock}>{captionContent}</View>}
+              ListHeaderComponent={
+                detailCaption ? <View style={styles.dtCaptionBlock}>{detailCaption}</View> : null
+              }
               ListEmptyComponent={
                 <View style={styles.emptyComments}>
                   <Text style={styles.emptyEmoji}>💬</Text>
@@ -452,16 +475,26 @@ function PostDetailContent({ post }: { post: Post }) {
 
   // ---------- Móvil / tablet (sin cambios) ----------
   const header = (
-    <View>
+    <View style={styles.mobilePostCard}>
       {petHeader}
 
-      {!!post.image && <AdaptivePostImage uri={post.image} />}
+      {!!post.image && (
+        <AdaptivePostImage
+          uri={post.image}
+          containerHeight={380}
+          imageWidth={post.imageWidth}
+          imageHeight={post.imageHeight}
+        />
+      )}
+      {isBgPost && post.backgroundId ? (
+        <PostBackgroundCard backgroundId={post.backgroundId} text={effectiveCaption} />
+      ) : null}
 
       {actionsRow}
 
       <View style={styles.metaBlock}>
         <Text style={styles.likes}>{formatCount(likeCount)} me gusta</Text>
-        {captionContent}
+        {detailCaption}
       </View>
 
       <Text style={styles.commentsTitle}>
@@ -478,11 +511,7 @@ function PostDetailContent({ post }: { post: Post }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={90}
-      >
+      <CommentKeyboardView>
         <FlatList
           data={allComments}
           keyExtractor={(c) => c.id}
@@ -490,16 +519,26 @@ function PostDetailContent({ post }: { post: Post }) {
           contentContainerStyle={{ paddingBottom: spacing.xl }}
           renderItem={renderComment}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         />
 
         {inputBar}
-      </KeyboardAvoidingView>
+      </CommentKeyboardView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  mobilePostCard: {
+    backgroundColor: colors.card,
+    width: '100%',
+    marginTop: 0,
+    marginBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
   dtRoot: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -542,7 +581,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   headerRight: { alignItems: 'flex-end', gap: 6 },
@@ -591,7 +631,6 @@ const styles = StyleSheet.create({
   petName: { fontWeight: '700', fontSize: 15, color: colors.text },
   subText: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   time: { fontSize: 11, color: colors.textMuted },
-  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -599,7 +638,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.lg,
   },
-  metaBlock: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  metaBlock: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, paddingTop: spacing.sm },
   likes: { fontWeight: '700', fontSize: 14, color: colors.text, marginBottom: 4 },
   caption: { fontSize: 14, color: colors.text, lineHeight: 20 },
   captionName: { fontWeight: '700' },

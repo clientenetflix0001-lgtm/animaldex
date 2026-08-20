@@ -9,8 +9,6 @@ import {
   FlatList,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +24,7 @@ import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { formatCount, formatTime } from '../lib/data';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
+import { CommentKeyboardView } from '../components/CommentKeyboardView';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'AlertDetail'>;
@@ -204,13 +203,14 @@ export default function AlertDetailScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
+      <CommentKeyboardView>
         <FlatList
           data={displayComments}
           keyExtractor={(c) => c.id}
           ListHeaderComponent={header}
           contentContainerStyle={{ paddingBottom: spacing.xl }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <View style={styles.commentRow}>
               <Image source={{ uri: thumb(item.avatarUri, 80) }} style={styles.commentAvatar} transition={200} />
@@ -250,7 +250,7 @@ export default function AlertDetailScreen() {
             {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="arrow-up" size={18} color="#fff" />}
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </CommentKeyboardView>
     </SafeAreaView>
   );
 }

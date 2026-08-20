@@ -33,6 +33,7 @@ import { postNavParams, sharePetProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
+import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
@@ -354,12 +355,7 @@ export default function PetProfileScreen() {
         contentContainerStyle={{ gap: 2, paddingBottom: spacing.xxl }}
         renderItem={({ item }) => (
           <Pressable onPress={() => openPost(item)}>
-            <Image
-              source={{ uri: thumb(item.image, 300) }}
-              style={{ width: tile, height: tile, borderRadius: radius.sm, backgroundColor: colors.border }}
-              contentFit="cover"
-              transition={250}
-            />
+            <PostGridMedia post={item} size={tile} />
           </Pressable>
         )}
         showsVerticalScrollIndicator={false}
