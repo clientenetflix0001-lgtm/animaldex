@@ -79,9 +79,13 @@ export interface ApiPet {
   avatarUrl: string | null;
   createdAt: number;
   profileId?: string | null;
-  /** Estado operativo en el refugio. No completa una adopción. */
-  careStatus?: 'en_adopcion' | 'en_recuperacion' | 'adoptado' | null;
+  careStatus?: 'en_adopcion' | 'en_recuperacion' | 'en_casa' | 'perdido' | 'adoptado' | null;
   sex?: string | null;
+  birthDate?: string | null;
+  size?: 'pequeno' | 'mediano' | 'grande' | null;
+  neutered?: boolean | null;
+  adoptionStartedAt?: number | null;
+  archivedAt?: number | null;
 }
 
 export interface ApiPost {
@@ -262,7 +266,7 @@ export const db = {
     call('/db', { action: 'postDetail', postId }),
   userProfile: (targetUserId: string): Promise<{ user: ApiUser; pets: ApiPet[]; profiles?: import('../features/profiles/profileTypes').PublicProfile[]; stats: { posts: number; followers: number } }> =>
     call('/db', { action: 'userProfile', targetUserId }),
-  petProfile: (petId: string): Promise<{ pet: ApiPet; owner: { id: string; username: string; name: string; avatarUrl: string | null } | null; stats: { posts: number; followers: number } }> =>
+  petProfile: (petId: string): Promise<{ pet: ApiPet; owner: { id: string; username: string; name: string; avatarUrl: string | null } | null; shelter?: import('../features/profiles/profileTypes').PublicProfile | null; stats: { posts: number; followers: number } }> =>
     call('/db', { action: 'petProfile', petId }),
   search: (q: string): Promise<{ pets: ApiPet[]; users: Array<{ id: string; username: string; name: string; avatarUrl: string | null }> }> =>
     call('/db', { action: 'search', q }),
@@ -335,12 +339,26 @@ export const db = {
     call('/db', { action: 'updatePost', postId, caption }),
   deletePost: (postId: string): Promise<{ imageDeleted: boolean }> =>
     call('/db', { action: 'deletePost', postId }),
-  createPet: (pet: { name: string; username?: string; species: string; breed?: string; age?: string; bio?: string; emoji?: string; avatarUrl?: string }): Promise<{ pet: ApiPet }> =>
-    call('/db', { action: 'createPet', ...pet }),
-  checkPetUsername: (username: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>
-    call('/db', { action: 'checkPetUsername', username }),
+  createPet: (pet: {
+    name: string;
+    username?: string;
+    species: string;
+    breed?: string;
+    bio?: string;
+    emoji?: string;
+    avatarUrl?: string;
+    profileId?: string | null;
+    careStatus?: ApiPet['careStatus'];
+    birthDate?: string | null;
+    size?: ApiPet['size'];
+    neutered?: boolean | null;
+  }): Promise<{ pet: ApiPet }> => call('/db', { action: 'createPet', ...pet }),
+  checkPetUsername: (username: string, excludePetId?: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>
+    call('/db', { action: 'checkPetUsername', username, excludePetId }),
   updatePet: (petId: string, fields: Partial<ApiPet>) =>
     call('/db', { action: 'updatePet', petId, ...fields }),
+  archivePet: (petId: string): Promise<{ ok: boolean }> => call('/db', { action: 'archivePet', petId }),
+  deletePet: (petId: string): Promise<{ ok: boolean }> => call('/db', { action: 'deletePet', petId }),
   setPhone: (phone: string | null) => call('/db', { action: 'setPhone', phone }),
   registerImage: (url: string, cfId?: string, kind?: string) =>
     call('/db', { action: 'registerImage', url, cfId, kind }),

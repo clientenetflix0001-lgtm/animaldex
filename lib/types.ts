@@ -6,7 +6,7 @@ export type RootStackParamList = {
   UserProfile: { userId: string };
   PostDetail: { postId: string; d?: string };
   VerifyPhone: undefined;
-  AddPet: { tagCode?: number } | undefined;
+  AddPet: { tagCode?: number; petId?: string; profileId?: string } | undefined;
   EditProfile: undefined;
   EditPublicProfile: { profileId: string };
   QRScanner: undefined;
