@@ -20,6 +20,7 @@ import { isTextBackgroundPost } from '../lib/postBackgrounds';
 import { useNavigation } from '@react-navigation/native';
 import { colors, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
+import { openHumanProfile } from '../lib/publicHandles';
 
 interface Props {
   post: Post;
@@ -100,9 +101,9 @@ function PostCardInner({
       <Pressable
         style={styles.header}
         onPress={() => {
-          if (orgType && profileHandle) navigation.navigate('PublicProfile', { username: profileHandle });
+          if (orgType && profileHandle) openHumanProfile(navigation, { username: profileHandle });
           else if (hasPet) onOpenPet(disp.petUsername || post.petId);
-          else if (post.authorUserId) navigation.navigate('UserProfile', { userId: post.authorUserId });
+          else openHumanProfile(navigation, { username: profileHandle, userId: post.authorUserId });
         }}
       >
         <Image

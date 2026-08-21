@@ -177,8 +177,23 @@ async function ensureProfilesSchema(env) {
   env._profilesReady = true;
 }
 
+// Keep in sync with lib/publicHandles.ts and cf-pages-worker.src.js
+const RESERVED_PUBLIC_USERNAMES = new Set([
+  'p', 'pet', 'a', 'm', 'login', 'register', 'auth', 'feed', 'reels', 'alerts', 'alertas',
+  'marketplace', 'mercado', 'admin', 'api', 'crear', 'actividad', 'perfil', 'explorar',
+  'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
+  'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
+  'editar-perfil-publico', 'crear-alerta', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
+  'well-known',
+]);
+
+function isReservedPublicUsername(username) {
+  return RESERVED_PUBLIC_USERNAMES.has(String(username || '').toLowerCase());
+}
+
 async function usernameTaken(env, username, allowAccountId, allowProfileId) {
   const handle = String(username || '').toLowerCase();
+  if (isReservedPublicUsername(handle)) return true;
   const users = await d1(env, 'SELECT id FROM users WHERE LOWER(username) = ?', [handle]);
   if (users[0] && users[0].id !== allowAccountId) return true;
   const profiles = await d1(env, 'SELECT id FROM profiles WHERE LOWER(username) = ?', [handle]);
@@ -238,11 +253,16 @@ async function handleAuth(request, env) {
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
       }
+      if (isReservedPublicUsername(username)) {
+        return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
+      }
       if (name.length < 2) return json({ error: 'Escribe tu nombre' }, 400);
       if (password.length < 6) return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
 
-      const existing = await d1(env, 'SELECT id FROM users WHERE username = ?', [username]);
-      if (existing.length > 0) return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
+      await ensureProfilesSchema(env);
+      if (await usernameTaken(env, username, null)) {
+        return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
+      }
 
       const id = `u-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       const salt = newSalt();
@@ -293,6 +313,30 @@ async function handleAuth(request, env) {
       const bio = clean(body.bio, 200);
       const location = clean(body.location, 60);
       const avatarUrl = clean(body.avatarUrl, 500) || null;
+      const nextUsername = body.username != null
+        ? clean(String(body.username).replace(/^@/, ''), 20).toLowerCase()
+        : '';
+      if (nextUsername) {
+        if (!USERNAME_RE.test(nextUsername)) {
+          return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
+        }
+        if (isReservedPublicUsername(nextUsername)) {
+          return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
+        }
+        await ensureProfilesSchema(env);
+        const personal = await ensurePersonalProfile(env, userId);
+        if (await usernameTaken(env, nextUsername, userId, personal && personal.id)) {
+          return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
+        }
+        await d1(env, 'UPDATE users SET username = ? WHERE id = ?', [nextUsername, userId]);
+        if (personal) {
+          await d1(
+            env,
+            "UPDATE profiles SET username = ? WHERE id = ? AND type = 'personal'",
+            [nextUsername, personal.id]
+          );
+        }
+      }
       await d1(
         env,
         "UPDATE users SET name = COALESCE(NULLIF(?, ''), name), bio = ?, location = ?, avatar_url = COALESCE(?, avatar_url) WHERE id = ?",
@@ -595,6 +639,7 @@ async function handleDb(request, env) {
 
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
+      if (isReservedPublicUsername(username)) return json({ ok: true, available: false, reason: 'reserved' });
       if (!USERNAME_RE.test(username)) return json({ ok: true, available: false, reason: 'invalid' });
       const taken = await usernameTaken(env, username, null);
       return json({ ok: true, available: !taken });
@@ -603,9 +648,53 @@ async function handleDb(request, env) {
     if (action === 'publicProfile') {
       const profileId = clean(body.profileId, 80);
       const username = clean(body.username, 20).toLowerCase();
-      const rows = profileId
+      if (username && isReservedPublicUsername(username)) {
+        return json({ error: 'Perfil no encontrado' }, 404);
+      }
+      let rows = profileId
         ? await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId])
-        : await d1(env, 'SELECT * FROM profiles WHERE LOWER(username) = ?', [username]);
+        : username
+          ? await d1(env, 'SELECT * FROM profiles WHERE LOWER(username) = ?', [username])
+          : [];
+      if (!rows[0] && username && !profileId) {
+        const users = await d1(env, 'SELECT * FROM users WHERE LOWER(username) = ?', [username]);
+        if (!users[0]) return json({ error: 'Perfil no encontrado' }, 404);
+        const u = users[0];
+        const viewerId = await authUser(request, env, body);
+        const [pets, followers, following] = await Promise.all([
+          d1(env, 'SELECT * FROM pets WHERE user_id = ? AND archived_at IS NULL ORDER BY created_at ASC', [u.id]),
+          d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'user' AND target_id = ?", [u.id]),
+          viewerId
+            ? d1(env, "SELECT 1 FROM follows WHERE user_id = ? AND target_type = 'user' AND target_id = ? LIMIT 1", [viewerId, u.id])
+            : Promise.resolve([]),
+        ]);
+        return json({
+          ok: true,
+          profile: {
+            id: `personal-${u.id}`,
+            accountId: u.id,
+            type: 'personal',
+            name: u.name,
+            username: u.username,
+            avatar: u.avatar_url || null,
+            bio: u.bio || '',
+            location: u.location || '',
+            phone: '',
+            createdAt: u.created_at,
+          },
+          pets: pets.map(petRow),
+          transferredPets: [],
+          stats: {
+            pets: pets.length,
+            adoption: 0,
+            adopted: 0,
+            recovering: 0,
+            followers: followers[0]?.n || 0,
+          },
+          isOwner: viewerId === u.id,
+          isFollowing: following.length > 0,
+        });
+      }
       if (!rows[0]) return json({ error: 'Perfil no encontrado' }, 404);
       const pr = rows[0];
       const viewerId = await authUser(request, env, body);
@@ -1391,6 +1480,9 @@ async function handleDb(request, env) {
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
       }
+      if (isReservedPublicUsername(username)) {
+        return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
+      }
       await ensurePersonalProfile(env, userId);
       const counts = await d1(env, 'SELECT type, COUNT(*) AS n FROM profiles WHERE account_id = ? GROUP BY type', [userId]);
       const nOf = (t) => (counts.find((r) => r.type === t)?.n || 0);
@@ -1431,6 +1523,9 @@ async function handleDb(request, env) {
       if (name.length < 2) return json({ error: 'Escribe el nombre del perfil' }, 400);
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
+      }
+      if (isReservedPublicUsername(username)) {
+        return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
       }
       if (await usernameTaken(env, username, userId, profileId)) {
         return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);

@@ -22,6 +22,7 @@ import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
+import { openHumanProfile } from '../lib/publicHandles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -161,7 +162,7 @@ export default function ExploreScreen() {
               return (
                 <Pressable
                   style={styles.petRow}
-                  onPress={() => navigation.navigate('UserProfile', { userId: item.user.id })}
+                  onPress={() => openHumanProfile(navigation, { username: item.user.username, userId: item.user.id })}
                 >
                   <Image
                     source={{ uri: thumb(item.user.avatarUrl ?? userFallbackAvatar(item.user.username), 120) }}

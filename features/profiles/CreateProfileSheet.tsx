@@ -15,6 +15,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, radius, spacing } from '../../lib/theme';
 import { useProfiles } from './ProfileContext';
 import { limitMessage, type ProfileType } from './profileTypes';
+import { isValidPublicUsername, normalizePublicUsername } from '../../lib/publicHandles';
 
 interface Props {
   visible: boolean;
@@ -55,13 +56,16 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
 
   const submit = async () => {
     if (!type) return;
-    const handle = username.trim().toLowerCase().replace(/^@/, '');
+    const handle = normalizePublicUsername(username);
     if (name.trim().length < 2) {
       Alert.alert('Falta el nombre', 'Escribe el nombre del perfil.');
       return;
     }
-    if (!/^[a-z0-9_.]{3,20}$/.test(handle)) {
-      Alert.alert('Usuario inválido', 'El @ debe tener 3-20 caracteres: letras, números, punto o guion bajo.');
+    if (!isValidPublicUsername(handle)) {
+      Alert.alert(
+        'Usuario inválido',
+        'El @ debe tener 3-20 caracteres: letras, números, punto o guion bajo, y no puede coincidir con una ruta del sistema.'
+      );
       return;
     }
     setSaving(true);

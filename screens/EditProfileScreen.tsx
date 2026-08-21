@@ -21,11 +21,13 @@ import { uploadImage } from '../lib/api';
 import { useStore } from '../lib/store';
 import { userFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
+import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
 
 export default function EditProfileScreen() {
   const navigation = useNavigation<any>();
   const { user, refreshUser } = useStore();
   const [name, setName] = useState(user?.name ?? '');
+  const [username, setUsername] = useState(user?.username ?? '');
   const [bio, setBio] = useState(user?.bio ?? '');
   const [location, setLocation] = useState(user?.location ?? '');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
@@ -67,10 +69,19 @@ export default function EditProfileScreen() {
   }, []);
 
   const save = useCallback(async () => {
+    const handle = normalizePublicUsername(username);
+    if (!isValidPublicUsername(handle)) {
+      Alert.alert(
+        'Usuario inválido',
+        'El @ debe tener 3-20 caracteres (letras, números, punto o _) y no puede coincidir con una ruta del sistema.'
+      );
+      return;
+    }
     setSaving(true);
     try {
       await auth.updateProfile({
         name: name.trim(),
+        username: handle,
         bio: bio.trim(),
         location: location.trim(),
         avatarUrl: avatarUrl ?? undefined,
@@ -82,7 +93,7 @@ export default function EditProfileScreen() {
     } finally {
       setSaving(false);
     }
-  }, [name, bio, location, avatarUrl, refreshUser, navigation]);
+  }, [name, username, bio, location, avatarUrl, refreshUser, navigation]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -113,6 +124,19 @@ export default function EditProfileScreen() {
             placeholder="Tu nombre"
             placeholderTextColor={colors.textMuted}
           />
+
+          <Text style={styles.label}>Usuario</Text>
+          <TextInput
+            style={styles.input}
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={20}
+            placeholder="tuusuario"
+            placeholderTextColor={colors.textMuted}
+          />
+          <Text style={styles.hint}>Tu perfil público será animaldex-web.pages.dev/{username.trim().replace(/^@/, '').toLowerCase() || 'usuario'}</Text>
 
           <Text style={styles.label}>Biografía</Text>
           <TextInput
@@ -174,6 +198,7 @@ const styles = StyleSheet.create({
     borderColor: colors.bg,
   },
   avatarHint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.sm },
+  hint: { fontSize: 12, color: colors.textMuted, marginTop: 6 },
   label: { fontWeight: '700', fontSize: 14, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.sm },
   input: {
     backgroundColor: colors.card,

@@ -268,10 +268,14 @@ async function buildOgMeta(request, env, url) {
   const listingMatch = pathname.match(/^\/m\/([^/]+)\/?$/);
   const postMatch = pathname.match(/^\/p\/([^/]+)\/?$/);
   const handleMatch = pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i);
+  // Keep in sync with lib/publicHandles.ts and worker/index.js
   const reserved = new Set([
-    'p','pet','a','m','reels','alertas','mercado','crear','actividad','perfil',
-    'explorar','verificar','escanear','entrar','tienda','admin','vender',
-    'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
+    'p', 'pet', 'a', 'm', 'login', 'register', 'auth', 'feed', 'reels', 'alerts', 'alertas',
+    'marketplace', 'mercado', 'admin', 'api', 'crear', 'actividad', 'perfil', 'explorar',
+    'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
+    'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
+    'editar-perfil-publico', 'crear-alerta', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
+    'well-known',
   ]);
 
   if (petMatch) {
@@ -387,16 +391,6 @@ async function buildOgMeta(request, env, url) {
           url: `${origin}/${pr.username}`,
         };
       }
-    } else {
-      const pets = await d1Query(env, 'SELECT * FROM pets WHERE LOWER(username) = ? LIMIT 1', [handle]);
-      if (pets[0]) {
-        const p = pets[0];
-        meta = {
-          title: `${p.name} ${p.emoji || '🐾'} en Animaldex`,
-          description: `${p.breed || p.species}${p.bio ? ' · ' + p.bio : ''}`,
-          image: p.avatar_url || petImage('perro', 11, 600),
-          url: `${origin}/pet/${p.username || p.id}`,
-        };
       } else {
         const users = await d1Query(env, 'SELECT * FROM users WHERE LOWER(username) = ? LIMIT 1', [handle]);
         if (users[0]) {
@@ -410,7 +404,6 @@ async function buildOgMeta(request, env, url) {
           };
         }
       }
-    }
   }
 
   if (!meta) {

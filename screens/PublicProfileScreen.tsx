@@ -7,7 +7,6 @@ import {
   Pressable,
   useWindowDimensions,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -27,6 +26,7 @@ import { RootStackParamList } from '../lib/types';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import type { PublicProfile } from '../features/profiles/profileTypes';
 import { ageLabelFromBirthDate } from '../lib/birthDate';
+import UserProfileScreen from './UserProfileScreen';
 import {
   filterProtectorPets,
   careStatusLabel,
@@ -35,6 +35,7 @@ import {
   type SpeciesFilter,
 } from '../lib/petFields';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
+import { isReservedPublicUsername } from '../lib/publicHandles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type TabKey = 'mascotas' | 'posts';
@@ -74,13 +75,29 @@ export default function PublicProfileScreen() {
   const [speciesFilter, setSpeciesFilter] = useState<SpeciesFilter>('todos');
   const [loading, setLoading] = useState(true);
   const { guest, cameFromLink, requireLogin, inviteBar, closeExternal, goBackOrClose } = useGuestAccess();
+  const [notFound, setNotFound] = useState(false);
 
   const load = useCallback(async () => {
+    setNotFound(false);
     try {
+      if (routeUsername && isReservedPublicUsername(routeUsername)) {
+        setProfile(null);
+        setNotFound(true);
+        return;
+      }
       const pub = await db.publicProfile({
         profileId: routeProfileId,
         username: routeUsername,
       });
+      const handle = pub.profile.username;
+      if (handle && routeUsername && routeUsername.toLowerCase() !== handle.toLowerCase()) {
+        navigation.replace('PublicProfile', { username: handle });
+        return;
+      }
+      if (pub.profile.type === 'personal' && pub.profile.accountId) {
+        setProfile(pub.profile);
+        return;
+      }
       const feed = await db.profilePosts(pub.profile.id);
       setProfile(pub.profile);
       setPets(pub.pets);
@@ -94,13 +111,9 @@ export default function PublicProfileScreen() {
       setIsOwner(pub.isOwner);
       setFollowing(pub.isFollowing);
       setPosts(feed.posts.map(apiPostToPost));
-      const handle = pub.profile.username;
-      if (handle && routeUsername !== handle) {
-        navigation.replace('PublicProfile', { username: handle });
-        return;
-      }
-    } catch (e: any) {
-      Alert.alert('Perfil', e?.message || 'No se pudo abrir el perfil');
+    } catch {
+      setProfile(null);
+      setNotFound(true);
     } finally {
       setLoading(false);
     }
@@ -137,7 +150,11 @@ export default function PublicProfileScreen() {
   const tile = (width - spacing.lg * 2 - 12) / 2;
   const postTile = (width - spacing.lg * 2 - 4) / 3;
 
-  if (loading || !profile) {
+  if (!loading && profile?.type === 'personal' && profile.accountId) {
+    return <UserProfileScreen userId={profile.accountId} showBack />;
+  }
+
+  if (loading) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.topBar}>
@@ -146,6 +163,20 @@ export default function PublicProfileScreen() {
           </Pressable>
         </View>
         <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+        {inviteBar}
+      </SafeAreaView>
+    );
+  }
+
+  if (notFound || !profile) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.topBar}>
+          <Pressable onPress={goBackOrClose} hitSlop={10}>
+            <Ionicons name="chevron-back" size={24} color={colors.text} />
+          </Pressable>
+        </View>
+        <Text style={styles.empty}>Este perfil no existe.</Text>
         {inviteBar}
       </SafeAreaView>
     );

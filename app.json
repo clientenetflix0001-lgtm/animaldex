@@ -40,6 +40,23 @@
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/m/" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "animaldex-web.pages.dev",
+              "pathAdvancedPattern": "/[a-zA-Z0-9._]{3,20}"
+            },
+            {
+              "scheme": "https",
+              "host": "animaldex-web.pages.dev",
+              "pathAdvancedPattern": "/[a-zA-Z0-9._]{3,20}/"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },
