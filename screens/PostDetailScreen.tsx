@@ -6,7 +6,6 @@ import {
   FlatList,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
@@ -24,6 +23,14 @@ import { resolvePost, sharePost } from '../lib/share';
 import { getPostDisplay } from '../lib/postDisplay';
 import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from '../components/AdaptivePostImage';
+import { PostBackgroundCard } from '../components/PostBackgroundCard';
+import { CommentKeyboardView } from '../components/CommentKeyboardView';
+import { useGuestAccess } from '../lib/guestAccess';
+import {
+  POST_CAPTION_MAX,
+  backgroundTextNeedsSeeMore,
+  isTextBackgroundPost,
+} from '../lib/postBackgrounds';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint } from '../lib/responsive';
@@ -43,6 +50,7 @@ interface DisplayComment {
 export default function PostDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
+  const { user } = useStore();
   const [realPost, setRealPost] = useState<Post | null>(null);
   const [realLoading, setRealLoading] = useState(true);
 
@@ -86,11 +94,13 @@ export default function PostDetailScreen() {
           </Text>
           <Pressable
             style={styles.notFoundBtn}
-            onPress={() =>
-              navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Tabs')
-            }
+            onPress={() => {
+              if (navigation.canGoBack()) navigation.goBack();
+              else if (user) navigation.navigate('Tabs');
+              else navigation.navigate('Auth');
+            }}
           >
-            <Text style={styles.notFoundBtnText}>Ir al inicio</Text>
+            <Text style={styles.notFoundBtnText}>{user ? 'Ir al inicio' : 'Entrar a Animaldex'}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -119,6 +129,7 @@ function PostDetailContent({ post }: { post: Post }) {
   const [editing, setEditing] = useState(false);
   const [captionDraft, setCaptionDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const { guest, requireLogin, inviteBar } = useGuestAccess({ headerClose: true });
 
   const disp = getPostDisplay(post);
   const liked = likedPosts.includes(post.id);
@@ -253,9 +264,24 @@ function PostDetailContent({ post }: { post: Post }) {
 
   // Like con actualización optimista del contador en vivo
   const handleToggleLike = useCallback(() => {
+    if (guest) { requireLogin(); return; }
     toggleLike(post.id);
     setDbLikes((c) => (c == null ? c : Math.max(0, c + (liked ? -1 : 1))));
-  }, [toggleLike, post.id, liked]);
+  }, [guest, requireLogin, toggleLike, post.id, liked]);
+
+  const handleToggleSave = useCallback(() => {
+    if (guest) { requireLogin(); return; }
+    toggleSave(post.id);
+  }, [guest, requireLogin, toggleSave, post.id]);
+
+  const openAuthor = useCallback(() => {
+    if (guest) { requireLogin(); return; }
+    const org = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
+    const handle = post.authorProfileUsername;
+    if (org && handle) navigation.navigate('PublicProfile', { username: handle });
+    else if (post.petId) navigation.navigate('PetProfile', { petId: post.petId });
+    else if (post.authorUserId) navigation.navigate('UserProfile', { userId: post.authorUserId });
+  }, [guest, requireLogin, post, navigation]);
 
   // Posts reales: contador vivo del servidor. Demo: base + likes reales de la BD.
   const likeCount = post.real
@@ -265,16 +291,7 @@ function PostDetailContent({ post }: { post: Post }) {
   // ---------- Piezas reutilizables ----------
   const petHeader = (
     <View style={styles.postHeader}>
-      <Pressable
-        style={styles.headerLeft}
-        onPress={() => {
-          const org = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
-          const handle = post.authorProfileUsername;
-          if (org && handle) navigation.navigate('PublicProfile', { username: handle });
-          else if (post.petId) navigation.navigate('PetProfile', { petId: post.petId });
-          else if (post.authorUserId) navigation.navigate('UserProfile', { userId: post.authorUserId });
-        }}
-      >
+      <Pressable style={styles.headerLeft} onPress={openAuthor}>
         <Image source={{ uri: thumb(disp.avatarUri, 100) }} style={styles.avatar} transition={200} />
         <View>
           <Text style={styles.petName}>
@@ -312,7 +329,7 @@ function PostDetailContent({ post }: { post: Post }) {
         value={captionDraft}
         onChangeText={setCaptionDraft}
         multiline
-        maxLength={280}
+        maxLength={POST_CAPTION_MAX}
         autoFocus
         placeholder="Escribe el nuevo pie de foto..."
         placeholderTextColor={colors.textMuted}
@@ -349,12 +366,14 @@ function PostDetailContent({ post }: { post: Post }) {
           color={liked ? colors.heart : colors.text}
         />
       </Pressable>
-      <Ionicons name="chatbubble-outline" size={24} color={colors.text} />
+      <Pressable onPress={() => { if (guest) requireLogin(); }} hitSlop={8}>
+        <Ionicons name="chatbubble-outline" size={24} color={colors.text} />
+      </Pressable>
       <Pressable onPress={() => sharePost(post)} hitSlop={8}>
         <Ionicons name="paper-plane-outline" size={24} color={colors.text} />
       </Pressable>
       <View style={{ flex: 1 }} />
-      <Pressable onPress={() => toggleSave(post.id)} hitSlop={8}>
+      <Pressable onPress={handleToggleSave} hitSlop={8}>
         <Ionicons
           name={saved ? 'bookmark' : 'bookmark-outline'}
           size={24}
@@ -409,6 +428,11 @@ function PostDetailContent({ post }: { post: Post }) {
     </View>
   );
 
+  const isBgPost = isTextBackgroundPost(post);
+  const showFullCaptionBelow = isBgPost && !editing && backgroundTextNeedsSeeMore(effectiveCaption);
+  const detailCaption =
+    editing || !isBgPost || showFullCaptionBelow ? captionContent : null;
+
   // ---------- Escritorio: dos columnas (imagen + conversación) ----------
   if (desktopWeb) {
     const cardH = Math.min(height - 140, 820);
@@ -417,9 +441,19 @@ function PostDetailContent({ post }: { post: Post }) {
         <View style={[styles.dtCard, { height: cardH }]}>
           {!!post.image && (
           <View style={styles.dtImageCol}>
-            <AdaptivePostImage uri={post.image} maxHeight={820} />
+            <AdaptivePostImage
+              uri={post.image}
+              containerHeight={cardH}
+              imageWidth={post.imageWidth}
+              imageHeight={post.imageHeight}
+            />
           </View>
           )}
+          {isBgPost && post.backgroundId ? (
+            <View style={styles.dtImageCol}>
+              <PostBackgroundCard backgroundId={post.backgroundId} text={effectiveCaption} />
+            </View>
+          ) : null}
           <View style={styles.dtSideCol}>
             {petHeader}
             <View style={styles.dtDivider} />
@@ -427,7 +461,9 @@ function PostDetailContent({ post }: { post: Post }) {
               style={{ flex: 1 }}
               data={allComments}
               keyExtractor={(c) => c.id}
-              ListHeaderComponent={<View style={styles.dtCaptionBlock}>{captionContent}</View>}
+              ListHeaderComponent={
+                detailCaption ? <View style={styles.dtCaptionBlock}>{detailCaption}</View> : null
+              }
               ListEmptyComponent={
                 <View style={styles.emptyComments}>
                   <Text style={styles.emptyEmoji}>💬</Text>
@@ -443,25 +479,36 @@ function PostDetailContent({ post }: { post: Post }) {
             <Text style={[styles.likes, { paddingHorizontal: spacing.lg, paddingTop: spacing.sm }]}>
               {formatCount(likeCount)} me gusta
             </Text>
-            {inputBar}
+            {guest ? null : inputBar}
           </View>
         </View>
+        {inviteBar}
       </View>
     );
   }
 
   // ---------- Móvil / tablet (sin cambios) ----------
   const header = (
-    <View>
+    <View style={styles.mobilePostCard}>
       {petHeader}
 
-      {!!post.image && <AdaptivePostImage uri={post.image} />}
+      {!!post.image && (
+        <AdaptivePostImage
+          uri={post.image}
+          containerHeight={380}
+          imageWidth={post.imageWidth}
+          imageHeight={post.imageHeight}
+        />
+      )}
+      {isBgPost && post.backgroundId ? (
+        <PostBackgroundCard backgroundId={post.backgroundId} text={effectiveCaption} />
+      ) : null}
 
       {actionsRow}
 
       <View style={styles.metaBlock}>
         <Text style={styles.likes}>{formatCount(likeCount)} me gusta</Text>
-        {captionContent}
+        {detailCaption}
       </View>
 
       <Text style={styles.commentsTitle}>
@@ -478,28 +525,47 @@ function PostDetailContent({ post }: { post: Post }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={90}
-      >
-        <FlatList
-          data={allComments}
-          keyExtractor={(c) => c.id}
-          ListHeaderComponent={header}
-          contentContainerStyle={{ paddingBottom: spacing.xl }}
-          renderItem={renderComment}
-          showsVerticalScrollIndicator={false}
-        />
-
-        {inputBar}
-      </KeyboardAvoidingView>
+      {guest ? (
+        <>
+          <FlatList
+            data={allComments}
+            keyExtractor={(c) => c.id}
+            ListHeaderComponent={header}
+            contentContainerStyle={{ paddingBottom: 260 }}
+            renderItem={renderComment}
+            showsVerticalScrollIndicator={false}
+          />
+          {inviteBar}
+        </>
+      ) : (
+        <CommentKeyboardView>
+          <FlatList
+            data={allComments}
+            keyExtractor={(c) => c.id}
+            ListHeaderComponent={header}
+            contentContainerStyle={{ paddingBottom: spacing.xl }}
+            renderItem={renderComment}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          />
+          {inputBar}
+        </CommentKeyboardView>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  mobilePostCard: {
+    backgroundColor: colors.card,
+    width: '100%',
+    marginTop: 0,
+    marginBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
   dtRoot: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -542,7 +608,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   headerRight: { alignItems: 'flex-end', gap: 6 },
@@ -591,7 +658,6 @@ const styles = StyleSheet.create({
   petName: { fontWeight: '700', fontSize: 15, color: colors.text },
   subText: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   time: { fontSize: 11, color: colors.textMuted },
-  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -599,7 +665,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.lg,
   },
-  metaBlock: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  metaBlock: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, paddingTop: spacing.sm },
   likes: { fontWeight: '700', fontSize: 14, color: colors.text, marginBottom: 4 },
   caption: { fontSize: 14, color: colors.text, lineHeight: 20 },
   captionName: { fontWeight: '700' },

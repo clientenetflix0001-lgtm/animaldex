@@ -1,12 +1,12 @@
 export type RootStackParamList = {
-  Auth: undefined;
+  Auth: { mode?: 'login' | 'register' } | undefined;
   Tabs: undefined;
   Explorar: undefined;
   PetProfile: { petId: string };
   UserProfile: { userId: string };
   PostDetail: { postId: string; d?: string };
   VerifyPhone: undefined;
-  AddPet: { tagCode?: number } | undefined;
+  AddPet: { tagCode?: number; petId?: string; profileId?: string } | undefined;
   EditProfile: undefined;
   EditPublicProfile: { profileId: string };
   QRScanner: undefined;

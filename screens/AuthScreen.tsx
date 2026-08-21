@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,14 +13,24 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRoute, RouteProp } from '@react-navigation/native';
 import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint } from '../lib/responsive';
+import { RootStackParamList } from '../lib/types';
 
 export default function AuthScreen() {
   const { login, register, pendingTagCode } = useStore();
   const { desktopWeb } = useBreakpoint();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  // Si se abre desde el panel de invitación "Crear cuenta", empezar en registro.
+  const route = useRoute<RouteProp<RootStackParamList, 'Auth'>>();
+  const [mode, setMode] = useState<'login' | 'register'>(
+    route.params?.mode === 'register' ? 'register' : 'login'
+  );
+  useEffect(() => {
+    if (route.params?.mode === 'register') setMode('register');
+    else if (route.params?.mode === 'login') setMode('login');
+  }, [route.params?.mode]);
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');

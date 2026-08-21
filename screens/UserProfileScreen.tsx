@@ -21,11 +21,13 @@ import { postNavParams } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
+import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { useProfiles, CreateProfileSheet } from '../features/profiles';
 import { PROFILE_TYPE_LABEL, type PublicProfile } from '../features/profiles/profileTypes';
+import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -60,6 +62,9 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
     editedCaptions,
   } = useStore();
   const { profiles: myProfiles } = useProfiles();
+  const { guest, cameFromLink, requireLogin, inviteBar, closeExternal, goBackOrClose } = useGuestAccess({
+    treatAsExternal: showBack,
+  });
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [accountProfiles, setAccountProfiles] = useState<PublicProfile[]>([]);
 
@@ -176,10 +181,14 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
     <View>
       {/* Top bar */}
       <View style={styles.topBar}>
-        {showBack ? (
-          <Pressable onPress={() => navigation.goBack()} hitSlop={10}>
-            <Ionicons name="chevron-back" size={24} color={colors.text} />
-          </Pressable>
+        {showBack || cameFromLink ? (
+          <ExternalNavButton
+            guest={guest}
+            cameFromLink={cameFromLink}
+            showBack={showBack}
+            onBack={goBackOrClose}
+            onClose={closeExternal}
+          />
         ) : (
           <View style={{ width: 24 }} />
         )}
@@ -238,10 +247,13 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         <View style={styles.actionRow}>
           <FollowButton
             following={following}
-            onPress={() => userId && toggleFollowUser(userId)}
+            onPress={() => {
+              if (guest) { requireLogin(); return; }
+              if (userId) toggleFollowUser(userId);
+            }}
             style={{ flex: 1 }}
           />
-          <Pressable style={styles.editBtn}>
+          <Pressable style={styles.editBtn} onPress={() => { if (guest) requireLogin(); }}>
             <Text style={styles.editText}>Mensaje</Text>
           </Pressable>
         </View>
@@ -381,19 +393,15 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         keyExtractor={(p) => p.id}
         ListHeaderComponent={header}
         columnWrapperStyle={{ gap: 2, paddingHorizontal: spacing.lg }}
-        contentContainerStyle={{ gap: 2, paddingBottom: spacing.xxl }}
+        contentContainerStyle={{ gap: 2, paddingBottom: guest ? 260 : spacing.xxl }}
         renderItem={({ item }) => (
           <Pressable onPress={() => openPost(item)}>
-            <Image
-              source={{ uri: thumb(item.image, 300) }}
-              style={{ width: tile, height: tile, borderRadius: radius.sm, backgroundColor: colors.border }}
-              contentFit="cover"
-              transition={250}
-            />
+            <PostGridMedia post={item} size={tile} />
           </Pressable>
         )}
         showsVerticalScrollIndicator={false}
       />
+      {inviteBar}
     </SafeAreaView>
   );
 }

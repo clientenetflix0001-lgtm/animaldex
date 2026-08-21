@@ -9,15 +9,12 @@ import {
   FlatList,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useRoute, RouteProp } from '@react-navigation/native';
 import { db, ApiAlert, ApiComment, timeAgoMinutes } from '../lib/db';
 import { useStore } from '../lib/store';
 import { shareAlert } from '../lib/share';
@@ -26,14 +23,15 @@ import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { formatCount, formatTime } from '../lib/data';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
+import { CommentKeyboardView } from '../components/CommentKeyboardView';
+import { useGuestAccess } from '../lib/guestAccess';
 
-type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'AlertDetail'>;
 
 export default function AlertDetailScreen() {
   const route = useRoute<Rt>();
-  const navigation = useNavigation<Nav>();
   const { user } = useStore();
+  const { guest, requireLogin, inviteBar, goBackOrClose } = useGuestAccess({ headerClose: true });
   const { alertId } = route.params;
 
   const [alert, setAlert] = useState<ApiAlert | null>(null);
@@ -63,11 +61,12 @@ export default function AlertDetailScreen() {
   }, [load]);
 
   const handleToggleLike = useCallback(() => {
+    if (guest) { requireLogin(); return; }
     setAlert((prev) =>
       prev ? { ...prev, isLiked: !prev.isLiked, likeCount: prev.likeCount + (prev.isLiked ? -1 : 1) } : prev
     );
     if (alert) db.alertLike(alertId, !alert.isLiked).catch(() => {});
-  }, [alert, alertId]);
+  }, [alert, alertId, guest, requireLogin]);
 
   const handleShare = useCallback(async () => {
     if (!alert || sharing) return;
@@ -80,6 +79,7 @@ export default function AlertDetailScreen() {
   }, [alert, sharing]);
 
   const send = useCallback(async () => {
+    if (guest) { requireLogin(); return; }
     const text = draft.trim();
     if (!text || sending) return;
     setSending(true);
@@ -91,7 +91,7 @@ export default function AlertDetailScreen() {
       setAlert((prev) => (prev ? { ...prev, commentCount: prev.commentCount + 1 } : prev));
     } catch {}
     setSending(false);
-  }, [draft, alertId, sending]);
+  }, [draft, alertId, sending, guest, requireLogin]);
 
   const displayComments = useMemo(
     () =>
@@ -125,7 +125,7 @@ export default function AlertDetailScreen() {
           <Text style={styles.notFoundText}>Este enlace ya no está disponible.</Text>
           <Pressable
             style={styles.notFoundBtn}
-            onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Tabs'))}
+            onPress={goBackOrClose}
           >
             <Text style={styles.notFoundBtnText}>Volver</Text>
           </Pressable>
@@ -176,10 +176,10 @@ export default function AlertDetailScreen() {
           />
           <Text style={styles.actionCount}>{formatCount(alert.likeCount)}</Text>
         </Pressable>
-        <View style={styles.actionBtn}>
+        <Pressable onPress={() => { if (guest) requireLogin(); }} hitSlop={8} style={styles.actionBtn}>
           <Ionicons name="chatbubble-outline" size={24} color={colors.text} />
           <Text style={styles.actionCount}>{formatCount(alert.commentCount)}</Text>
-        </View>
+        </Pressable>
         <View style={{ flex: 1 }} />
         <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
           <Ionicons name="paw" size={15} color="#fff" />
@@ -204,53 +204,82 @@ export default function AlertDetailScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
-        <FlatList
-          data={displayComments}
-          keyExtractor={(c) => c.id}
-          ListHeaderComponent={header}
-          contentContainerStyle={{ paddingBottom: spacing.xl }}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => (
-            <View style={styles.commentRow}>
-              <Image source={{ uri: thumb(item.avatarUri, 80) }} style={styles.commentAvatar} transition={200} />
-              <View style={styles.commentBubble}>
-                <View style={styles.commentTop}>
-                  <Text style={styles.commentUser}>
-                    {item.name}
-                    {item.mine ? ' (tú)' : ''}
-                  </Text>
-                  <Text style={styles.commentTime}>{formatTime(item.minutesAgo)}</Text>
+      {guest ? (
+        <>
+          <FlatList
+            data={displayComments}
+            keyExtractor={(c) => c.id}
+            ListHeaderComponent={header}
+            contentContainerStyle={{ paddingBottom: 260 }}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <View style={styles.commentRow}>
+                <Image source={{ uri: thumb(item.avatarUri, 80) }} style={styles.commentAvatar} transition={200} />
+                <View style={styles.commentBubble}>
+                  <View style={styles.commentTop}>
+                    <Text style={styles.commentUser}>
+                      {item.name}
+                      {item.mine ? ' (tú)' : ''}
+                    </Text>
+                    <Text style={styles.commentTime}>{formatTime(item.minutesAgo)}</Text>
+                  </View>
+                  <Text style={styles.commentText}>{item.text}</Text>
                 </View>
-                <Text style={styles.commentText}>{item.text}</Text>
               </View>
-            </View>
-          )}
-        />
+            )}
+          />
+          {inviteBar}
+        </>
+      ) : (
+        <CommentKeyboardView>
+          <FlatList
+            data={displayComments}
+            keyExtractor={(c) => c.id}
+            ListHeaderComponent={header}
+            contentContainerStyle={{ paddingBottom: spacing.xl }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <View style={styles.commentRow}>
+                <Image source={{ uri: thumb(item.avatarUri, 80) }} style={styles.commentAvatar} transition={200} />
+                <View style={styles.commentBubble}>
+                  <View style={styles.commentTop}>
+                    <Text style={styles.commentUser}>
+                      {item.name}
+                      {item.mine ? ' (tú)' : ''}
+                    </Text>
+                    <Text style={styles.commentTime}>{formatTime(item.minutesAgo)}</Text>
+                  </View>
+                  <Text style={styles.commentText}>{item.text}</Text>
+                </View>
+              </View>
+            )}
+          />
 
-        <View style={styles.inputBar}>
-          <Image
-            source={{ uri: thumb(user?.avatarUrl ?? userFallbackAvatar(user?.username ?? 'yo'), 80) }}
-            style={styles.inputAvatar}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Escribe un comentario..."
-            placeholderTextColor={colors.textMuted}
-            value={draft}
-            onChangeText={setDraft}
-            returnKeyType="send"
-            onSubmitEditing={send}
-          />
-          <Pressable
-            onPress={send}
-            style={[styles.sendBtn, (!draft.trim() || sending) && { opacity: 0.4 }]}
-            disabled={!draft.trim() || sending}
-          >
-            {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="arrow-up" size={18} color="#fff" />}
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
+          <View style={styles.inputBar}>
+            <Image
+              source={{ uri: thumb(user?.avatarUrl ?? userFallbackAvatar(user?.username ?? 'yo'), 80) }}
+              style={styles.inputAvatar}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Escribe un comentario..."
+              placeholderTextColor={colors.textMuted}
+              value={draft}
+              onChangeText={setDraft}
+              returnKeyType="send"
+              onSubmitEditing={send}
+            />
+            <Pressable
+              onPress={send}
+              style={[styles.sendBtn, (!draft.trim() || sending) && { opacity: 0.4 }]}
+              disabled={!draft.trim() || sending}
+            >
+              {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="arrow-up" size={18} color="#fff" />}
+            </Pressable>
+          </View>
+        </CommentKeyboardView>
+      )}
     </SafeAreaView>
   );
 }

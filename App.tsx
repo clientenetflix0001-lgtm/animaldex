@@ -284,6 +284,26 @@ const screenHeaderOptions = {
   headerShadowVisible: false,
 };
 
+// Navegador para visitantes SIN sesión. Permite ver recursos públicos
+// abiertos desde un enlace compartido sin cuenta: /p/:id, /user/:id,
+// /:handle, /pet/:handle y /a/:id. Cualquier otra ruta cae en Auth.
+function PublicNavigator() {
+  return (
+    <Stack.Navigator initialRouteName="Auth">
+      <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="UserProfile" component={UserProfileRoute} options={{ headerShown: false }} />
+      <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="PetProfile" component={PetProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="AlertDetail"
+        component={AlertDetailScreen}
+        options={{ title: 'Alerta', ...screenHeaderOptions }}
+      />
+    </Stack.Navigator>
+  );
+}
+
 function RootNavigator() {
   const { user, authReady } = useStore();
 
@@ -296,7 +316,7 @@ function RootNavigator() {
   }
 
   if (!user) {
-    return <AuthScreen />;
+    return <PublicNavigator />;
   }
 
   return (

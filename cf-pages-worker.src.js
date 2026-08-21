@@ -49,6 +49,8 @@ const ASSETLINKS_JSON = JSON.stringify([
 const BOT_RE =
   /facebookexternalhit|facebot|facebookcatalog|meta-externalagent|meta-externalads|twitterbot|whatsapp|telegrambot|linkedinbot|slackbot|slack-imgproxy|discordbot|pinterest|googlebot|bingbot|yandex|baiduspider|vkshare|redditbot|applebot|flipboard|tumblr|skypeuripreview|nuzzel|quora|bitlybot|embedly|iframely|snap url preview|viber|line-poker|kakaotalk|google-pagerenderer|preview/i;
 
+const ANIMALDEX_OG_IMAGE = 'https://placedog.net/600/600?id=12';
+
 // ---------- RNG determinista (idéntico a lib/data.ts, para posts demo) ----------
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -350,7 +352,10 @@ async function buildOgMeta(request, env, url) {
         meta = {
           title: `${p.pet_name || 'Una mascota'} ${p.pet_emoji || '🐾'} en Animaldex`,
           description: p.caption || 'Una publicación adorable en Animaldex 🐾',
-          image: p.image,
+          // Posts de texto+fondo no tienen foto propia: una sola imagen OG
+          // genérica (o la del catálogo si algún fondo gráfico tiene URL).
+          // No se rasteriza texto+fondo por publicación.
+          image: p.image || ANIMALDEX_OG_IMAGE,
           url: `${origin}/p/${p.id}`,
         };
       }
@@ -364,13 +369,13 @@ async function buildOgMeta(request, env, url) {
       if (pr.type === 'protector' || pr.type === 'business') {
         const counts = await d1Query(
           env,
-          "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_adopcion'",
+          'SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND archived_at IS NULL',
           [pr.id]
         );
-        const adoption = Number((counts[0] && counts[0].n) || 0);
+        const petsN = Number((counts[0] && counts[0].n) || 0);
         meta = {
           title: `${pr.name} | Animaldex`,
-          description: `🐾 @${pr.username} · Mascotas en adopción: ${adoption}${bio ? ' · ' + bio : ''}`,
+          description: `🐾 @${pr.username} · Mascotas: ${petsN}${bio ? ' · ' + bio : ''}`,
           image: pr.avatar_url || petImage('perro', 11, 600),
           url: `${origin}/${pr.username}`,
         };
