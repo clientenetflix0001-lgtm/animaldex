@@ -129,8 +129,32 @@ async function ensureProfilesSchema(env) {
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN profile_id TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN care_status TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN sex TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN adoption_started_at INTEGER').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN birth_date TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN size TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN neutered INTEGER').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN archived_at INTEGER').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN location TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN phone TEXT').run(); } catch (_) {}
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_profile ON pets (profile_id)');
+  // Historial de adopciones completadas. Una fila = una transferencia real del
+  // MISMO pet_id (no se duplica el perfil). care_status no escribe acá.
+  // Futuro (no expuesto todavía):
+  //   INSERT pet_transfers (...);
+  //   UPDATE pets SET user_id = :nuevo, profile_id = :perfilNuevoONull WHERE id = :petId;
+  //   → Mascotas baja porque ya no tiene profile_id del refugio
+  //   → Adoptados sube porque hay fila en pet_transfers
+  await d1(env, `CREATE TABLE IF NOT EXISTS pet_transfers (
+    id TEXT PRIMARY KEY,
+    pet_id TEXT NOT NULL,
+    from_profile_id TEXT NOT NULL,
+    from_user_id TEXT NOT NULL,
+    to_user_id TEXT NOT NULL,
+    to_profile_id TEXT,
+    created_at INTEGER NOT NULL
+  )`);
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pet_transfers_from ON pet_transfers (from_profile_id)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pet_transfers_pet ON pet_transfers (pet_id)');
   env._profilesReady = true;
 }
 
@@ -294,11 +318,84 @@ function postRow(r) {
   };
 }
 
+function isLeapYear(year) {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+function daysInMonth(year, month) {
+  if (month < 1 || month > 12) return 0;
+  if (month === 2) return isLeapYear(year) ? 29 : 28;
+  if (month === 4 || month === 6 || month === 9 || month === 11) return 30;
+  return 31;
+}
+function parseBirthDate(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
+  if (!m) return null;
+  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
+}
+function isValidBirthDate(value, nowMs = Date.now()) {
+  const parsed = parseBirthDate(value);
+  if (!parsed) return false;
+  const { year, month, day } = parsed;
+  const now = new Date(nowMs);
+  if (year < 1980 || year > now.getFullYear()) return false;
+  if (day < 1 || day > daysInMonth(year, month)) return false;
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return false;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return date.getTime() <= today.getTime();
+}
+function ageFromBirthDate(value, nowMs = Date.now()) {
+  if (!isValidBirthDate(value, nowMs)) return '';
+  const parsed = parseBirthDate(value);
+  const now = new Date(nowMs);
+  let years = now.getFullYear() - parsed.year;
+  let months = now.getMonth() + 1 - parsed.month;
+  let days = now.getDate() - parsed.day;
+  if (days < 0) {
+    months -= 1;
+  }
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+  if (years < 0) return '';
+  if (years >= 1) return years === 1 ? '1 año' : `${years} años`;
+  if (months >= 1) return months === 1 ? '1 mes' : `${months} meses`;
+  if (days <= 1) return 'Recién nacido';
+  return `${days} días`;
+}
+function normalizeSpecies(raw) {
+  const s = clean(raw, 20).toLowerCase();
+  if (s === 'perro' || s === 'gato' || s === 'otro') return s;
+  if (s === 'conejo' || s === 'loro' || s === 'hámster' || s === 'hamster') return s === 'hamster' ? 'hámster' : s;
+  return '';
+}
+function normalizeSize(raw) {
+  const s = clean(raw, 20).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (s === 'pequeno' || s === 'mediano' || s === 'grande') return s;
+  return '';
+}
+function normalizeNeutered(value) {
+  if (value === true || value === 1 || value === '1' || value === 'si' || value === 'sí' || value === 'true') return 1;
+  if (value === false || value === 0 || value === '0' || value === 'no' || value === 'false') return 0;
+  return null;
+}
+function emojiForSpecies(species) {
+  if (species === 'perro') return '🐶';
+  if (species === 'gato') return '🐱';
+  if (species === 'conejo') return '🐰';
+  if (species === 'loro') return '🦜';
+  if (species === 'hámster') return '🐹';
+  return '🐾';
+}
+
 function slugHandle(name) {
   const base = String(name || 'pet').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 16);
   return (base.length >= 3 ? base : (base + 'pet')).slice(0, 16);
 }
 function petRow(r) {
+  const birthDate = r.birth_date || null;
+  const computedAge = ageFromBirthDate(birthDate);
   return {
     id: r.id,
     userId: r.user_id,
@@ -306,7 +403,7 @@ function petRow(r) {
     username: r.username || null,
     species: r.species,
     breed: r.breed || '',
-    age: r.age || '',
+    age: computedAge || r.age || '',
     bio: r.bio || '',
     emoji: r.emoji || '🐾',
     avatarUrl: r.avatar_url || null,
@@ -314,7 +411,19 @@ function petRow(r) {
     profileId: r.profile_id || null,
     careStatus: r.care_status || null,
     sex: r.sex || null,
+    birthDate,
+    size: r.size || null,
+    neutered: r.neutered == null ? null : Number(r.neutered) === 1,
+    adoptionStartedAt: r.adoption_started_at || null,
+    archivedAt: r.archived_at || null,
   };
+}
+
+async function findOwnedPet(env, petId, userId) {
+  const id = clean(petId, 80);
+  if (!id) return null;
+  const rows = await d1(env, 'SELECT * FROM pets WHERE (id = ? OR LOWER(username) = LOWER(?)) AND user_id = ? LIMIT 1', [id, id, userId]);
+  return rows[0] || null;
 }
 
 const POST_SELECT = `
@@ -477,24 +586,38 @@ async function handleDb(request, env) {
       if (!rows[0]) return json({ error: 'Perfil no encontrado' }, 404);
       const pr = rows[0];
       const viewerId = await authUser(request, env, body);
-      const [pets, adoption, adopted, recovering, followers, following] = await Promise.all([
-        d1(env, 'SELECT * FROM pets WHERE profile_id = ? ORDER BY created_at DESC', [pr.id]),
-        d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_adopcion'", [pr.id]),
-        d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'adoptado'", [pr.id]),
-        d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_recuperacion'", [pr.id]),
+      // Mascotas = todas las asociadas HOY a este perfil (profile_id),
+      // sin importar care_status. Adoptados = transferencias históricas.
+      const [pets, petCount, adopted, recovering, transferred, followers, following] = await Promise.all([
+        d1(env, 'SELECT * FROM pets WHERE profile_id = ? AND archived_at IS NULL ORDER BY created_at DESC', [pr.id]),
+        d1(env, 'SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND archived_at IS NULL', [pr.id]),
+        d1(env, 'SELECT COUNT(*) AS n FROM pet_transfers WHERE from_profile_id = ?', [pr.id]),
+        d1(env, "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND archived_at IS NULL AND care_status = 'en_recuperacion'", [pr.id]),
+        d1(
+          env,
+          `SELECT p.* FROM pet_transfers t
+           JOIN pets p ON p.id = t.pet_id
+           WHERE t.from_profile_id = ?
+           ORDER BY t.created_at DESC`,
+          [pr.id]
+        ),
         d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'profile' AND target_id = ?", [pr.id]),
         viewerId
           ? d1(env, "SELECT 1 FROM follows WHERE user_id = ? AND target_type = 'profile' AND target_id = ? LIMIT 1", [viewerId, pr.id])
           : Promise.resolve([]),
       ]);
+      const petsN = petCount[0]?.n || 0;
+      const recoveringN = recovering[0]?.n || 0;
       return json({
         ok: true,
         profile: profileRow(pr),
         pets: pets.map(petRow),
+        transferredPets: transferred.map(petRow),
         stats: {
-          adoption: adoption[0]?.n || 0,
+          pets: petsN,
+          adoption: Math.max(0, petsN - recoveringN),
           adopted: adopted[0]?.n || 0,
-          recovering: recovering[0]?.n || 0,
+          recovering: recoveringN,
           followers: followers[0]?.n || 0,
         },
         isOwner: viewerId === pr.account_id,
@@ -564,7 +687,7 @@ async function handleDb(request, env) {
       const targetId = clean(body.targetUserId, 80);
       const [users, pets, postCount, followerCount, profiles] = await Promise.all([
         d1(env, 'SELECT id, username, name, avatar_url, bio, location, verified_phone, created_at FROM users WHERE id = ?', [targetId]),
-        d1(env, 'SELECT * FROM pets WHERE user_id = ? ORDER BY created_at ASC', [targetId]),
+        d1(env, 'SELECT * FROM pets WHERE user_id = ? AND archived_at IS NULL ORDER BY created_at ASC', [targetId]),
         d1(env, 'SELECT COUNT(*) AS n FROM posts WHERE user_id = ?', [targetId]),
         d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'user' AND target_id = ?", [targetId]),
         d1(env, "SELECT * FROM profiles WHERE account_id = ? AND type != 'personal' ORDER BY created_at ASC", [targetId]),
@@ -585,15 +708,19 @@ async function handleDb(request, env) {
       const pets = await d1(env, 'SELECT * FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1', [petId, petId]);
       if (!pets[0]) return json({ error: 'Mascota no encontrada' }, 404);
       const pet = pets[0];
-      const [owners, postCount, followerCount] = await Promise.all([
+      const [owners, postCount, followerCount, shelterRows] = await Promise.all([
         d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE id = ?', [pet.user_id]),
         d1(env, 'SELECT COUNT(*) AS n FROM posts WHERE pet_id = ?', [pet.id]),
         d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'pet' AND target_id = ?", [pet.id]),
+        pet.profile_id
+          ? d1(env, "SELECT * FROM profiles WHERE id = ? AND type = 'protector'", [pet.profile_id])
+          : Promise.resolve([]),
       ]);
       return json({
         ok: true,
         pet: petRow(pet),
         owner: owners[0] ? { id: owners[0].id, username: owners[0].username, name: owners[0].name, avatarUrl: owners[0].avatar_url || null } : null,
+        shelter: shelterRows[0] ? profileRow(shelterRows[0]) : null,
         stats: { posts: postCount[0].n, followers: followerCount[0].n },
       });
     }
@@ -601,7 +728,7 @@ async function handleDb(request, env) {
     if (action === 'search') {
       const q = `%${clean(body.q, 40).toLowerCase()}%`;
       const [pets, users] = await Promise.all([
-        d1(env, 'SELECT * FROM pets WHERE LOWER(name) LIKE ? OR LOWER(breed) LIKE ? OR LOWER(species) LIKE ? LIMIT 20', [q, q, q]),
+        d1(env, 'SELECT * FROM pets WHERE archived_at IS NULL AND (LOWER(name) LIKE ? OR LOWER(breed) LIKE ? OR LOWER(species) LIKE ?) LIMIT 20', [q, q, q]),
         d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE LOWER(username) LIKE ? OR LOWER(name) LIKE ? LIMIT 20', [q, q]),
       ]);
       return json({ ok: true, pets: pets.map(petRow), users: users.map((u) => ({ id: u.id, username: u.username, name: u.name, avatarUrl: u.avatar_url || null })) });
@@ -610,11 +737,14 @@ async function handleDb(request, env) {
     if (action === 'checkPetUsername') {
       const username = clean(body.username, 20).toLowerCase();
       if (!USERNAME_RE.test(username)) return json({ ok: true, available: false, reason: 'invalid' });
-      const rows = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ? OR LOWER(name) = ?', [username, username]);
+      const excludeId = clean(body.excludePetId, 80);
+      const rows = excludeId
+        ? await d1(env, 'SELECT id FROM pets WHERE (LOWER(username) = ? OR LOWER(name) = ?) AND id != ? AND LOWER(username) != LOWER(?)', [username, username, excludeId, excludeId])
+        : await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ? OR LOWER(name) = ?', [username, username]);
       return json({ ok: true, available: rows.length === 0 });
     }
     if (action === 'featuredPets') {
-      const rows = await d1(env, 'SELECT * FROM pets ORDER BY created_at DESC LIMIT 20');
+      const rows = await d1(env, 'SELECT * FROM pets WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 20');
       return json({ ok: true, pets: rows.map(petRow) });
     }
 
@@ -992,7 +1122,7 @@ async function handleDb(request, env) {
         d1(env, 'SELECT post_id FROM likes WHERE user_id = ?', [userId]),
         d1(env, 'SELECT post_id FROM saves WHERE user_id = ?', [userId]),
         d1(env, 'SELECT target_type, target_id FROM follows WHERE user_id = ?', [userId]),
-        d1(env, 'SELECT * FROM pets WHERE user_id = ? ORDER BY created_at ASC', [userId]),
+        d1(env, 'SELECT * FROM pets WHERE user_id = ? AND archived_at IS NULL ORDER BY created_at ASC', [userId]),
       ]);
       return json({
         ok: true,
@@ -1321,13 +1451,18 @@ async function handleDb(request, env) {
 
     if (action === 'createPet') {
       const name = clean(body.name, 40);
-      const species = clean(body.species, 20) || 'perro';
+      const species = normalizeSpecies(body.species) || 'perro';
       const breed = clean(body.breed, 60);
-      const age = clean(body.age, 30);
       const bio = clean(body.bio, 200);
-      const emoji = clean(body.emoji, 8) || '🐾';
+      const emoji = clean(body.emoji, 8) || emojiForSpecies(species);
       const avatarUrl = clean(body.avatarUrl, 500) || null;
+      const size = normalizeSize(body.size) || null;
+      const neutered = normalizeNeutered(body.neutered);
+      const birthDate = clean(body.birthDate, 10) || null;
       if (name.length < 1) return json({ error: 'Ponle nombre a tu mascota' }, 400);
+      if (birthDate && !isValidBirthDate(birthDate, now)) {
+        return json({ error: 'La fecha de nacimiento no es válida' }, 400);
+      }
       let username = clean(body.username, 20).toLowerCase();
       if (!USERNAME_RE.test(username)) username = slugHandle(name);
       if (!USERNAME_RE.test(username)) return json({ error: 'El usuario de la mascota debe tener 3-20 caracteres: letras, números, punto o _' }, 400);
@@ -1335,29 +1470,108 @@ async function handleDb(request, env) {
       if (takenUser.length) return json({ error: 'Ese @ de mascota ya está en uso. Probá otro.' }, 409);
       const takenName = await d1(env, 'SELECT id FROM pets WHERE LOWER(name) = LOWER(?)', [name]);
       if (takenName.length) return json({ error: 'Ya existe una mascota con ese nombre. Elegí otro nombre o usuario.' }, 409);
+
+      let profileId = clean(body.profileId, 80) || null;
+      let isProtectorPet = false;
+      if (profileId) {
+        const owned = await d1(env, "SELECT id, type FROM profiles WHERE id = ? AND account_id = ?", [profileId, userId]);
+        if (!owned[0] || owned[0].type !== 'protector') {
+          return json({ error: 'Ese perfil proteccionista no es tuyo' }, 403);
+        }
+        isProtectorPet = true;
+      }
+
+      const allowed = isProtectorPet ? ['en_adopcion', 'en_recuperacion'] : ['en_casa', 'perdido'];
+      let careStatus = clean(body.careStatus, 30);
+      if (!allowed.includes(careStatus)) careStatus = isProtectorPet ? 'en_adopcion' : 'en_casa';
+      const adoptionStartedAt = careStatus === 'en_adopcion' ? now : null;
+
       const id = `pet-${now}-${Math.random().toString(36).slice(2, 8)}`;
-      await d1(env, 'INSERT INTO pets (id, user_id, name, username, species, breed, age, bio, emoji, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, name, username, species, breed, age, bio, emoji, avatarUrl, now]);
+      await d1(
+        env,
+        `INSERT INTO pets (
+          id, user_id, name, username, species, breed, age, bio, emoji, avatar_url, created_at,
+          profile_id, care_status, adoption_started_at, birth_date, size, neutered
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, userId, name, username, species, breed, '', bio, emoji, avatarUrl, now, profileId, careStatus, adoptionStartedAt, birthDate, size, neutered]
+      );
       const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [id]);
       return json({ ok: true, pet: petRow(rows[0]) });
     }
 
     if (action === 'updatePet') {
-      const petId = clean(body.petId, 80);
-      const pets = await d1(env, 'SELECT * FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
-      if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
-      const p = pets[0];
-      await d1(env, 'UPDATE pets SET name = ?, species = ?, breed = ?, age = ?, bio = ?, emoji = ?, avatar_url = ? WHERE id = ?', [
-        clean(body.name, 40) || p.name,
-        clean(body.species, 20) || p.species,
-        clean(body.breed, 60) || p.breed,
-        clean(body.age, 30) || p.age,
-        clean(body.bio, 200) || p.bio,
-        clean(body.emoji, 8) || p.emoji,
-        clean(body.avatarUrl, 500) || p.avatar_url,
-        petId,
-      ]);
-      const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [petId]);
+      const p = await findOwnedPet(env, body.petId, userId);
+      if (!p) return json({ error: 'Esa mascota no es tuya' }, 403);
+      const name = clean(body.name, 40) || p.name;
+      const species = normalizeSpecies(body.species) || p.species || 'perro';
+      const breed = body.breed != null ? clean(body.breed, 60) : (p.breed || '');
+      const bio = body.bio != null ? clean(body.bio, 200) : (p.bio || '');
+      const emoji = clean(body.emoji, 8) || emojiForSpecies(species) || p.emoji;
+      const avatarUrl = body.avatarUrl != null ? (clean(body.avatarUrl, 500) || p.avatar_url) : p.avatar_url;
+      const size = body.size != null ? (normalizeSize(body.size) || null) : (p.size || null);
+      const neutered = body.neutered !== undefined ? normalizeNeutered(body.neutered) : (p.neutered == null ? null : Number(p.neutered));
+      let birthDate = p.birth_date || null;
+      if (body.birthDate !== undefined) {
+        const next = clean(body.birthDate, 10) || null;
+        if (next && !isValidBirthDate(next, now)) return json({ error: 'La fecha de nacimiento no es válida' }, 400);
+        birthDate = next;
+      }
+      let username = p.username;
+      if (body.username != null) {
+        username = clean(body.username, 20).toLowerCase();
+        if (!USERNAME_RE.test(username)) return json({ error: 'El usuario de la mascota debe tener 3-20 caracteres: letras, números, punto o _' }, 400);
+      }
+      if (username && username !== p.username) {
+        const takenUser = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ? AND id != ?', [username, p.id]);
+        if (takenUser.length) return json({ error: 'Ese @ de mascota ya está en uso. Probá otro.' }, 409);
+      }
+      if (name !== p.name) {
+        const takenName = await d1(env, 'SELECT id FROM pets WHERE LOWER(name) = LOWER(?) AND id != ?', [name, p.id]);
+        if (takenName.length) return json({ error: 'Ya existe una mascota con ese nombre. Elegí otro nombre o usuario.' }, 409);
+      }
+
+      const isProtectorPet = !!p.profile_id;
+      const allowed = isProtectorPet ? ['en_adopcion', 'en_recuperacion'] : ['en_casa', 'perdido'];
+      let careStatus = p.care_status || (isProtectorPet ? 'en_adopcion' : 'en_casa');
+      if (body.careStatus != null) {
+        const nextStatus = clean(body.careStatus, 30);
+        if (!allowed.includes(nextStatus)) {
+          return json({ error: 'Ese estado no corresponde a este tipo de perfil' }, 400);
+        }
+        careStatus = nextStatus;
+      }
+      let adoptionStartedAt = p.adoption_started_at || null;
+      if (careStatus === 'en_adopcion' && p.care_status !== 'en_adopcion') {
+        adoptionStartedAt = now;
+      } else if (careStatus !== 'en_adopcion') {
+        adoptionStartedAt = null;
+      }
+
+      await d1(
+        env,
+        `UPDATE pets SET name = ?, username = ?, species = ?, breed = ?, bio = ?, emoji = ?, avatar_url = ?,
+          care_status = ?, adoption_started_at = ?, birth_date = ?, size = ?, neutered = ?, age = ?
+         WHERE id = ?`,
+        [name, username, species, breed, bio, emoji, avatarUrl, careStatus, adoptionStartedAt, birthDate, size, neutered, '', p.id]
+      );
+      const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [p.id]);
       return json({ ok: true, pet: petRow(rows[0]) });
+    }
+
+    if (action === 'archivePet') {
+      const p = await findOwnedPet(env, body.petId, userId);
+      if (!p) return json({ error: 'Esa mascota no es tuya' }, 403);
+      if (!p.profile_id) return json({ error: 'Solo se pueden archivar mascotas de un refugio' }, 400);
+      await d1(env, 'UPDATE pets SET archived_at = ? WHERE id = ?', [now, p.id]);
+      return json({ ok: true });
+    }
+
+    if (action === 'deletePet') {
+      const p = await findOwnedPet(env, body.petId, userId);
+      if (!p) return json({ error: 'Esa mascota no es tuya' }, 403);
+      await d1(env, "DELETE FROM follows WHERE target_type = 'pet' AND target_id = ?", [p.id]);
+      await d1(env, 'DELETE FROM pets WHERE id = ?', [p.id]);
+      return json({ ok: true, petId: p.id });
     }
 
     if (action === 'notifications') {

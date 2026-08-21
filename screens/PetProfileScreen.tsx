@@ -23,7 +23,6 @@ import {
   generatePetPosts,
   formatCount,
   SPECIES_LABEL,
-  Species,
   Post,
 } from '../lib/data';
 import { db, ApiPet } from '../lib/db';
@@ -36,6 +35,9 @@ import { StatBlock } from '../components/StatBlock';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
+import { ageLabelFromBirthDate } from '../lib/birthDate';
+import { careStatusLabel, waitingLabel, sizeLabel, speciesLabel as speciesLabelFn } from '../lib/petFields';
+import type { PublicProfile } from '../features/profiles/profileTypes';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'PetProfile'>;
@@ -52,6 +54,7 @@ export default function PetProfileScreen() {
 
   const [realPet, setRealPet] = useState<ApiPet | null>(null);
   const [realOwner, setRealOwner] = useState<{ id: string; username: string; name: string; avatarUrl: string | null } | null>(null);
+  const [shelter, setShelter] = useState<PublicProfile | null>(null);
   const [realStats, setRealStats] = useState<{ posts: number; followers: number } | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +73,7 @@ export default function PetProfileScreen() {
         const [prof, petPosts] = await Promise.all([db.petProfile(petId), db.petPosts(petId)]);
         setRealPet(prof.pet);
         setRealOwner(prof.owner);
+        setShelter(prof.shelter || null);
         setRealStats(prof.stats);
         setPosts(petPosts.posts.map(apiPostToPost));
       } catch {}
@@ -112,7 +116,7 @@ export default function PetProfileScreen() {
       if (up.url.startsWith('data:')) {
         Alert.alert('Error', 'No se pudo subir la foto a Cloudflare');
       } else {
-        await db.updatePet(petId, { avatarUrl: up.url });
+        await db.updatePet(realPet?.id || petId, { avatarUrl: up.url });
         db.registerImage(up.url, undefined, 'pet-avatar').catch(() => {});
         setRealPet((p) => (p ? { ...p, avatarUrl: up.url } : p));
         refreshMyPets();
@@ -122,7 +126,7 @@ export default function PetProfileScreen() {
     } finally {
       setUploadingPhoto(false);
     }
-  }, [isMyPet, petId, refreshMyPets]);
+  }, [isMyPet, petId, realPet?.id, refreshMyPets]);
 
   // Compartir mi ubicación con el dueño (con permiso GPS visible del navegador/SO).
   // Solo se llama tras un toque explícito del visitante — nunca automático.
@@ -171,11 +175,18 @@ export default function PetProfileScreen() {
   const speciesLabel = demoPet
     ? SPECIES_LABEL[demoPet.species]
     : realPet
-    ? SPECIES_LABEL[realPet.species as Species] ?? realPet.species
+    ? speciesLabelFn(realPet.species)
     : '';
   const breed = demoPet?.breed ?? realPet?.breed ?? '';
-  const age = demoPet?.age ?? realPet?.age ?? '';
+  const age = demoPet?.age ?? (realPet ? ageLabelFromBirthDate(realPet.birthDate) || realPet.age : '') ?? '';
   const bio = demoPet?.bio ?? realPet?.bio ?? '';
+  const statusText = realPet ? careStatusLabel(realPet.careStatus) : '';
+  const waitText =
+    realPet?.careStatus === 'en_adopcion' ? waitingLabel(realPet.adoptionStartedAt) : '';
+  const sizeText = realPet ? sizeLabel(realPet.size) : '';
+  const neuteredText =
+    realPet?.neutered == null ? '' : realPet.neutered ? 'Castrado' : 'Sin castrar';
+  const isProtectorPet = !!realPet?.profileId;
   const avatarUri = demoPet ? petAvatar(demoPet) : realPet?.avatarUrl ?? petFallbackAvatar(petId);
   const followerBase = demoPet ? demoPet.followers : realStats?.followers ?? 0;
   const followerTotal = followerBase + (following && !demoPet ? 0 : following ? 1 : 0);
@@ -257,6 +268,11 @@ export default function PetProfileScreen() {
         <Text style={styles.petName}>{name}</Text>
         {!!petHandle && <Text style={styles.petHandle}>@{petHandle}</Text>}
         <View style={styles.chipsRow}>
+          {!!statusText && (
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>{statusText}</Text>
+            </View>
+          )}
           {speciesLabel !== '' && (
             <View style={styles.chip}>
               <Text style={styles.chipText}>{speciesLabel}</Text>
@@ -272,7 +288,18 @@ export default function PetProfileScreen() {
               <Text style={styles.chipText}>{age}</Text>
             </View>
           )}
+          {sizeText !== '' && (
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>{sizeText}</Text>
+            </View>
+          )}
+          {neuteredText !== '' && (
+            <View style={styles.chip}>
+              <Text style={styles.chipText}>{neuteredText}</Text>
+            </View>
+          )}
         </View>
+        {!!waitText && <Text style={styles.waitText}>{waitText}</Text>}
         {bio !== '' && <Text style={styles.bio}>{bio}</Text>}
       </View>
 
@@ -289,8 +316,92 @@ export default function PetProfileScreen() {
         <FollowButton following={following} onPress={() => toggleFollowPet(petId)} style={{ flex: 1 }} />
       </View>
 
-      {/* Owner */}
-      {ownerId && (
+      {isMyPet && (
+        <View style={styles.adminRow}>
+          <Pressable
+            style={styles.adminBtn}
+            onPress={() => navigation.navigate('AddPet', { petId: realPet?.id || petId, profileId: realPet?.profileId || undefined })}
+          >
+            <Text style={styles.adminText}>Editar</Text>
+          </Pressable>
+          {isProtectorPet && (
+            <Pressable
+              style={styles.adminBtn}
+              onPress={() => {
+                Alert.alert(
+                  'Archivar',
+                  `¿Archivar a ${name}? El perfil se conserva, pero deja de verse en el refugio.`,
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    {
+                      text: 'Archivar',
+                      onPress: async () => {
+                        try {
+                          await db.archivePet(realPet?.id || petId);
+                          await refreshMyPets();
+                          navigation.goBack();
+                        } catch (e: any) {
+                          Alert.alert('Error', e?.message || 'No se pudo archivar');
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}
+            >
+              <Text style={styles.adminText}>Archivar</Text>
+            </Pressable>
+          )}
+          <Pressable
+            style={styles.adminBtn}
+            onPress={() => {
+              Alert.alert(
+                'Eliminar mascota',
+                `¿Eliminar a ${name}? Esta acción no se puede deshacer.`,
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await db.deletePet(realPet?.id || petId);
+                        await refreshMyPets();
+                        navigation.goBack();
+                      } catch (e: any) {
+                        Alert.alert('Error', e?.message || 'No se pudo eliminar');
+                      }
+                    },
+                  },
+                ]
+              );
+            }}
+          >
+            <Text style={[styles.adminText, { color: colors.heart }]}>Eliminar</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Owner / refugio */}
+      {shelter ? (
+        <Pressable
+          style={styles.ownerCard}
+          onPress={() => navigation.navigate('PublicProfile', { username: shelter.username, profileId: shelter.id })}
+        >
+          <Image
+            source={{ uri: thumb(shelter.avatar || userFallbackAvatar(shelter.username), 100) }}
+            style={styles.ownerAvatar}
+            transition={200}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.ownerLabel}>Refugio de {name}</Text>
+            <Text style={styles.ownerName}>
+              {shelter.name} · @{shelter.username}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Pressable>
+      ) : ownerId ? (
         <Pressable
           style={styles.ownerCard}
           onPress={() => navigation.navigate('UserProfile', { userId: ownerId })}
@@ -304,7 +415,7 @@ export default function PetProfileScreen() {
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
-      )}
+      ) : null}
 
       {!isMyPet && (
         <Pressable
@@ -458,6 +569,28 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     lineHeight: 20,
   },
+  waitText: {
+    marginTop: spacing.sm,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  adminRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.md,
+  },
+  adminBtn: {
+    flex: 1,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    paddingVertical: 8,
+    backgroundColor: colors.card,
+  },
+  adminText: { fontWeight: '700', fontSize: 12, color: colors.text },
   statsCard: {
     flexDirection: 'row',
     alignItems: 'center',

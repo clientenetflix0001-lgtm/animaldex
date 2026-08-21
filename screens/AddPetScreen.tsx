@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,16 @@ import { uploadImage } from '../lib/api';
 import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
-
+import { useProfiles } from '../features/profiles';
+import BirthDatePicker from '../components/BirthDatePicker';
+import { formatBirthDate, isValidBirthDateParts, parseBirthDate } from '../lib/birthDate';
+import {
+  FORM_SPECIES,
+  PET_SIZES,
+  PERSONAL_STATUSES,
+  PROTECTOR_STATUSES,
+  defaultCareStatus,
+} from '../lib/petFields';
 
 function normalizeHandle(raw: string): string {
   return raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_.]/g, '').slice(0, 20);
@@ -35,21 +44,22 @@ const HANDLE_RE = /^[a-z0-9_.]{3,20}$/;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-
-const SPECIES = [
-  { id: 'perro', label: 'Perro', emoji: '🐶' },
-  { id: 'gato', label: 'Gato', emoji: '🐱' },
-  { id: 'conejo', label: 'Conejo', emoji: '🐰' },
-  { id: 'loro', label: 'Ave', emoji: '🦜' },
-  { id: 'hámster', label: 'Hámster', emoji: '🐹' },
-  { id: 'otro', label: 'Otro', emoji: '🐾' },
-];
-
 export default function AddPetScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'AddPet'>>();
   const tagCode = route.params?.tagCode;
+  const editPetId = route.params?.petId;
   const { refreshMyPets } = useStore();
+  const { activeProfile } = useProfiles();
+  const routeProfileId = route.params?.profileId;
+  const protectorProfileId =
+    routeProfileId || (activeProfile?.type === 'protector' ? activeProfile.id : null);
+  const isProtector = !!protectorProfileId && !editPetId;
+
+  const [realId, setRealId] = useState(editPetId || '');
+  const [loadingPet, setLoadingPet] = useState(!!editPetId);
+  const [isProtectorPet, setIsProtectorPet] = useState(isProtector);
+  const [profileId, setProfileId] = useState<string | null>(protectorProfileId);
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [userTouched, setUserTouched] = useState(false);
@@ -57,27 +67,85 @@ export default function AddPetScreen() {
   const [checking, setChecking] = useState(false);
   const [species, setSpecies] = useState('perro');
   const [breed, setBreed] = useState('');
-  const [age, setAge] = useState('');
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [size, setSize] = useState<string | null>(null);
+  const [neutered, setNeutered] = useState<boolean | null>(null);
+  const [careStatus, setCareStatus] = useState(defaultCareStatus(isProtector));
+  const [birthYear, setBirthYear] = useState<number | null>(null);
+  const [birthMonth, setBirthMonth] = useState<number | null>(null);
+  const [birthDay, setBirthDay] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ title: editPetId ? 'Editar mascota' : 'Nueva mascota' });
+  }, [navigation, editPetId]);
 
   useEffect(() => {
-    if (!userTouched) setUsername(suggestHandle(name));
-  }, [name, userTouched]);
+    if (!userTouched && !editPetId) setUsername(suggestHandle(name));
+  }, [name, userTouched, editPetId]);
 
   useEffect(() => {
-    if (!HANDLE_RE.test(username)) { setAvailable(null); return; }
+    if (!HANDLE_RE.test(username)) {
+      setAvailable(null);
+      return;
+    }
     setChecking(true);
     const t = setTimeout(() => {
-      db.checkPetUsername(username)
+      db.checkPetUsername(username, realId || editPetId)
         .then((r) => setAvailable(r.available))
         .catch(() => setAvailable(null))
         .finally(() => setChecking(false));
     }, 280);
     return () => clearTimeout(t);
-  }, [username]);
+  }, [username, editPetId, realId]);
+
+  useEffect(() => {
+    if (!editPetId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { pet } = await db.petProfile(editPetId);
+        if (cancelled) return;
+        setName(pet.name);
+        setUsername(pet.username || suggestHandle(pet.name));
+        setRealId(pet.id);
+        setUserTouched(true);
+        setSpecies(pet.species === 'gato' || pet.species === 'perro' ? pet.species : 'otro');
+        setBreed(pet.breed || '');
+        setBio(pet.bio || '');
+        setAvatarUrl(pet.avatarUrl);
+        setSize(pet.size || null);
+        setNeutered(pet.neutered ?? null);
+        const protector = !!pet.profileId;
+        setIsProtectorPet(protector);
+        setProfileId(pet.profileId || null);
+        setCareStatus(
+          (protector
+            ? pet.careStatus === 'en_recuperacion'
+              ? 'en_recuperacion'
+              : 'en_adopcion'
+            : pet.careStatus === 'perdido'
+            ? 'perdido'
+            : 'en_casa')
+        );
+        const parsed = parseBirthDate(pet.birthDate);
+        if (parsed) {
+          setBirthYear(parsed.year);
+          setBirthMonth(parsed.month);
+          setBirthDay(parsed.day);
+        }
+      } catch (e: any) {
+        Alert.alert('Error', e?.message || 'No se pudo cargar la mascota');
+      } finally {
+        if (!cancelled) setLoadingPet(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editPetId]);
 
   const pickAvatar = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -113,6 +181,10 @@ export default function AddPetScreen() {
     }
   }, []);
 
+  const birthTouched = birthYear != null || birthMonth != null || birthDay != null;
+  const birthOk = isValidBirthDateParts(birthYear, birthMonth, birthDay);
+  const birthDate = birthOk && birthYear && birthMonth && birthDay ? formatBirthDate(birthYear, birthMonth, birthDay) : null;
+
   const save = useCallback(async () => {
     if (name.trim().length < 1) {
       Alert.alert('Falta el nombre', 'Ponle nombre a tu mascota 🐾');
@@ -127,21 +199,32 @@ export default function AddPetScreen() {
       Alert.alert('Usuario ocupado', 'Ese nombre o @ ya lo tiene otra mascota. Probá otro.');
       return;
     }
+    if (birthTouched && !birthOk) {
+      Alert.alert('Fecha inválida', 'Revisá el día, el mes y el año. No se permiten fechas inexistentes ni futuras.');
+      return;
+    }
     setSaving(true);
     try {
-      const emoji = SPECIES.find((s) => s.id === species)?.emoji ?? '🐾';
-      const { pet } = await db.createPet({
+      const emoji = FORM_SPECIES.find((s) => s.id === species)?.emoji ?? '🐾';
+      const payload = {
         name: name.trim(),
         username: handle,
         species,
         breed: breed.trim(),
-        age: age.trim(),
         bio: bio.trim(),
         emoji,
         avatarUrl: avatarUrl ?? undefined,
-      });
+        careStatus,
+        birthDate,
+        size: (size as 'pequeno' | 'mediano' | 'grande' | null) || null,
+        neutered,
+        profileId: isProtectorPet ? profileId : null,
+      };
+      const { pet } = editPetId
+        ? await db.updatePet(realId || editPetId, payload)
+        : await db.createPet(payload);
       await refreshMyPets();
-      if (tagCode != null) {
+      if (!editPetId && tagCode != null) {
         try {
           await db.claimTag(tagCode, pet.id);
           Alert.alert(
@@ -164,7 +247,38 @@ export default function AddPetScreen() {
     } finally {
       setSaving(false);
     }
-  }, [name, username, available, species, breed, age, bio, avatarUrl, refreshMyPets, navigation, tagCode]);
+  }, [
+    name,
+    username,
+    available,
+    species,
+    breed,
+    bio,
+    avatarUrl,
+    careStatus,
+    birthDate,
+    birthTouched,
+    birthOk,
+    size,
+    neutered,
+    isProtectorPet,
+    profileId,
+    refreshMyPets,
+    navigation,
+    tagCode,
+    realId,
+    editPetId,
+  ]);
+
+  const statuses = isProtectorPet ? PROTECTOR_STATUSES : PERSONAL_STATUSES;
+
+  if (loadingPet) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -178,7 +292,6 @@ export default function AddPetScreen() {
               </Text>
             </View>
           )}
-          {/* Avatar */}
           <Pressable style={styles.avatarWrap} onPress={pickAvatar}>
             {avatarUrl ? (
               <Image source={{ uri: avatarUrl }} style={styles.avatar} transition={200} />
@@ -216,7 +329,10 @@ export default function AddPetScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               value={username}
-              onChangeText={(t) => { setUserTouched(true); setUsername(normalizeHandle(t)); }}
+              onChangeText={(t) => {
+                setUserTouched(true);
+                setUsername(normalizeHandle(t));
+              }}
               maxLength={20}
             />
             <Text style={styles.handleStatus}>
@@ -231,19 +347,76 @@ export default function AddPetScreen() {
 
           <Text style={styles.label}>Especie</Text>
           <View style={styles.speciesGrid}>
-            {SPECIES.map((s) => (
+            {FORM_SPECIES.map((s) => (
               <Pressable
                 key={s.id}
                 style={[styles.speciesChip, species === s.id && styles.speciesChipActive]}
                 onPress={() => setSpecies(s.id)}
               >
                 <Text style={styles.speciesEmoji}>{s.emoji}</Text>
-                <Text style={[styles.speciesText, species === s.id && { color: '#fff' }]}>
-                  {s.label}
+                <Text style={[styles.speciesText, species === s.id && { color: '#fff' }]}>{s.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles.label}>Estado</Text>
+          <View style={styles.speciesGrid}>
+            {statuses.map((s) => (
+              <Pressable
+                key={s.id}
+                style={[styles.speciesChip, careStatus === s.id && styles.speciesChipActive]}
+                onPress={() => setCareStatus(s.id)}
+              >
+                <Text style={[styles.speciesText, careStatus === s.id && { color: '#fff' }]}>
+                  {'emoji' in s ? `${s.emoji} ${s.label}` : s.label}
                 </Text>
               </Pressable>
             ))}
           </View>
+
+          <Text style={styles.label}>Porte</Text>
+          <View style={styles.speciesGrid}>
+            {PET_SIZES.map((s) => (
+              <Pressable
+                key={s.id}
+                style={[styles.speciesChip, size === s.id && styles.speciesChipActive]}
+                onPress={() => setSize(s.id)}
+              >
+                <Text style={[styles.speciesText, size === s.id && { color: '#fff' }]}>{s.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles.label}>Castrado</Text>
+          <View style={styles.speciesGrid}>
+            {[
+              { id: true, label: 'Sí' },
+              { id: false, label: 'No' },
+            ].map((s) => (
+              <Pressable
+                key={String(s.id)}
+                style={[styles.speciesChip, neutered === s.id && styles.speciesChipActive]}
+                onPress={() => setNeutered(s.id)}
+              >
+                <Text style={[styles.speciesText, neutered === s.id && { color: '#fff' }]}>{s.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles.label}>Fecha de nacimiento</Text>
+          <BirthDatePicker
+            year={birthYear}
+            month={birthMonth}
+            day={birthDay}
+            onChange={({ year, month, day }) => {
+              setBirthYear(year);
+              setBirthMonth(month);
+              setBirthDay(day);
+            }}
+          />
+          {birthTouched && !birthOk && (
+            <Text style={styles.dateError}>Esa fecha no existe o es futura. Elegí un día válido.</Text>
+          )}
 
           <Text style={styles.label}>Raza</Text>
           <TextInput
@@ -253,16 +426,6 @@ export default function AddPetScreen() {
             value={breed}
             onChangeText={setBreed}
             maxLength={60}
-          />
-
-          <Text style={styles.label}>Edad</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="2 años, 8 meses..."
-            placeholderTextColor={colors.textMuted}
-            value={age}
-            onChangeText={setAge}
-            maxLength={30}
           />
 
           <Text style={styles.label}>Biografía</Text>
@@ -282,7 +445,7 @@ export default function AddPetScreen() {
             ) : (
               <>
                 <Ionicons name="paw" size={17} color="#fff" />
-                <Text style={styles.saveText}>Guardar mascota</Text>
+                <Text style={styles.saveText}>{editPetId ? 'Guardar cambios' : 'Guardar mascota'}</Text>
               </>
             )}
           </Pressable>
@@ -336,6 +499,7 @@ const styles = StyleSheet.create({
   handleInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: colors.text, fontWeight: '700' },
   handleStatus: { fontWeight: '900', fontSize: 18, color: colors.secondary, width: 22, textAlign: 'center' },
   handleHint: { marginTop: 6, fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  dateError: { marginTop: 6, fontSize: 12, color: colors.heart, fontWeight: '700' },
   input: {
     backgroundColor: colors.card,
     borderRadius: radius.md,

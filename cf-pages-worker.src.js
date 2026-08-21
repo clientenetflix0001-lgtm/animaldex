@@ -364,13 +364,13 @@ async function buildOgMeta(request, env, url) {
       if (pr.type === 'protector' || pr.type === 'business') {
         const counts = await d1Query(
           env,
-          "SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND care_status = 'en_adopcion'",
+          'SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND archived_at IS NULL',
           [pr.id]
         );
-        const adoption = Number((counts[0] && counts[0].n) || 0);
+        const petsN = Number((counts[0] && counts[0].n) || 0);
         meta = {
           title: `${pr.name} | Animaldex`,
-          description: `🐾 @${pr.username} · Mascotas en adopción: ${adoption}${bio ? ' · ' + bio : ''}`,
+          description: `🐾 @${pr.username} · Mascotas: ${petsN}${bio ? ' · ' + bio : ''}`,
           image: pr.avatar_url || petImage('perro', 11, 600),
           url: `${origin}/${pr.username}`,
         };
