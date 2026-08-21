@@ -26,6 +26,7 @@ import { AdaptivePostImage } from '../components/AdaptivePostImage';
 import { PostBackgroundCard } from '../components/PostBackgroundCard';
 import { CommentKeyboardView } from '../components/CommentKeyboardView';
 import { useGuestAccess } from '../lib/guestAccess';
+import { openHumanProfile } from '../lib/publicHandles';
 import {
   POST_CAPTION_MAX,
   backgroundTextNeedsSeeMore,
@@ -275,13 +276,12 @@ function PostDetailContent({ post }: { post: Post }) {
   }, [guest, requireLogin, toggleSave, post.id]);
 
   const openAuthor = useCallback(() => {
-    if (guest) { requireLogin(); return; }
     const org = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
     const handle = post.authorProfileUsername;
-    if (org && handle) navigation.navigate('PublicProfile', { username: handle });
+    if (org && handle) openHumanProfile(navigation, { username: handle });
     else if (post.petId) navigation.navigate('PetProfile', { petId: post.petId });
-    else if (post.authorUserId) navigation.navigate('UserProfile', { userId: post.authorUserId });
-  }, [guest, requireLogin, post, navigation]);
+    else openHumanProfile(navigation, { username: disp.username, userId: post.authorUserId });
+  }, [post, navigation, disp.username]);
 
   // Posts reales: contador vivo del servidor. Demo: base + likes reales de la BD.
   const likeCount = post.real

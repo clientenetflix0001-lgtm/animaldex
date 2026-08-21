@@ -12,6 +12,7 @@ import { thumb, userFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
+import { openHumanProfile } from '../lib/publicHandles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -106,6 +107,8 @@ export default function ActivityScreen() {
               navigation.navigate('PetProfile', { petId: n.petId });
             } else if (n.postId) {
               navigation.navigate('PostDetail', { postId: n.postId });
+            } else if (n.actorUsername) {
+              openHumanProfile(navigation, { username: n.actorUsername, userId: n.actorId });
             } else if (n.actorId) {
               navigation.navigate('UserProfile', { userId: n.actorId });
             }

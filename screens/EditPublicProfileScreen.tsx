@@ -22,6 +22,7 @@ import { userFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
+import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
 
 export default function EditPublicProfileScreen() {
   const navigation = useNavigation<any>();
@@ -86,13 +87,16 @@ export default function EditPublicProfileScreen() {
   }, []);
 
   const save = useCallback(async () => {
-    const handle = username.trim().replace(/^@/, '').toLowerCase();
+    const handle = normalizePublicUsername(username);
     if (name.trim().length < 2) {
       Alert.alert('Falta el nombre', 'Escribe el nombre del perfil.');
       return;
     }
-    if (!/^[a-z0-9_.]{3,20}$/.test(handle)) {
-      Alert.alert('Usuario inválido', 'El @ debe tener 3-20 caracteres: letras, números, punto o guion bajo.');
+    if (!isValidPublicUsername(handle)) {
+      Alert.alert(
+        'Usuario inválido',
+        'El @ debe tener 3-20 caracteres: letras, números, punto o guion bajo, y no puede coincidir con una ruta del sistema.'
+      );
       return;
     }
     setSaving(true);

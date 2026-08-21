@@ -9,9 +9,12 @@
 // Nota: se evita `new URL()` (no siempre disponible/estable en Hermes
 // para RN) y en su lugar se usan expresiones regulares livianas.
 
+import { isReservedPublicUsername, USERNAME_RE } from './publicHandles';
+
 export type ScanResolution =
   | { kind: 'pet'; id: string; raw: string }
   | { kind: 'user'; id: string; raw: string }
+  | { kind: 'handle'; username: string; raw: string }
   | { kind: 'post'; id: string; raw: string }
   | { kind: 'tag'; code: number; raw: string }
   | { kind: 'url'; url: string; raw: string }
@@ -21,7 +24,7 @@ const HTTP_URL_RE = /^https?:\/\/[^\s]+$/i;
 const SCHEME_RE = /^animaldex:\/\/(.+)$/i;
 const PATH_AFTER_HOST_RE = /^https?:\/\/[^/?#]+(\/[^?#]*)?/i;
 
-function matchKnownPath(path: string): { kind: 'pet' | 'user' | 'post'; id: string } | null {
+function matchKnownPath(path: string): { kind: 'pet' | 'user' | 'handle' | 'post'; id?: string; username?: string } | null {
   const clean = path.replace(/^\/+/, '').replace(/\/+$/, '');
   let m = clean.match(/^pet\/([^/?#]+)/i);
   if (m) return { kind: 'pet', id: decodeURIComponent(m[1]) };
@@ -29,6 +32,9 @@ function matchKnownPath(path: string): { kind: 'pet' | 'user' | 'post'; id: stri
   if (m) return { kind: 'user', id: decodeURIComponent(m[1]) };
   m = clean.match(/^p\/([^/?#]+)/i);
   if (m) return { kind: 'post', id: decodeURIComponent(m[1]) };
+  if (USERNAME_RE.test(clean) && !isReservedPublicUsername(clean)) {
+    return { kind: 'handle', username: clean.toLowerCase() };
+  }
   return null;
 }
 
@@ -48,7 +54,8 @@ export function resolveScannedValue(rawValue: string): ScanResolution {
   const schemeMatch = value.match(SCHEME_RE);
   if (schemeMatch) {
     const parsed = matchKnownPath(schemeMatch[1]);
-    if (parsed) return { ...parsed, raw: value };
+    if (parsed?.kind === 'handle' && parsed.username) return { kind: 'handle', username: parsed.username, raw: value };
+    if (parsed?.id) return { kind: parsed.kind as 'pet' | 'user' | 'post', id: parsed.id, raw: value };
   }
 
   // 2) URL http(s): si el path coincide con una ruta conocida de Animaldex,
@@ -57,7 +64,8 @@ export function resolveScannedValue(rawValue: string): ScanResolution {
     const pathMatch = value.match(PATH_AFTER_HOST_RE);
     const pathname = pathMatch ? pathMatch[1] || '' : '';
     const parsed = pathname ? matchKnownPath(pathname) : null;
-    if (parsed) return { ...parsed, raw: value };
+    if (parsed?.kind === 'handle' && parsed.username) return { kind: 'handle', username: parsed.username, raw: value };
+    if (parsed?.id) return { kind: parsed.kind as 'pet' | 'user' | 'post', id: parsed.id, raw: value };
     return { kind: 'url', url: value, raw: value };
   }
 
@@ -71,6 +79,8 @@ export function scanKindLabel(kind: ScanResolution['kind']): string {
       return 'Perfil de mascota';
     case 'user':
       return 'Perfil de usuario';
+    case 'handle':
+      return 'Perfil público';
     case 'post':
       return 'Publicación';
     case 'tag':

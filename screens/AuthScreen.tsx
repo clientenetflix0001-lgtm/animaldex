@@ -18,6 +18,7 @@ import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint } from '../lib/responsive';
 import { RootStackParamList } from '../lib/types';
+import { isReservedPublicUsername, normalizePublicUsername, USERNAME_RE } from '../lib/publicHandles';
 
 export default function AuthScreen() {
   const { login, register, pendingTagCode } = useStore();
@@ -40,10 +41,20 @@ export default function AuthScreen() {
 
   const submit = useCallback(async () => {
     setError('');
-    const u = username.trim().toLowerCase();
+    const u = normalizePublicUsername(username);
     if (u.length < 3) {
       setError('El usuario debe tener al menos 3 caracteres');
       return;
+    }
+    if (mode === 'register') {
+      if (!USERNAME_RE.test(u)) {
+        setError('El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo');
+        return;
+      }
+      if (isReservedPublicUsername(u)) {
+        setError('Ese nombre de usuario no está disponible');
+        return;
+      }
     }
     if (password.length < 6) {
       setError('La contraseña debe tener al menos 6 caracteres');

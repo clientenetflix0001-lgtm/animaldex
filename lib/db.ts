@@ -249,7 +249,7 @@ export const auth = {
     call('/auth', { action: 'login', username, password }),
   me: () => call('/auth', { action: 'me' }),
   logout: () => call('/auth', { action: 'logout' }),
-  updateProfile: (fields: { name?: string; bio?: string; location?: string; avatarUrl?: string }) =>
+  updateProfile: (fields: { name?: string; bio?: string; location?: string; avatarUrl?: string; username?: string }) =>
     call('/auth', { action: 'updateProfile', ...fields }),
 };
 

@@ -195,6 +195,8 @@ const linking: LinkingOptions<RootStackParamList> = {
   // El prefijo HTTPS permite que un Android App Link verificado
   // (https://animaldex-web.pages.dev/p/<id>) abra la app y resuelva la
   // misma configuración de rutas de abajo (p/:postId, pet/:petId, etc.).
+  // UserProfile NO tiene path público: los perfiles humanos/páginas
+  // se abren siempre como PublicProfile `/:username`.
   prefixes: ['animaldex://', 'https://animaldex-web.pages.dev'],
   config: {
     screens: {
@@ -213,7 +215,6 @@ const linking: LinkingOptions<RootStackParamList> = {
       Explorar: 'explorar',
       PostDetail: 'p/:postId',
       PetProfile: 'pet/:petId',
-      UserProfile: 'user/:userId',
       PublicProfile: ':username',
       EditPublicProfile: 'editar-perfil-publico',
       VerifyPhone: 'verificar',
@@ -285,8 +286,10 @@ const screenHeaderOptions = {
 };
 
 // Navegador para visitantes SIN sesión. Permite ver recursos públicos
-// abiertos desde un enlace compartido sin cuenta: /p/:id, /user/:id,
-// /:handle, /pet/:handle y /a/:id. Cualquier otra ruta cae en Auth.
+// abiertos desde un enlace compartido sin cuenta: /p/:id, /:username,
+// /pet/:handle y /a/:id. Cualquier otra ruta cae en Auth.
+// UserProfile sigue existiendo como pantalla INTERNA (p. ej. QR por user_id),
+// sin URL pública /user/:id.
 function PublicNavigator() {
   return (
     <Stack.Navigator initialRouteName="Auth">

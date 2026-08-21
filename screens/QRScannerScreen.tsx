@@ -116,6 +116,7 @@ export default function QRScannerScreen() {
   const goToInternalTarget = useCallback(
     (r: ScanResolution) => {
       if (r.kind === 'pet') navigation.replace('PetProfile', { petId: r.id });
+      else if (r.kind === 'handle') navigation.replace('PublicProfile', { username: r.username });
       else if (r.kind === 'user') navigation.replace('UserProfile', { userId: r.id });
       else if (r.kind === 'post') navigation.replace('PostDetail', { postId: r.id });
       else if (r.kind === 'tag') navigation.replace('TagWelcome', { code: r.code });
@@ -252,7 +253,7 @@ export default function QRScannerScreen() {
               name={
                 result.kind === 'pet'
                   ? 'paw'
-                  : result.kind === 'user'
+                  : result.kind === 'user' || result.kind === 'handle'
                   ? 'person'
                   : result.kind === 'post'
                   ? 'chatbubble-ellipses'
@@ -272,7 +273,7 @@ export default function QRScannerScreen() {
           </Text>
 
           <View style={styles.resultActions}>
-            {(result.kind === 'pet' || result.kind === 'user' || result.kind === 'post' || result.kind === 'tag') && (
+            {(result.kind === 'pet' || result.kind === 'user' || result.kind === 'handle' || result.kind === 'post' || result.kind === 'tag') && (
               <Pressable style={styles.primaryBtn} onPress={() => goToInternalTarget(result)}>
                 <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
                 <Text style={styles.primaryBtnText}>

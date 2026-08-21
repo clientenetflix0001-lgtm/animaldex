@@ -17,7 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { USERS, getPet as getDemoPet, petAvatar, generateUserPosts, formatCount, Post } from '../lib/data';
 import { db, ApiUser, ApiPet } from '../lib/db';
 import { useStore, apiPostToPost } from '../lib/store';
-import { postNavParams } from '../lib/share';
+import { postNavParams, sharePublicProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
@@ -193,20 +193,26 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
           <View style={{ width: 24 }} />
         )}
         <Text style={styles.username}>@{displayUsername}</Text>
-        {isMe ? (
-          <View style={styles.topBarActions}>
-            {me?.username === 'lucasfuentes' && (
-              <Pressable onPress={() => navigation.navigate('AdminTags')} hitSlop={8}>
-                <Ionicons name="qr-code-outline" size={22} color={colors.text} />
-              </Pressable>
-            )}
+        <View style={styles.topBarActions}>
+          {!!displayUsername && (
+            <Pressable
+              onPress={() => sharePublicProfile(displayName, displayUsername, displayBio)}
+              hitSlop={8}
+            >
+              <Ionicons name="share-outline" size={22} color={colors.text} />
+            </Pressable>
+          )}
+          {isMe && me?.username === 'lucasfuentes' && (
+            <Pressable onPress={() => navigation.navigate('AdminTags')} hitSlop={8}>
+              <Ionicons name="qr-code-outline" size={22} color={colors.text} />
+            </Pressable>
+          )}
+          {isMe && (
             <Pressable onPress={confirmLogout} hitSlop={8}>
               <Ionicons name="log-out-outline" size={22} color={colors.text} />
             </Pressable>
-          </View>
-        ) : (
-          <View style={{ width: 24 }} />
-        )}
+          )}
+        </View>
       </View>
 
       {/* Info */}

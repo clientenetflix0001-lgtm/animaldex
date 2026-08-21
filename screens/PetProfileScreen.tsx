@@ -40,6 +40,7 @@ import { ageLabelFromBirthDate } from '../lib/birthDate';
 import { careStatusLabel, waitingLabel, sizeLabel, speciesLabel as speciesLabelFn } from '../lib/petFields';
 import type { PublicProfile } from '../features/profiles/profileTypes';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
+import { openHumanProfile } from '../lib/publicHandles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'PetProfile'>;
@@ -419,7 +420,11 @@ export default function PetProfileScreen() {
       ) : ownerId ? (
         <Pressable
           style={styles.ownerCard}
-          onPress={() => navigation.navigate('UserProfile', { userId: ownerId })}
+          onPress={() =>
+            demoPet
+              ? navigation.navigate('UserProfile', { userId: ownerId })
+              : openHumanProfile(navigation, { username: ownerUsername, userId: ownerId })
+          }
         >
           <Image source={{ uri: thumb(ownerAvatar, 100) }} style={styles.ownerAvatar} transition={200} />
           <View style={{ flex: 1 }}>
