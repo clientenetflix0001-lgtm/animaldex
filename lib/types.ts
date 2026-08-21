@@ -1,5 +1,5 @@
 export type RootStackParamList = {
-  Auth: undefined;
+  Auth: { mode?: 'login' | 'register' } | undefined;
   Tabs: undefined;
   Explorar: undefined;
   PetProfile: { petId: string };

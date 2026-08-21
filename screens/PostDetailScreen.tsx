@@ -25,6 +25,7 @@ import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from '../components/AdaptivePostImage';
 import { PostBackgroundCard } from '../components/PostBackgroundCard';
 import { CommentKeyboardView } from '../components/CommentKeyboardView';
+import { GuestInviteBar } from '../components/GuestInviteBar';
 import {
   POST_CAPTION_MAX,
   backgroundTextNeedsSeeMore,
@@ -49,6 +50,7 @@ interface DisplayComment {
 export default function PostDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
+  const { user } = useStore();
   const [realPost, setRealPost] = useState<Post | null>(null);
   const [realLoading, setRealLoading] = useState(true);
 
@@ -92,11 +94,13 @@ export default function PostDetailScreen() {
           </Text>
           <Pressable
             style={styles.notFoundBtn}
-            onPress={() =>
-              navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Tabs')
-            }
+            onPress={() => {
+              if (navigation.canGoBack()) navigation.goBack();
+              else if (user) navigation.navigate('Tabs');
+              else navigation.navigate('Auth');
+            }}
           >
-            <Text style={styles.notFoundBtnText}>Ir al inicio</Text>
+            <Text style={styles.notFoundBtnText}>{user ? 'Ir al inicio' : 'Entrar a Animaldex'}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -125,6 +129,35 @@ function PostDetailContent({ post }: { post: Post }) {
   const [editing, setEditing] = useState(false);
   const [captionDraft, setCaptionDraft] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Visitante sin sesión (llegó por un enlace compartido público).
+  const guest = !user;
+  // Detecta que el post se abrió desde un enlace externo / deep link: en ese
+  // caso PostDetail es la raíz del stack (no hay pantalla previa a la que
+  // volver). Si el usuario tocó el post desde su feed, sí hay back y se
+  // conserva la navegación normal (sin X extra).
+  const cameFromLink = !navigation.canGoBack();
+  const [inviteCollapsed, setInviteCollapsed] = useState(false);
+  const requireLogin = useCallback(() => setInviteCollapsed(false), []);
+
+  // Usuario CON sesión que abrió el post desde un enlace externo: mostrar una
+  // X en la cabecera para cerrar la vista y volver al Feed principal.
+  useEffect(() => {
+    if (guest || !cameFromLink) return;
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] })}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar y volver al inicio"
+          style={{ paddingHorizontal: 4 }}
+        >
+          <Ionicons name="close" size={26} color={colors.text} />
+        </Pressable>
+      ),
+    });
+  }, [guest, cameFromLink, navigation]);
 
   const disp = getPostDisplay(post);
   const liked = likedPosts.includes(post.id);
@@ -259,9 +292,27 @@ function PostDetailContent({ post }: { post: Post }) {
 
   // Like con actualización optimista del contador en vivo
   const handleToggleLike = useCallback(() => {
+    if (guest) { requireLogin(); return; }
     toggleLike(post.id);
     setDbLikes((c) => (c == null ? c : Math.max(0, c + (liked ? -1 : 1))));
-  }, [toggleLike, post.id, liked]);
+  }, [guest, requireLogin, toggleLike, post.id, liked]);
+
+  const handleToggleSave = useCallback(() => {
+    if (guest) { requireLogin(); return; }
+    toggleSave(post.id);
+  }, [guest, requireLogin, toggleSave, post.id]);
+
+  const openAuthor = useCallback(() => {
+    if (guest) { requireLogin(); return; }
+    const org = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
+    const handle = post.authorProfileUsername;
+    if (org && handle) navigation.navigate('PublicProfile', { username: handle });
+    else if (post.petId) navigation.navigate('PetProfile', { petId: post.petId });
+    else if (post.authorUserId) navigation.navigate('UserProfile', { userId: post.authorUserId });
+  }, [guest, requireLogin, post, navigation]);
+
+  const goRegister = useCallback(() => navigation.navigate('Auth', { mode: 'register' }), [navigation]);
+  const goLogin = useCallback(() => navigation.navigate('Auth', { mode: 'login' }), [navigation]);
 
   // Posts reales: contador vivo del servidor. Demo: base + likes reales de la BD.
   const likeCount = post.real
@@ -271,16 +322,7 @@ function PostDetailContent({ post }: { post: Post }) {
   // ---------- Piezas reutilizables ----------
   const petHeader = (
     <View style={styles.postHeader}>
-      <Pressable
-        style={styles.headerLeft}
-        onPress={() => {
-          const org = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
-          const handle = post.authorProfileUsername;
-          if (org && handle) navigation.navigate('PublicProfile', { username: handle });
-          else if (post.petId) navigation.navigate('PetProfile', { petId: post.petId });
-          else if (post.authorUserId) navigation.navigate('UserProfile', { userId: post.authorUserId });
-        }}
-      >
+      <Pressable style={styles.headerLeft} onPress={openAuthor}>
         <Image source={{ uri: thumb(disp.avatarUri, 100) }} style={styles.avatar} transition={200} />
         <View>
           <Text style={styles.petName}>
@@ -355,12 +397,14 @@ function PostDetailContent({ post }: { post: Post }) {
           color={liked ? colors.heart : colors.text}
         />
       </Pressable>
-      <Ionicons name="chatbubble-outline" size={24} color={colors.text} />
+      <Pressable onPress={() => { if (guest) requireLogin(); }} hitSlop={8}>
+        <Ionicons name="chatbubble-outline" size={24} color={colors.text} />
+      </Pressable>
       <Pressable onPress={() => sharePost(post)} hitSlop={8}>
         <Ionicons name="paper-plane-outline" size={24} color={colors.text} />
       </Pressable>
       <View style={{ flex: 1 }} />
-      <Pressable onPress={() => toggleSave(post.id)} hitSlop={8}>
+      <Pressable onPress={handleToggleSave} hitSlop={8}>
         <Ionicons
           name={saved ? 'bookmark' : 'bookmark-outline'}
           size={24}
@@ -369,6 +413,15 @@ function PostDetailContent({ post }: { post: Post }) {
       </Pressable>
     </View>
   );
+
+  const inviteBar = guest ? (
+    <GuestInviteBar
+      collapsed={inviteCollapsed}
+      onToggle={setInviteCollapsed}
+      onLogin={goLogin}
+      onRegister={goRegister}
+    />
+  ) : null;
 
   const inputBar = (
     <View style={styles.inputBar}>
@@ -466,9 +519,10 @@ function PostDetailContent({ post }: { post: Post }) {
             <Text style={[styles.likes, { paddingHorizontal: spacing.lg, paddingTop: spacing.sm }]}>
               {formatCount(likeCount)} me gusta
             </Text>
-            {inputBar}
+            {guest ? null : inputBar}
           </View>
         </View>
+        {inviteBar}
       </View>
     );
   }
@@ -511,19 +565,32 @@ function PostDetailContent({ post }: { post: Post }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <CommentKeyboardView>
-        <FlatList
-          data={allComments}
-          keyExtractor={(c) => c.id}
-          ListHeaderComponent={header}
-          contentContainerStyle={{ paddingBottom: spacing.xl }}
-          renderItem={renderComment}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        />
-
-        {inputBar}
-      </CommentKeyboardView>
+      {guest ? (
+        <>
+          <FlatList
+            data={allComments}
+            keyExtractor={(c) => c.id}
+            ListHeaderComponent={header}
+            contentContainerStyle={{ paddingBottom: 260 }}
+            renderItem={renderComment}
+            showsVerticalScrollIndicator={false}
+          />
+          {inviteBar}
+        </>
+      ) : (
+        <CommentKeyboardView>
+          <FlatList
+            data={allComments}
+            keyExtractor={(c) => c.id}
+            ListHeaderComponent={header}
+            contentContainerStyle={{ paddingBottom: spacing.xl }}
+            renderItem={renderComment}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          />
+          {inputBar}
+        </CommentKeyboardView>
+      )}
     </SafeAreaView>
   );
 }
