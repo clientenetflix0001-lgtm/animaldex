@@ -39,6 +39,7 @@ import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ageLabelFromBirthDate } from '../lib/birthDate';
 import { careStatusLabel, waitingLabel, sizeLabel, speciesLabel as speciesLabelFn } from '../lib/petFields';
 import type { PublicProfile } from '../features/profiles/profileTypes';
+import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'PetProfile'>;
@@ -49,6 +50,7 @@ export default function PetProfileScreen() {
   const { width } = useWindowDimensions();
   const { desktopWeb } = useBreakpoint();
   const { followedPets, toggleFollowPet, user, refreshMyPets, deletedPostIds, editedCaptions } = useStore();
+  const { guest, cameFromLink, requireLogin, inviteBar, closeExternal, goBackOrClose } = useGuestAccess();
 
   const petId = route.params.petId;
   const demoPet = useMemo(() => PETS.find((p) => p.id === petId), [petId]);
@@ -132,6 +134,7 @@ export default function PetProfileScreen() {
   // Compartir mi ubicación con el dueño (con permiso GPS visible del navegador/SO).
   // Solo se llama tras un toque explícito del visitante — nunca automático.
   const shareMyLocation = useCallback(async () => {
+    if (guest) { requireLogin(); return; }
     if (demoPet) {
       Alert.alert('No disponible', 'Esta mascota es una demostración y no tiene dueño real.');
       return;
@@ -167,7 +170,7 @@ export default function PetProfileScreen() {
     } finally {
       setSharingLocation(false);
     }
-  }, [demoPet, petId]);
+  }, [demoPet, petId, guest, requireLogin]);
 
   // ---------- Presentación ----------
   const name = demoPet?.name ?? realPet?.name ?? '...';
@@ -212,9 +215,13 @@ export default function PetProfileScreen() {
       {/* Barra superior (sin portada) */}
       <SafeAreaView edges={['top']}>
         <View style={styles.topBar}>
-          <Pressable onPress={() => navigation.goBack()} style={styles.topBtn} hitSlop={8}>
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
-          </Pressable>
+          <ExternalNavButton
+            guest={guest}
+            cameFromLink={cameFromLink}
+            showBack
+            onBack={goBackOrClose}
+            onClose={closeExternal}
+          />
           <Text style={styles.topTitle} numberOfLines={1}>
             {name}
           </Text>
@@ -314,7 +321,14 @@ export default function PetProfileScreen() {
       </View>
 
       <View style={styles.followRow}>
-        <FollowButton following={following} onPress={() => toggleFollowPet(petId)} style={{ flex: 1 }} />
+        <FollowButton
+          following={following}
+          onPress={() => {
+            if (guest) { requireLogin(); return; }
+            toggleFollowPet(petId);
+          }}
+          style={{ flex: 1 }}
+        />
       </View>
 
       {isMyPet && (
@@ -463,7 +477,7 @@ export default function PetProfileScreen() {
         keyExtractor={(p) => p.id}
         ListHeaderComponent={header}
         columnWrapperStyle={{ gap: 2, paddingHorizontal: spacing.lg }}
-        contentContainerStyle={{ gap: 2, paddingBottom: spacing.xxl }}
+        contentContainerStyle={{ gap: 2, paddingBottom: guest ? 260 : spacing.xxl }}
         renderItem={({ item }) => (
           <Pressable onPress={() => openPost(item)}>
             <PostGridMedia post={item} size={tile} />
@@ -471,6 +485,7 @@ export default function PetProfileScreen() {
         )}
         showsVerticalScrollIndicator={false}
       />
+      {inviteBar}
     </View>
   );
 }

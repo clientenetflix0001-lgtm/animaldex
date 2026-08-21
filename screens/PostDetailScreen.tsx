@@ -25,7 +25,7 @@ import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from '../components/AdaptivePostImage';
 import { PostBackgroundCard } from '../components/PostBackgroundCard';
 import { CommentKeyboardView } from '../components/CommentKeyboardView';
-import { GuestInviteBar } from '../components/GuestInviteBar';
+import { useGuestAccess } from '../lib/guestAccess';
 import {
   POST_CAPTION_MAX,
   backgroundTextNeedsSeeMore,
@@ -129,35 +129,7 @@ function PostDetailContent({ post }: { post: Post }) {
   const [editing, setEditing] = useState(false);
   const [captionDraft, setCaptionDraft] = useState('');
   const [busy, setBusy] = useState(false);
-
-  // Visitante sin sesión (llegó por un enlace compartido público).
-  const guest = !user;
-  // Detecta que el post se abrió desde un enlace externo / deep link: en ese
-  // caso PostDetail es la raíz del stack (no hay pantalla previa a la que
-  // volver). Si el usuario tocó el post desde su feed, sí hay back y se
-  // conserva la navegación normal (sin X extra).
-  const cameFromLink = !navigation.canGoBack();
-  const [inviteCollapsed, setInviteCollapsed] = useState(false);
-  const requireLogin = useCallback(() => setInviteCollapsed(false), []);
-
-  // Usuario CON sesión que abrió el post desde un enlace externo: mostrar una
-  // X en la cabecera para cerrar la vista y volver al Feed principal.
-  useEffect(() => {
-    if (guest || !cameFromLink) return;
-    navigation.setOptions({
-      headerRight: () => (
-        <Pressable
-          onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] })}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Cerrar y volver al inicio"
-          style={{ paddingHorizontal: 4 }}
-        >
-          <Ionicons name="close" size={26} color={colors.text} />
-        </Pressable>
-      ),
-    });
-  }, [guest, cameFromLink, navigation]);
+  const { guest, requireLogin, inviteBar } = useGuestAccess({ headerClose: true });
 
   const disp = getPostDisplay(post);
   const liked = likedPosts.includes(post.id);
@@ -311,9 +283,6 @@ function PostDetailContent({ post }: { post: Post }) {
     else if (post.authorUserId) navigation.navigate('UserProfile', { userId: post.authorUserId });
   }, [guest, requireLogin, post, navigation]);
 
-  const goRegister = useCallback(() => navigation.navigate('Auth', { mode: 'register' }), [navigation]);
-  const goLogin = useCallback(() => navigation.navigate('Auth', { mode: 'login' }), [navigation]);
-
   // Posts reales: contador vivo del servidor. Demo: base + likes reales de la BD.
   const likeCount = post.real
     ? dbLikes ?? post.likes
@@ -413,15 +382,6 @@ function PostDetailContent({ post }: { post: Post }) {
       </Pressable>
     </View>
   );
-
-  const inviteBar = guest ? (
-    <GuestInviteBar
-      collapsed={inviteCollapsed}
-      onToggle={setInviteCollapsed}
-      onLogin={goLogin}
-      onRegister={goRegister}
-    />
-  ) : null;
 
   const inputBar = (
     <View style={styles.inputBar}>

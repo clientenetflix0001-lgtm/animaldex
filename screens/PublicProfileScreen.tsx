@@ -34,6 +34,7 @@ import {
   type StatusFilter,
   type SpeciesFilter,
 } from '../lib/petFields';
+import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type TabKey = 'mascotas' | 'posts';
@@ -72,6 +73,7 @@ export default function PublicProfileScreen() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('todas');
   const [speciesFilter, setSpeciesFilter] = useState<SpeciesFilter>('todos');
   const [loading, setLoading] = useState(true);
+  const { guest, cameFromLink, requireLogin, inviteBar, closeExternal, goBackOrClose } = useGuestAccess();
 
   const load = useCallback(async () => {
     try {
@@ -115,6 +117,7 @@ export default function PublicProfileScreen() {
   );
 
   const toggleFollow = useCallback(async () => {
+    if (guest) { requireLogin(); return; }
     const next = !following;
     setFollowing(next);
     setStats((s) => ({ ...s, followers: Math.max(0, s.followers + (next ? 1 : -1)) }));
@@ -124,7 +127,7 @@ export default function PublicProfileScreen() {
       setFollowing(!next);
       setStats((s) => ({ ...s, followers: Math.max(0, s.followers + (next ? -1 : 1)) }));
     }
-  }, [following, profile?.id, routeProfileId]);
+  }, [following, profile?.id, routeProfileId, guest, requireLogin]);
 
   const filteredPets = useMemo(
     () => filterProtectorPets(pets, statusFilter, speciesFilter),
@@ -138,11 +141,12 @@ export default function PublicProfileScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.topBar}>
-          <Pressable onPress={() => navigation.goBack()} hitSlop={10}>
+          <Pressable onPress={goBackOrClose} hitSlop={10}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
         </View>
         <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+        {inviteBar}
       </SafeAreaView>
     );
   }
@@ -153,9 +157,13 @@ export default function PublicProfileScreen() {
   const header = (
     <View>
       <View style={styles.topBar}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={10}>
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
-        </Pressable>
+        <ExternalNavButton
+          guest={guest}
+          cameFromLink={cameFromLink}
+          showBack
+          onBack={goBackOrClose}
+          onClose={closeExternal}
+        />
         <Text style={styles.topUser}>@{profile.username}</Text>
         <Pressable
           style={styles.topBtn}
@@ -218,7 +226,7 @@ export default function PublicProfileScreen() {
         ) : (
           <>
             <FollowButton following={following} onPress={toggleFollow} style={{ flex: 1 }} />
-            <Pressable style={styles.editBtn}>
+            <Pressable style={styles.editBtn} onPress={() => { if (guest) requireLogin(); }}>
               <Text style={styles.editText}>Mensaje</Text>
             </Pressable>
           </>
@@ -268,7 +276,7 @@ export default function PublicProfileScreen() {
           ListHeaderComponent={header}
           numColumns={3}
           columnWrapperStyle={{ gap: 2, paddingHorizontal: spacing.lg }}
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={{ paddingBottom: guest ? 260 : 40 }}
           renderItem={({ item }) => (
             <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item))}>
               <PostGridMedia post={item} size={postTile} />
@@ -278,6 +286,7 @@ export default function PublicProfileScreen() {
             <Text style={styles.empty}>Todavía no hay publicaciones de este perfil.</Text>
           }
         />
+        {inviteBar}
       </SafeAreaView>
     );
   }
@@ -292,7 +301,7 @@ export default function PublicProfileScreen() {
           ListHeaderComponent={header}
           numColumns={3}
           columnWrapperStyle={posts.length ? { gap: 2, paddingHorizontal: spacing.lg } : undefined}
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={{ paddingBottom: guest ? 260 : 40 }}
           renderItem={({ item }) => (
             <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item))}>
               <PostGridMedia post={item} size={postTile} />
@@ -308,7 +317,7 @@ export default function PublicProfileScreen() {
           ListHeaderComponent={header}
           numColumns={2}
           columnWrapperStyle={filteredPets.length ? { gap: 12, paddingHorizontal: spacing.lg } : undefined}
-          contentContainerStyle={{ paddingBottom: 40, gap: 12 }}
+          contentContainerStyle={{ paddingBottom: guest ? 260 : 40, gap: 12 }}
           renderItem={({ item }) => {
             const age = ageLabelFromBirthDate(item.birthDate) || item.age;
             const wait =
@@ -339,6 +348,7 @@ export default function PublicProfileScreen() {
           }
         />
       )}
+      {inviteBar}
     </SafeAreaView>
   );
 }
