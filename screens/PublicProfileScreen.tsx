@@ -21,19 +21,39 @@ import { postNavParams, sharePublicProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
+import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import type { PublicProfile } from '../features/profiles/profileTypes';
+import { ageLabelFromBirthDate } from '../lib/birthDate';
+import {
+  filterProtectorPets,
+  careStatusLabel,
+  waitingLabel,
+  type StatusFilter,
+  type SpeciesFilter,
+} from '../lib/petFields';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-type TabKey = 'en_adopcion' | 'en_recuperacion' | 'adoptado' | 'posts';
+type TabKey = 'mascotas' | 'posts';
 
 const TABS: { id: TabKey; label: string }[] = [
+  { id: 'mascotas', label: 'Mascotas' },
+  { id: 'posts', label: 'Publicaciones' },
+];
+
+const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
+  { id: 'todas', label: 'Todas' },
   { id: 'en_adopcion', label: 'En adopción' },
   { id: 'en_recuperacion', label: 'En recuperación' },
-  { id: 'adoptado', label: 'Adoptados' },
-  { id: 'posts', label: 'Publicaciones' },
+];
+
+const SPECIES_FILTERS: { id: SpeciesFilter; label: string }[] = [
+  { id: 'todos', label: 'Todos' },
+  { id: 'perro', label: '🐶 Perros' },
+  { id: 'gato', label: '🐱 Gatos' },
+  { id: 'otro', label: 'Otros' },
 ];
 
 export default function PublicProfileScreen() {
@@ -44,11 +64,13 @@ export default function PublicProfileScreen() {
   const { width } = useWindowDimensions();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [pets, setPets] = useState<ApiPet[]>([]);
-  const [stats, setStats] = useState({ adoption: 0, adopted: 0, recovering: 0, followers: 0 });
+  const [stats, setStats] = useState({ pets: 0, adoption: 0, adopted: 0, recovering: 0, followers: 0 });
   const [isOwner, setIsOwner] = useState(false);
   const [following, setFollowing] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [tab, setTab] = useState<TabKey>('en_adopcion');
+  const [tab, setTab] = useState<TabKey>('mascotas');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('todas');
+  const [speciesFilter, setSpeciesFilter] = useState<SpeciesFilter>('todos');
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -60,7 +82,13 @@ export default function PublicProfileScreen() {
       const feed = await db.profilePosts(pub.profile.id);
       setProfile(pub.profile);
       setPets(pub.pets);
-      setStats(pub.stats);
+      setStats({
+        pets: pub.stats.pets ?? (pub.pets?.length || 0),
+        adoption: pub.stats.adoption || 0,
+        adopted: pub.stats.adopted || 0,
+        recovering: pub.stats.recovering || 0,
+        followers: pub.stats.followers || 0,
+      });
       setIsOwner(pub.isOwner);
       setFollowing(pub.isFollowing);
       setPosts(feed.posts.map(apiPostToPost));
@@ -99,11 +127,12 @@ export default function PublicProfileScreen() {
   }, [following, profile?.id, routeProfileId]);
 
   const filteredPets = useMemo(
-    () => pets.filter((p) => (p.careStatus || '') === tab),
-    [pets, tab]
+    () => filterProtectorPets(pets, statusFilter, speciesFilter),
+    [pets, statusFilter, speciesFilter]
   );
 
   const tile = (width - spacing.lg * 2 - 12) / 2;
+  const postTile = (width - spacing.lg * 2 - 4) / 3;
 
   if (loading || !profile) {
     return (
@@ -162,7 +191,7 @@ export default function PublicProfileScreen() {
 
       {isProtector && (
         <View style={styles.stats}>
-          <StatBlock value={String(stats.adoption)} label="En adopción" />
+          <StatBlock value={String(stats.pets)} label="Mascotas" />
           <StatBlock value={formatCount(stats.followers)} label="Seguidores" />
           <StatBlock value={String(stats.adopted)} label="Adoptados" />
         </View>
@@ -177,12 +206,14 @@ export default function PublicProfileScreen() {
             >
               <Text style={styles.editText}>Editar perfil</Text>
             </Pressable>
-            <Pressable
-              style={styles.editBtn}
-              onPress={() => Alert.alert('Gestionar', 'El panel de gestión llega en la próxima etapa.')}
-            >
-              <Text style={styles.editText}>Gestionar</Text>
-            </Pressable>
+            {isProtector && (
+              <Pressable
+                style={styles.editBtn}
+                onPress={() => navigation.navigate('AddPet', { profileId: profile.id })}
+              >
+                <Text style={styles.editText}>+ Mascota</Text>
+              </Pressable>
+            )}
           </>
         ) : (
           <>
@@ -195,19 +226,35 @@ export default function PublicProfileScreen() {
       </View>
 
       {isProtector && (
-        <View style={styles.tabRow}>
-          {TABS.map((t) => (
-            <Pressable
-              key={t.id}
-              style={[styles.tabBtn, tab === t.id && styles.tabActive]}
-              onPress={() => setTab(t.id)}
-            >
-              <Text style={[styles.tabLabel, tab === t.id && styles.tabLabelOn]} numberOfLines={1}>
-                {t.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        <>
+          <View style={styles.tabRow}>
+            {TABS.map((t) => (
+              <Pressable
+                key={t.id}
+                style={[styles.tabBtn, tab === t.id && styles.tabActive]}
+                onPress={() => setTab(t.id)}
+              >
+                <Text style={[styles.tabLabel, tab === t.id && styles.tabLabelOn]} numberOfLines={1}>
+                  {t.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {tab === 'mascotas' && (
+            <View style={styles.filters}>
+              <ScrollChips
+                items={STATUS_FILTERS}
+                value={statusFilter}
+                onChange={setStatusFilter}
+              />
+              <ScrollChips
+                items={SPECIES_FILTERS}
+                value={speciesFilter}
+                onChange={setSpeciesFilter}
+              />
+            </View>
+          )}
+        </>
       )}
     </View>
   );
@@ -224,10 +271,7 @@ export default function PublicProfileScreen() {
           contentContainerStyle={{ paddingBottom: 40 }}
           renderItem={({ item }) => (
             <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item))}>
-              <Image
-                source={{ uri: thumb(item.image, 300) }}
-                style={{ width: (width - spacing.lg * 2 - 4) / 3, height: (width - spacing.lg * 2 - 4) / 3, borderRadius: 8, backgroundColor: colors.border }}
-              />
+              <PostGridMedia post={item} size={postTile} />
             </Pressable>
           )}
           ListEmptyComponent={
@@ -251,15 +295,7 @@ export default function PublicProfileScreen() {
           contentContainerStyle={{ paddingBottom: 40 }}
           renderItem={({ item }) => (
             <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item))}>
-              <Image
-                source={{ uri: thumb(item.image, 300) }}
-                style={{
-                  width: (width - spacing.lg * 2 - 4) / 3,
-                  height: (width - spacing.lg * 2 - 4) / 3,
-                  borderRadius: 8,
-                  backgroundColor: colors.border,
-                }}
-              />
+              <PostGridMedia post={item} size={postTile} />
             </Pressable>
           )}
           ListEmptyComponent={<Text style={styles.empty}>Este perfil todavía no publicó.</Text>}
@@ -267,44 +303,67 @@ export default function PublicProfileScreen() {
       ) : (
         <FlatList
           data={filteredPets}
-          key={tab}
+          key="mascotas"
           keyExtractor={(p) => p.id}
           ListHeaderComponent={header}
           numColumns={2}
           columnWrapperStyle={filteredPets.length ? { gap: 12, paddingHorizontal: spacing.lg } : undefined}
           contentContainerStyle={{ paddingBottom: 40, gap: 12 }}
-          renderItem={({ item }) => (
-            <Pressable
-              style={[styles.petTile, { width: tile }]}
-              onPress={() => navigation.navigate('PetProfile', { petId: item.username || item.id })}
-            >
-              <Image
-                source={{ uri: thumb(item.avatarUrl || petFallbackAvatar(item.id), 400) }}
-                style={[styles.petImg, { width: tile - 16, height: tile - 16 }]}
-              />
-              <Text style={styles.petName}>{item.name}</Text>
-              <Text style={styles.petMeta}>
-                {[item.age, item.sex].filter(Boolean).join(' · ') || item.species}
-              </Text>
-              {!!item.bio && (
-                <Text style={styles.petBio} numberOfLines={2}>
-                  {item.bio}
+          renderItem={({ item }) => {
+            const age = ageLabelFromBirthDate(item.birthDate) || item.age;
+            const wait =
+              item.careStatus === 'en_adopcion' ? waitingLabel(item.adoptionStartedAt) : '';
+            return (
+              <Pressable
+                style={[styles.petTile, { width: tile }]}
+                onPress={() => navigation.navigate('PetProfile', { petId: item.username || item.id })}
+              >
+                <Image
+                  source={{ uri: thumb(item.avatarUrl || petFallbackAvatar(item.id), 400) }}
+                  style={[styles.petImg, { width: tile - 16, height: tile - 16 }]}
+                />
+                <Text style={styles.petName}>{item.name}</Text>
+                <Text style={styles.petMeta}>
+                  {[careStatusLabel(item.careStatus), age].filter(Boolean).join(' · ')}
                 </Text>
-              )}
-            </Pressable>
-          )}
+                {!!wait && <Text style={styles.petWait}>{wait}</Text>}
+              </Pressable>
+            );
+          }}
           ListEmptyComponent={
             <Text style={styles.empty}>
-              {tab === 'en_adopcion'
-                ? 'No hay mascotas en adopción todavía.'
-                : tab === 'en_recuperacion'
-                ? 'No hay mascotas en recuperación.'
-                : 'Todavía no hay adoptados registrados.'}
+              {pets.length === 0
+                ? 'Este refugio todavía no cargó mascotas.'
+                : 'No hay mascotas con esos filtros.'}
             </Text>
           }
         />
       )}
     </SafeAreaView>
+  );
+}
+
+function ScrollChips<T extends string>({
+  items,
+  value,
+  onChange,
+}: {
+  items: { id: T; label: string }[];
+  value: T;
+  onChange: (id: T) => void;
+}) {
+  return (
+    <View style={styles.chipRow}>
+      {items.map((item) => (
+        <Pressable
+          key={item.id}
+          style={[styles.filterChip, value === item.id && styles.filterChipOn]}
+          onPress={() => onChange(item.id)}
+        >
+          <Text style={[styles.filterText, value === item.id && styles.filterTextOn]}>{item.label}</Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
@@ -362,8 +421,21 @@ const styles = StyleSheet.create({
   },
   tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, paddingHorizontal: 2 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
-  tabLabel: { fontSize: 11, fontWeight: '700', color: colors.textMuted, textAlign: 'center' },
+  tabLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, textAlign: 'center' },
   tabLabelOn: { color: colors.primary },
+  filters: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  filterChipOn: { backgroundColor: colors.primarysoft, borderColor: colors.primary },
+  filterText: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
+  filterTextOn: { color: colors.primary },
   petTile: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
@@ -372,6 +444,6 @@ const styles = StyleSheet.create({
   petImg: { borderRadius: radius.sm, backgroundColor: colors.border, marginBottom: 8 },
   petName: { fontWeight: '800', color: colors.text, fontSize: 14 },
   petMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  petBio: { color: colors.text, fontSize: 12, marginTop: 4, lineHeight: 16 },
+  petWait: { color: colors.primary, fontSize: 11, fontWeight: '700', marginTop: 4 },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 24, paddingHorizontal: 28 },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, Pressable, Platform, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -27,7 +27,18 @@ type Nav = CompositeNavigationProp<
 
 export default function FeedScreen() {
   const navigation = useNavigation<Nav>();
-  const { user, createdPosts, consumeCreatedPosts, deletedPostIds, editedCaptions } = useStore();
+  const {
+    user,
+    createdPosts,
+    consumeCreatedPosts,
+    deletedPostIds,
+    editedCaptions,
+    likedPosts,
+    savedPosts,
+    myComments,
+    toggleLike,
+    toggleSave,
+  } = useStore();
   const { unread } = useNotifications();
   const { desktopWeb, showRightPanel } = useBreakpoint();
   const insets = useSafeAreaInsets();
@@ -36,15 +47,18 @@ export default function FeedScreen() {
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
   const [realPosts, setRealPosts] = useState<Post[]>([]);
-  const [demoPosts, setDemoPosts] = useState<Post[]>(() => [...generateFeedPage(0), ...generateFeedPage(1)]);
+  const [demoPosts, setDemoPosts] = useState<Post[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [pendingNew, setPendingNew] = useState(0);
-  const pageRef = useRef(2);
+  const pageRef = useRef(0);
   const oldestRef = useRef<number | undefined>(undefined);
   const newestRef = useRef<number>(0);
   const realDoneRef = useRef(false);
   const listRef = useRef<FlatList>(null);
+  // Espejo de realPosts para los sondeos, que así no dependen del render.
+  const realPostsRef = useRef<Post[]>(realPosts);
+  realPostsRef.current = realPosts;
 
   const loadReal = useCallback(async (reset: boolean) => {
     try {
@@ -63,9 +77,19 @@ export default function FeedScreen() {
         });
       }
       if (reset && newestRef.current === 0) newestRef.current = Date.now();
-      realDoneRef.current = posts.length < 10;
+      const isDone = posts.length < 10;
+      realDoneRef.current = isDone;
+      // Si en el reset inicial no hay posts reales en D1, sembramos los primeros demo de inmediato
+      if (reset && isDone && posts.length === 0) {
+        setDemoPosts([...generateFeedPage(0), ...generateFeedPage(1)]);
+        pageRef.current = 2;
+      }
     } catch {
       realDoneRef.current = true;
+      if (reset) {
+        setDemoPosts([...generateFeedPage(0), ...generateFeedPage(1)]);
+        pageRef.current = 2;
+      }
     }
   }, []);
 
@@ -97,7 +121,8 @@ export default function FeedScreen() {
       if (newestRef.current === 0) return;
       try {
         const { newPosts } = await db.updates(newestRef.current, user?.id);
-        setPendingNew(newPosts);
+        // Mismo número → misma referencia de estado → sin re-render.
+        setPendingNew((prev) => (prev === newPosts ? prev : newPosts));
       } catch {}
     }, [user?.id]),
     10000
@@ -105,27 +130,31 @@ export default function FeedScreen() {
 
   // 2) Contadores de likes/comentarios frescos para los posts cargados
   //    (cada 15 s, actualización quirúrgica: solo cambia el número).
+  //    Lee los ids desde una ref para que el callback no se recree en
+  //    cada render del feed.
   usePolling(
     useCallback(async () => {
-      const ids = realPosts.slice(0, 24).map((p) => p.id);
+      const ids = realPostsRef.current.slice(0, 24).map((p) => p.id);
       if (ids.length === 0) return;
       try {
         const { counts } = await db.counts(ids);
         setRealPosts((prev) => {
-          let changed = false;
-          const next = prev.map((p) => {
+          // Primero se comprueba si algo cambió de verdad; solo entonces
+          // se construye un array nuevo. Sin cambios → misma referencia →
+          // sin re-render de ninguna publicación.
+          const hasChange = prev.some((p) => {
             const c = counts[p.id];
-            if (!c) return p;
-            if (p.likes !== c.likes || p.commentCount !== c.comments) {
-              changed = true;
-              return { ...p, likes: c.likes, commentCount: c.comments };
-            }
-            return p;
+            return !!c && (p.likes !== c.likes || p.commentCount !== c.comments);
           });
-          return changed ? next : prev; // sin cambios → sin re-render
+          if (!hasChange) return prev;
+          return prev.map((p) => {
+            const c = counts[p.id];
+            if (!c || (p.likes === c.likes && p.commentCount === c.comments)) return p;
+            return { ...p, likes: c.likes, commentCount: c.comments };
+          });
         });
       } catch {}
-    }, [realPosts]),
+    }, []),
     15000
   );
 
@@ -147,27 +176,32 @@ export default function FeedScreen() {
     } catch {}
   }, [user?.id]);
 
-  const loadMore = useCallback(() => {
+  const loadMore = useCallback(async () => {
     if (loadingMore) return;
     setLoadingMore(true);
-    const tasks: Promise<any>[] = [];
-    if (!realDoneRef.current) tasks.push(loadReal(false));
-    Promise.all(tasks).finally(() => {
-      setTimeout(() => {
+    try {
+      if (!realDoneRef.current) {
+        // Modo 1: Mientras existan posts reales en D1, paginamos exclusivamente posts reales.
+        // Se añaden al final de realPosts mediante setRealPosts.
+        await loadReal(false);
+      } else {
+        // Modo 2: Cuando los posts reales se agotaron (realDoneRef es true),
+        // comenzamos a paginar demoPosts de forma síncrona y determinista al final.
         const next = generateFeedPage(pageRef.current);
         pageRef.current += 1;
         setDemoPosts((p) => [...p, ...next]);
-        setLoadingMore(false);
-      }, 400);
-    });
+      }
+    } finally {
+      setLoadingMore(false);
+    }
   }, [loadingMore, loadReal]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
+    pageRef.current = 0;
+    setDemoPosts([]);
+    setPendingNew(0);
     Promise.all([loadReal(true)]).finally(() => {
-      pageRef.current = 2;
-      setDemoPosts([...generateFeedPage(0), ...generateFeedPage(1)]);
-      setPendingNew(0);
       setRefreshing(false);
     });
   }, [loadReal]);
@@ -180,12 +214,48 @@ export default function FeedScreen() {
 
   // Publicaciones reales primero (comunidad), luego demo.
   // Borrados y ediciones propias se aplican de forma incremental
-  // (sin recargar, sin tocar el resto del feed).
-  const deletedSet = new Set(deletedPostIds);
-  const patchedReal = realPosts
-    .filter((p) => !deletedSet.has(p.id))
-    .map((p) => (editedCaptions[p.id] != null ? { ...p, caption: editedCaptions[p.id] } : p));
-  const data = [...patchedReal, ...demoPosts];
+  // (sin recargar, sin tocar el resto del feed). Memoizado: sin esto el
+  // array se reconstruía en cada render y FlatList lo trataba como datos
+  // nuevos aunque nada hubiera cambiado.
+  const data = useMemo(() => {
+    const deletedSet = new Set(deletedPostIds);
+    const patchedReal = realPosts
+      .filter((p) => !deletedSet.has(p.id))
+      .map((p) => (editedCaptions[p.id] != null ? { ...p, caption: editedCaptions[p.id] } : p));
+    return [...patchedReal, ...demoPosts];
+  }, [realPosts, demoPosts, deletedPostIds, editedCaptions]);
+
+  // Búsquedas O(1) del estado social, en vez de Array.includes por celda.
+  const likedSet = useMemo(() => new Set(likedPosts), [likedPosts]);
+  const savedSet = useMemo(() => new Set(savedPosts), [savedPosts]);
+
+  const keyExtractor = useCallback((item: Post) => item.id, []);
+
+  // renderItem depende de estado que NO vive en `data` (likes, guardados y
+  // comentarios propios). VirtualizedList solo repinta las celdas cuando
+  // cambia `extraData`, así que sin esto el corazón no se actualizaría al
+  // dar like. Al cambiar, las celdas se repintan pero el memo de PostCard
+  // corta el render en todas menos en la publicación afectada.
+  const extraData = useMemo(
+    () => ({ likedPosts, savedPosts, myComments }),
+    [likedPosts, savedPosts, myComments]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Post }) => (
+      <PostCard
+        post={item}
+        liked={likedSet.has(item.id)}
+        saved={savedSet.has(item.id)}
+        extraComments={myComments[item.id]?.length ?? 0}
+        onToggleLike={toggleLike}
+        onToggleSave={toggleSave}
+        onOpenPet={openPet}
+        onOpenPost={openPost}
+      />
+    ),
+    [likedSet, savedSet, myComments, toggleLike, toggleSave, openPet, openPost]
+  );
 
   const newPill = pendingNew > 0 && (
     <Pressable style={styles.newPill} onPress={loadNewPosts}>
@@ -196,21 +266,46 @@ export default function FeedScreen() {
     </Pressable>
   );
 
+  const listHeader = useMemo(() => <StoriesBar onOpenPet={openPet} />, [openPet]);
+  const listFooter = useMemo(() => <LoadingFooter />, []);
+  const refreshCtrl = useMemo(
+    () => (
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        tintColor={colors.primary}
+        colors={[colors.primary]}
+      />
+    ),
+    [refreshing, onRefresh]
+  );
+  const contentStyle = useMemo(
+    () => ({ paddingBottom: spacing.xl, paddingTop: desktopWeb ? spacing.xl : 0 }),
+    [desktopWeb]
+  );
+
   const feedList = (
     <FlatList
       ref={listRef}
       data={data}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => <PostCard post={item} onOpenPet={openPet} onOpenPost={openPost} />}
-      ListHeaderComponent={<StoriesBar onOpenPet={openPet} />}
-      ListFooterComponent={<LoadingFooter />}
+      extraData={extraData}
+      keyExtractor={keyExtractor}
+      renderItem={renderItem}
+      ListHeaderComponent={listHeader}
+      ListFooterComponent={listFooter}
       onEndReached={loadMore}
       onEndReachedThreshold={0.6}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />
-      }
+      refreshControl={refreshCtrl}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: spacing.xl, paddingTop: desktopWeb ? spacing.xl : 0 }}
+      contentContainerStyle={contentStyle}
+      // Ventana de render moderada: menos celdas vivas a la vez (menos
+      // memoria en gama baja) sin bajar la velocidad de relleno, que es
+      // lo que provoca celdas en blanco al hacer scroll rápido. Por eso
+      // maxToRenderPerBatch se deja en su valor por defecto.
+      // No se usa removeClippedSubviews (no validado en Android) ni
+      // getItemLayout (las alturas de publicación son variables).
+      initialNumToRender={4}
+      windowSize={7}
     />
   );
 
