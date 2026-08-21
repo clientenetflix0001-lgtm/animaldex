@@ -364,7 +364,7 @@ async function buildOgMeta(request, env, url) {
       if (pr.type === 'protector' || pr.type === 'business') {
         const counts = await d1Query(
           env,
-          'SELECT COUNT(*) AS n FROM pets WHERE profile_id = ?',
+          'SELECT COUNT(*) AS n FROM pets WHERE profile_id = ? AND archived_at IS NULL',
           [pr.id]
         );
         const petsN = Number((counts[0] && counts[0].n) || 0);

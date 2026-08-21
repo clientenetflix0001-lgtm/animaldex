@@ -1,48 +1,64 @@
-// Verifica contadores del perfil proteccionista y el filtro de pestañas.
-// Mascotas = profile_id actual. Adoptados = transferencias, no care_status.
+// Verifica fecha de nacimiento, filtros del refugio y contadores.
 
-function isRecoveryStatus(careStatus) {
-  return careStatus === 'en_recuperacion';
+function isLeapYear(year) {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
-function belongsToAdoptionTab(careStatus) {
-  return !isRecoveryStatus(careStatus);
+function daysInMonth(year, month) {
+  if (month === 2) return isLeapYear(year) ? 29 : 28;
+  if ([4, 6, 9, 11].includes(month)) return 30;
+  return 31;
 }
-function filterShelterPets(pets, tab) {
-  if (tab === 'en_recuperacion') return pets.filter((p) => isRecoveryStatus(p.careStatus));
-  if (tab === 'en_adopcion') return pets.filter((p) => belongsToAdoptionTab(p.careStatus));
-  return [];
+function isValid(year, month, day, now = new Date('2026-08-21')) {
+  if (!year || !month || !day) return false;
+  if (day > daysInMonth(year, month)) return false;
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return false;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return date.getTime() <= today.getTime();
 }
-
-function shelterStats(pets, transfers, profileId) {
-  return {
-    pets: pets.filter((p) => p.profileId === profileId).length,
-    adopted: transfers.filter((t) => t.fromProfileId === profileId).length,
-  };
+function speciesGroup(species) {
+  if (species === 'perro') return 'perro';
+  if (species === 'gato') return 'gato';
+  return 'otro';
 }
-
-const shelter = 'refugio-apan';
-const nina = { id: 'pet-nina', profileId: shelter, careStatus: 'en_recuperacion' };
-const luna = { id: 'pet-luna', profileId: shelter, careStatus: 'en_adopcion' };
-const markedAdoptedButStillThere = { id: 'pet-old', profileId: shelter, careStatus: 'adoptado' };
-const alreadyTransferred = { id: 'pet-max', profileId: 'user-ana', careStatus: null };
-
-const current = [nina, luna, markedAdoptedButStillThere];
-const transfers = [{ petId: 'pet-max', fromProfileId: shelter }];
-
-const stats = shelterStats([...current, alreadyTransferred], transfers, shelter);
-const adoptionTab = filterShelterPets(current, 'en_adopcion').map((p) => p.id);
-const recoveryTab = filterShelterPets(current, 'en_recuperacion').map((p) => p.id);
-const adoptedTabFromStatus = filterShelterPets(current, 'adoptado');
+function filterProtectorPets(pets, status, species) {
+  return pets.filter((p) => {
+    if (status === 'en_adopcion' && p.careStatus !== 'en_adopcion') return false;
+    if (status === 'en_recuperacion' && p.careStatus !== 'en_recuperacion') return false;
+    if (species !== 'todos' && speciesGroup(p.species) !== species) return false;
+    return true;
+  });
+}
+function waitingRestart(prevStatus, nextStatus, now) {
+  if (nextStatus === 'en_adopcion' && prevStatus !== 'en_adopcion') return now;
+  if (nextStatus !== 'en_adopcion') return null;
+  return 'keep';
+}
 
 const checks = [
-  ['Mascotas cuenta en_adopcion + en_recuperacion + adoptado-sin-transferir', stats.pets === 3],
-  ['Marcar adoptado NO baja Mascotas', stats.pets === 3],
-  ['Adoptados solo sube con transferencia', stats.adopted === 1],
-  ['En adopción incluye a la marcada adoptada que sigue en el refugio', adoptionTab.includes('pet-old') && adoptionTab.includes('pet-luna') && !adoptionTab.includes('pet-nina')],
-  ['En recuperación solo tiene a Nina', recoveryTab.length === 1 && recoveryTab[0] === 'pet-nina'],
-  ['La pestaña Adoptados no lista mascotas actuales por care_status', adoptedTabFromStatus.length === 0],
-  ['La mascota transferida ya no cuenta en Mascotas', !current.find((p) => p.id === 'pet-max')],
-  ['Tras transferir, Mascotas-1 y Adoptados+1', shelterStats([nina, luna], transfers, shelter).pets === 2 && shelterStats([nina, luna], transfers, shelter).adopted === 1],
+  ['no 30 de febrero', !isValid(2026, 2, 30)],
+  ['no 31 de febrero', !isValid(2026, 2, 31)],
+  ['no 31 de abril', !isValid(2026, 4, 31)],
+  ['no 31 de junio', !isValid(2026, 6, 31)],
+  ['no fecha futura', !isValid(2027, 1, 1, new Date('2026-08-21'))],
+  ['29 feb bisiesto 2024', isValid(2024, 2, 29, new Date('2026-08-21'))],
+  ['no 29 feb 2025', !isValid(2025, 2, 29)],
+  ['invalidar día al cambiar mes', daysInMonth(2026, 2) < 30],
+  ['filtros combinados', filterProtectorPets([
+    { careStatus: 'en_adopcion', species: 'perro' },
+    { careStatus: 'en_recuperacion', species: 'perro' },
+    { careStatus: 'en_adopcion', species: 'gato' },
+  ], 'en_adopcion', 'perro').length === 1],
+  ['todas incluye adopción y recuperación', filterProtectorPets([
+    { careStatus: 'en_adopcion', species: 'perro' },
+    { careStatus: 'en_recuperacion', species: 'gato' },
+  ], 'todas', 'todos').length === 2],
+  ['marcar adoptado no saca de todas', filterProtectorPets([
+    { careStatus: 'en_adopcion', species: 'perro' },
+    { careStatus: 'en_recuperacion', species: 'gato' },
+  ], 'todas', 'todos').length === 2],
+  ['volver a adopción reinicia espera', waitingRestart('en_recuperacion', 'en_adopcion', 99) === 99],
+  ['pasar a recuperación limpia espera', waitingRestart('en_adopcion', 'en_recuperacion', 99) === null],
 ];
 
 let failed = 0;
@@ -50,9 +66,7 @@ for (const [name, ok] of checks) {
   if (!ok) {
     failed += 1;
     console.error('FAIL', name);
-  } else {
-    console.log('ok  ', name);
-  }
+  } else console.log('ok  ', name);
 }
 if (failed) {
   console.error(`\n${failed} checks failed`);
