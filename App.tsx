@@ -262,7 +262,7 @@ function TagDeepLinkHandler() {
     if (!authReady || !user || pendingTagCode == null || handledRef.current) return;
     handledRef.current = true;
     const code = pendingTagCode;
-    setPendingTagCode(null);
+    // pendingTagCode se limpia en AddPet cuando create+claim terminan bien.
 
     const tryNavigate = () => {
       if (navigationRef.isReady()) {

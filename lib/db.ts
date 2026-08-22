@@ -64,6 +64,8 @@ export interface ApiUser {
   bio: string;
   location: string;
   verifiedPhone: string | null;
+  email?: string | null;
+  emailVerified?: boolean;
 }
 
 export interface ApiPet {
@@ -245,8 +247,14 @@ export interface ApiNotification {
 export const auth = {
   register: (username: string, name: string, password: string) =>
     call('/auth', { action: 'register', username, name, password }),
-  login: (username: string, password: string) =>
-    call('/auth', { action: 'login', username, password }),
+  registerEmail: (email: string, password: string, username: string) =>
+    call('/auth', { action: 'registerEmail', email, password, username }),
+  registerPhone: (phone: string, password: string, username: string, ticket: string) =>
+    call('/auth', { action: 'registerPhone', phone, password, username, ticket }),
+  login: (identifier: string, password: string) =>
+    call('/auth', { action: 'login', identifier, password }),
+  checkEmail: (email: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>
+    call('/auth', { action: 'checkEmail', email }),
   me: () => call('/auth', { action: 'me' }),
   logout: () => call('/auth', { action: 'logout' }),
   updateProfile: (fields: { name?: string; bio?: string; location?: string; avatarUrl?: string; username?: string }) =>
@@ -359,7 +367,8 @@ export const db = {
     call('/db', { action: 'updatePet', petId, ...fields }),
   archivePet: (petId: string): Promise<{ ok: boolean }> => call('/db', { action: 'archivePet', petId }),
   deletePet: (petId: string): Promise<{ ok: boolean }> => call('/db', { action: 'deletePet', petId }),
-  setPhone: (phone: string | null) => call('/db', { action: 'setPhone', phone }),
+  setPhone: (phone: string | null, ticket?: string) =>
+    call('/db', { action: 'setPhone', phone, ticket: ticket || undefined }),
   registerImage: (url: string, cfId?: string, kind?: string) =>
     call('/db', { action: 'registerImage', url, cfId, kind }),
   // ---------- Tiempo real (actualizaciones incrementales) ----------

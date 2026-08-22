@@ -8,7 +8,7 @@
 // (scrypt) para no invalidar las cuentas ya creadas.
 // ============================================================
 
-import { scryptSync, randomBytes, createHmac } from 'node:crypto';
+import { scryptSync, randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -193,13 +193,43 @@ function isReservedPublicUsername(username) {
 
 async function usernameTaken(env, username, allowAccountId, allowProfileId) {
   const handle = String(username || '').toLowerCase();
-  if (isReservedPublicUsername(handle)) return true;
+  if (isReservedPublicUsername(handle) || usernameLooksLikePhone(handle)) return true;
   const users = await d1(env, 'SELECT id FROM users WHERE LOWER(username) = ?', [handle]);
   if (users[0] && users[0].id !== allowAccountId) return true;
   const profiles = await d1(env, 'SELECT id FROM profiles WHERE LOWER(username) = ?', [handle]);
   if (profiles[0] && profiles[0].id !== allowProfileId) return true;
   const pets = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ?', [handle]);
   return pets.length > 0;
+}
+
+async function ensureAuthSchema(env) {
+  if (env._authSchemaReady) return;
+  try { await env.DB.prepare('ALTER TABLE users ADD COLUMN email TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE users ADD COLUMN email_verified_at INTEGER').run(); } catch (_) {}
+  await d1(env, `CREATE TABLE IF NOT EXISTS otp_challenges (
+    id TEXT PRIMARY KEY,
+    phone TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    send_count INTEGER NOT NULL DEFAULT 0,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_sent_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    verified_at INTEGER,
+    created_at INTEGER NOT NULL
+  )`);
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_otp_phone_purpose ON otp_challenges (phone, purpose, created_at)');
+  try {
+    await env.DB.prepare(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL'
+    ).run();
+  } catch (_) {}
+  try {
+    await env.DB.prepare(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_verified_phone ON users (verified_phone) WHERE verified_phone IS NOT NULL'
+    ).run();
+  } catch (_) {}
+  env._authSchemaReady = true;
 }
 
 async function ensurePersonalProfile(env, userId) {
@@ -222,11 +252,241 @@ async function ensurePersonalProfile(env, userId) {
   return rows[0];
 }
 
+async function createAccount(env, { username, name, password, email, phone }) {
+  const salt = newSalt();
+  const passHash = hashPassword(password, salt);
+  const id = `u-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  await d1(
+    env,
+    'INSERT INTO users (id, username, name, pass_hash, salt, created_at, email, email_verified_at, verified_phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, username, name, passHash, salt, Date.now(), email || null, null, phone || null]
+  );
+  try {
+    await ensureProfilesSchema(env);
+    await ensurePersonalProfile(env, id);
+  } catch (_) {}
+  const token = await createSession(env, id);
+  const rows = await d1(env, 'SELECT * FROM users WHERE id = ?', [id]);
+  return { token, user: publicUser(rows[0]) };
+}
+
 // ============================================================
 // AUTH
 // ============================================================
 
 const USERNAME_RE = /^[a-z0-9_.]{3,20}$/;
+const EMAIL_RE = /^[a-z0-9._%+\-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+const EMAIL_MAX = 254;
+const PASSWORD_MIN = 6;
+const AR_MOBILE_E164_RE = /^\+549\d{10}$/;
+const E164_RE = /^\+[1-9]\d{8,14}$/;
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_SEND_WINDOW_MS = 15 * 60 * 1000;
+const OTP_RESEND_GAP_MS = 30 * 1000;
+const OTP_MAX_SENDS = 3;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_TICKET_TTL_MS = 15 * 60 * 1000;
+
+function digitsAndPlus(raw) {
+  const s = String(raw || '').trim();
+  let out = '';
+  for (const ch of s) {
+    if (ch === '+' && out.length === 0) out += '+';
+    else if (ch >= '0' && ch <= '9') out += ch;
+  }
+  if (out.startsWith('00')) out = `+${out.slice(2)}`;
+  return out;
+}
+
+function argentineNational10(raw) {
+  let d = digitsAndPlus(raw).replace(/^\+/, '');
+  if (!d) return null;
+  if (d.startsWith('54')) d = d.slice(2);
+  if (d.startsWith('9') && d.length === 11) d = d.slice(1);
+  while (d.startsWith('0')) d = d.slice(1);
+  for (const areaLen of [2, 3, 4]) {
+    if (d.length > areaLen + 2 && d.slice(areaLen, areaLen + 2) === '15') {
+      const candidate = d.slice(0, areaLen) + d.slice(areaLen + 2);
+      if (candidate.length === 10) return candidate;
+    }
+  }
+  if (d.length === 10) return d;
+  return null;
+}
+
+function normalizeArMobile(raw) {
+  const national = argentineNational10(raw);
+  if (!national) return null;
+  const e164 = `+549${national}`;
+  return AR_MOBILE_E164_RE.test(e164) ? e164 : null;
+}
+
+function normalizePhone(raw) {
+  const compact = digitsAndPlus(raw);
+  if (AR_MOBILE_E164_RE.test(compact)) return compact;
+  const ar = normalizeArMobile(raw);
+  if (ar) return ar;
+  if (E164_RE.test(compact) && compact.startsWith('+') && !compact.startsWith('+54')) return compact;
+  return null;
+}
+
+function isValidEmail(raw) {
+  const email = String(raw || '').trim().toLowerCase();
+  return email.length >= 6 && email.length <= EMAIL_MAX && EMAIL_RE.test(email);
+}
+
+function usernameLooksLikePhone(username) {
+  const handle = String(username || '').trim().toLowerCase();
+  if (/^\d{8,15}$/.test(handle)) return true;
+  if (/^\+?\d{8,15}$/.test(handle)) return true;
+  return normalizePhone(handle) != null;
+}
+
+function classifyIdentifier(raw) {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return { kind: 'invalid', value: '', reason: 'empty' };
+  if (trimmed.includes('@')) {
+    const email = trimmed.toLowerCase();
+    if (!isValidEmail(email)) return { kind: 'invalid', value: email, reason: 'email' };
+    return { kind: 'email', value: email };
+  }
+  const phone = normalizePhone(trimmed);
+  if (phone) return { kind: 'phone', value: phone };
+  const username = trimmed.replace(/^@/, '').toLowerCase();
+  if (USERNAME_RE.test(username) && !usernameLooksLikePhone(username)) {
+    return { kind: 'username', value: username };
+  }
+  return { kind: 'invalid', value: trimmed, reason: 'format' };
+}
+
+function otpSecret(env) {
+  return env.OTP_SECRET || '';
+}
+
+function smsConfigured(env) {
+  return !!(
+    otpSecret(env) &&
+    env.TWILIO_ACCOUNT_SID &&
+    env.TWILIO_AUTH_TOKEN &&
+    env.TWILIO_PHONE_NUMBER
+  );
+}
+
+function hashOtpCode(secret, phone, purpose, code) {
+  return createHmac('sha256', secret).update(`otp|${purpose}|${phone}|${code}`).digest('hex');
+}
+
+function hashesEqual(a, b) {
+  const aa = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  if (aa.length !== bb.length || aa.length === 0) return false;
+  return timingSafeEqual(aa, bb);
+}
+
+function signPhoneTicket(secret, purpose, phone, exp) {
+  const sig = createHmac('sha256', secret).update(`ticket|${purpose}|${phone}|${exp}`).digest('hex');
+  return `${exp}.${sig}`;
+}
+
+function readPhoneTicket(secret, purpose, phone, ticket) {
+  const parts = String(ticket || '').split('.');
+  if (parts.length !== 2) return false;
+  const exp = Number(parts[0]);
+  if (!exp || Date.now() > exp) return false;
+  const expected = signPhoneTicket(secret, purpose, phone, exp);
+  return hashesEqual(expected, ticket);
+}
+
+function otpRowState(row) {
+  if (!row) return null;
+  return {
+    sendCount: Number(row.send_count) || 0,
+    attemptCount: Number(row.attempt_count) || 0,
+    lastSentAt: Number(row.last_sent_at) || 0,
+    expiresAt: Number(row.expires_at) || 0,
+    verifiedAt: row.verified_at == null ? null : Number(row.verified_at),
+    createdAt: Number(row.created_at) || 0,
+  };
+}
+
+function canSendOtp(row, now) {
+  if (!row || row.verifiedAt) return { ok: true };
+  if (now - row.lastSentAt < OTP_RESEND_GAP_MS) {
+    return { ok: false, error: 'Esperá unos segundos antes de reenviar el código.' };
+  }
+  if (row.createdAt + OTP_SEND_WINDOW_MS > now && row.sendCount >= OTP_MAX_SENDS) {
+    return { ok: false, error: 'Demasiados envíos. Probá de nuevo más tarde.' };
+  }
+  return { ok: true };
+}
+
+function canAttemptOtp(row, now) {
+  if (!row) return { ok: false, error: 'Solicitá un código primero.' };
+  if (row.verifiedAt) return { ok: false, error: 'Ese código ya fue usado.' };
+  if (now > row.expiresAt) return { ok: false, error: 'El código expiró, solicitá uno nuevo.' };
+  if (row.attemptCount >= OTP_MAX_ATTEMPTS) {
+    return { ok: false, error: 'Demasiados intentos. Solicitá un código nuevo.' };
+  }
+  return { ok: true };
+}
+
+function nextSendState(row, now) {
+  const windowExpired = row ? now - row.createdAt >= OTP_SEND_WINDOW_MS : true;
+  if (!row || windowExpired || row.verifiedAt) {
+    return {
+      sendCount: 1,
+      attemptCount: 0,
+      lastSentAt: now,
+      expiresAt: now + OTP_TTL_MS,
+      verifiedAt: null,
+      createdAt: now,
+      fresh: true,
+    };
+  }
+  return {
+    ...row,
+    sendCount: row.sendCount + 1,
+    lastSentAt: now,
+    expiresAt: now + OTP_TTL_MS,
+    attemptCount: 0,
+    fresh: false,
+  };
+}
+
+const otpSendByIp = new Map();
+function otpIpLimited(ip, now) {
+  const key = ip || 'unknown';
+  const rec = otpSendByIp.get(key);
+  if (!rec || now - rec.start >= OTP_SEND_WINDOW_MS) {
+    otpSendByIp.set(key, { start: now, n: 1 });
+    return false;
+  }
+  if (rec.n >= 8) return true;
+  rec.n += 1;
+  return false;
+}
+
+function phoneLookupValues(phoneOrRaw) {
+  const values = new Set();
+  const compact = digitsAndPlus(phoneOrRaw);
+  if (compact) values.add(compact);
+  const national = argentineNational10(phoneOrRaw);
+  if (national) {
+    values.add(national);
+    values.add(`+549${national}`);
+    values.add(`+54${national}`);
+  }
+  const e164 = normalizePhone(phoneOrRaw);
+  if (e164) values.add(e164);
+  return [...values];
+}
+
+async function findUsersByPhone(env, phoneOrRaw) {
+  const values = phoneLookupValues(phoneOrRaw);
+  if (values.length === 0) return [];
+  const ph = values.map(() => '?').join(',');
+  return d1(env, `SELECT * FROM users WHERE verified_phone IN (${ph})`, values);
+}
 
 function publicUser(u) {
   return {
@@ -237,6 +497,8 @@ function publicUser(u) {
     bio: u.bio || '',
     location: u.location || '',
     verifiedPhone: u.verified_phone || null,
+    email: u.email || null,
+    emailVerified: !!u.email_verified_at,
     createdAt: u.created_at,
   };
 }
@@ -246,44 +508,91 @@ async function handleAuth(request, env) {
   const action = clean(body.action, 30);
 
   try {
+    await ensureAuthSchema(env);
+    await ensureProfilesSchema(env);
+
     if (action === 'register') {
       const username = clean(body.username, 20).toLowerCase();
-      const name = clean(body.name, 60);
+      const name = clean(body.name, 60) || username;
       const password = String(body.password || '');
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
       }
-      if (isReservedPublicUsername(username)) {
+      if (isReservedPublicUsername(username) || usernameLooksLikePhone(username)) {
         return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
       }
       if (name.length < 2) return json({ error: 'Escribe tu nombre' }, 400);
-      if (password.length < 6) return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
-
-      await ensureProfilesSchema(env);
+      if (password.length < PASSWORD_MIN) return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
       if (await usernameTaken(env, username, null)) {
         return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
       }
+      const created = await createAccount(env, { username, name, password, email: null, phone: null });
+      return json({ ok: true, ...created });
+    }
 
-      const id = `u-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      const salt = newSalt();
-      const passHash = hashPassword(password, salt);
-      await d1(env, 'INSERT INTO users (id, username, name, pass_hash, salt, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
-        id, username, name, passHash, salt, Date.now(),
-      ]);
-      try {
-        await ensureProfilesSchema(env);
-        await ensurePersonalProfile(env, id);
-      } catch (_) {}
-      const token = await createSession(env, id);
-      const rows = await d1(env, 'SELECT * FROM users WHERE id = ?', [id]);
-      return json({ ok: true, token, user: publicUser(rows[0]) });
+    if (action === 'registerEmail') {
+      const email = String(body.email || '').trim().toLowerCase();
+      const username = clean(String(body.username || '').replace(/^@/, ''), 20).toLowerCase();
+      const password = String(body.password || '');
+      if (!isValidEmail(email)) return json({ error: 'Escribe un correo válido' }, 400);
+      if (password.length < PASSWORD_MIN) return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
+      if (!USERNAME_RE.test(username) || isReservedPublicUsername(username) || usernameLooksLikePhone(username)) {
+        return json({ error: 'El usuario debe tener 3-20 caracteres y no puede parecer un teléfono ni una ruta del sistema' }, 400);
+      }
+      const existingEmail = await d1(env, 'SELECT id FROM users WHERE email IS NOT NULL AND LOWER(email) = ?', [email]);
+      if (existingEmail[0]) return json({ error: 'Ese correo ya está en uso' }, 409);
+      if (await usernameTaken(env, username, null)) {
+        return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
+      }
+      const created = await createAccount(env, { username, name: username, password, email, phone: null });
+      return json({ ok: true, ...created });
+    }
+
+    if (action === 'registerPhone') {
+      const phone = normalizePhone(body.phone);
+      const username = clean(String(body.username || '').replace(/^@/, ''), 20).toLowerCase();
+      const password = String(body.password || '');
+      const ticket = String(body.ticket || '');
+      const secret = otpSecret(env);
+      if (!phone) return json({ error: 'Número de teléfono inválido' }, 400);
+      if (!secret) return json({ error: 'La verificación por SMS no está disponible' }, 503);
+      if (!readPhoneTicket(secret, 'signup', phone, ticket)) {
+        return json({ error: 'Verificá tu teléfono antes de crear la cuenta' }, 400);
+      }
+      if (password.length < PASSWORD_MIN) return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
+      if (!USERNAME_RE.test(username) || isReservedPublicUsername(username) || usernameLooksLikePhone(username)) {
+        return json({ error: 'El usuario debe tener 3-20 caracteres y no puede parecer un teléfono ni una ruta del sistema' }, 400);
+      }
+      const existingPhone = await findUsersByPhone(env, phone);
+      if (existingPhone[0]) return json({ error: 'Ese teléfono ya está en uso' }, 409);
+      if (await usernameTaken(env, username, null)) {
+        return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
+      }
+      const created = await createAccount(env, { username, name: username, password, email: null, phone });
+      return json({ ok: true, ...created });
+    }
+
+    if (action === 'checkEmail') {
+      const email = String(body.email || '').trim().toLowerCase();
+      if (!isValidEmail(email)) return json({ ok: true, available: false, reason: 'invalid' });
+      const rows = await d1(env, 'SELECT id FROM users WHERE email IS NOT NULL AND LOWER(email) = ?', [email]);
+      return json({ ok: true, available: rows.length === 0 });
     }
 
     if (action === 'login') {
-      const username = clean(body.username, 20).toLowerCase();
+      const identifierRaw = body.identifier != null ? String(body.identifier) : String(body.username || '');
       const password = String(body.password || '');
-      const rows = await d1(env, 'SELECT * FROM users WHERE username = ?', [username]);
+      const classified = classifyIdentifier(identifierRaw);
       const invalid = { error: 'Usuario o contraseña incorrectos' };
+      if (classified.kind === 'invalid') return json(invalid, 401);
+      let rows = [];
+      if (classified.kind === 'email') {
+        rows = await d1(env, 'SELECT * FROM users WHERE email IS NOT NULL AND LOWER(email) = ?', [classified.value]);
+      } else if (classified.kind === 'phone') {
+        rows = await findUsersByPhone(env, classified.value);
+      } else {
+        rows = await d1(env, 'SELECT * FROM users WHERE LOWER(username) = ?', [classified.value]);
+      }
       if (!rows[0]) return json(invalid, 401);
       const u = rows[0];
       if (hashPassword(password, u.salt) !== u.pass_hash) return json(invalid, 401);
@@ -320,7 +629,7 @@ async function handleAuth(request, env) {
         if (!USERNAME_RE.test(nextUsername)) {
           return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
         }
-        if (isReservedPublicUsername(nextUsername)) {
+        if (isReservedPublicUsername(nextUsername) || usernameLooksLikePhone(nextUsername)) {
           return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
         }
         await ensureProfilesSchema(env);
@@ -635,12 +944,15 @@ async function handleDb(request, env) {
   const now = Date.now();
 
   try {
+    await ensureAuthSchema(env);
     await ensureProfilesSchema(env);
 
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
       if (isReservedPublicUsername(username)) return json({ ok: true, available: false, reason: 'reserved' });
-      if (!USERNAME_RE.test(username)) return json({ ok: true, available: false, reason: 'invalid' });
+      if (!USERNAME_RE.test(username) || usernameLooksLikePhone(username)) {
+        return json({ ok: true, available: false, reason: 'invalid' });
+      }
       const taken = await usernameTaken(env, username, null);
       return json({ ok: true, available: !taken });
     }
@@ -1480,7 +1792,7 @@ async function handleDb(request, env) {
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
       }
-      if (isReservedPublicUsername(username)) {
+      if (isReservedPublicUsername(username) || usernameLooksLikePhone(username)) {
         return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
       }
       await ensurePersonalProfile(env, userId);
@@ -1748,9 +2060,22 @@ async function handleDb(request, env) {
     }
 
     if (action === 'setPhone') {
-      const phone = clean(body.phone, 20) || null;
+      const raw = body.phone == null ? '' : String(body.phone).trim();
+      if (!raw) {
+        await d1(env, 'UPDATE users SET verified_phone = NULL WHERE id = ?', [userId]);
+        return json({ ok: true, phone: null });
+      }
+      const phone = normalizePhone(raw);
+      const ticket = String(body.ticket || '');
+      const secret = otpSecret(env);
+      if (!phone) return json({ error: 'Número de teléfono inválido' }, 400);
+      if (!secret || !readPhoneTicket(secret, 'verify_phone', phone, ticket)) {
+        return json({ error: 'Verificá el número con el código SMS' }, 400);
+      }
+      const taken = await findUsersByPhone(env, phone);
+      if (taken[0] && taken[0].id !== userId) return json({ error: 'Ese teléfono ya está en uso' }, 409);
       await d1(env, 'UPDATE users SET verified_phone = ? WHERE id = ?', [phone, userId]);
-      return json({ ok: true });
+      return json({ ok: true, phone });
     }
 
     if (action === 'registerImage') {
@@ -1815,58 +2140,119 @@ async function handleUpload(request, env) {
 }
 
 // ============================================================
-// SMS (Twilio — verificación OTP, con HMAC de Web Crypto/node:crypto)
+// SMS OTP — Programmable SMS (NO Twilio Verify).
+// Secrets requeridos (NO configurados en esta implementación):
+//   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, OTP_SECRET
+// Sin ellos el envío responde 503 y NUNCA se revela el código.
 // ============================================================
 
-function sign(secret, phone, code, exp) {
-  return createHmac('sha256', secret).update(`${phone}|${code}|${exp}`).digest('hex');
+async function latestOtpChallenge(env, phone, purpose) {
+  const rows = await d1(
+    env,
+    'SELECT * FROM otp_challenges WHERE phone = ? AND purpose = ? ORDER BY created_at DESC LIMIT 1',
+    [phone, purpose]
+  );
+  return rows[0] || null;
 }
 
 async function handleSms(request, env) {
   const body = await request.json().catch(() => ({}));
   const action = clean(body.action, 20);
-  const OTP_SECRET = env.OTP_SECRET || 'animaldex-demo-otp-secret';
-  const TTL_MS = 10 * 60 * 1000;
+  const purpose = body.purpose === 'verify_phone' ? 'verify_phone' : 'signup';
+  const now = Date.now();
+  const secret = otpSecret(env);
+  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || '';
 
-  if (action === 'send') {
-    const phone = String(body.phone || '').replace(/[^+\d]/g, '');
-    if (!/^\+?\d{8,15}$/.test(phone)) return json({ error: 'Número de teléfono inválido' }, 400);
+  try {
+    await ensureAuthSchema(env);
 
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    const exp = Date.now() + TTL_MS;
-    const token = sign(OTP_SECRET, phone, code, exp);
-
-    if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_PHONE_NUMBER) {
-      try {
-        const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`, {
-          method: 'POST',
-          headers: {
-            Authorization: 'Basic ' + btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`),
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({ To: phone, From: env.TWILIO_PHONE_NUMBER, Body: `Tu código de verificación de Animaldex es: ${code} 🐾` }).toString(),
-        });
-        const respJson = await resp.json();
-        if (!resp.ok) return json({ error: `Twilio: ${respJson.message || 'error al enviar SMS'}` }, 502);
-        return json({ ok: true, provider: 'twilio', token, exp, message: `SMS enviado a ${phone}` });
-      } catch {
-        return json({ error: 'No se pudo contactar a Twilio' }, 502);
-      }
+    if (action === 'status') {
+      return json({ ok: true, available: smsConfigured(env) });
     }
-    return json({ ok: true, provider: 'demo', token, exp, demoCode: code, message: 'Modo demo: configura Twilio para SMS reales.' });
-  }
 
-  if (action === 'verify') {
-    const phone = String(body.phone || '').replace(/[^+\d]/g, '');
-    const code = String(body.code || '');
-    const token = String(body.token || '');
-    const exp = Number(body.exp || 0);
-    if (Date.now() > exp) return json({ error: 'El código expiró, solicita uno nuevo' }, 400);
-    if (sign(OTP_SECRET, phone, code, exp) !== token) return json({ error: 'Código incorrecto' }, 400);
-    return json({ ok: true, verified: true, phone });
-  }
+    if (action === 'send') {
+      const phone = normalizePhone(body.phone);
+      if (!phone) return json({ error: 'Número de teléfono inválido' }, 400);
+      if (!smsConfigured(env)) return json({ error: 'SMS no disponible' }, 503);
+      if (otpIpLimited(ip, now)) {
+        return json({ error: 'Demasiados envíos. Probá de nuevo más tarde.' }, 429);
+      }
+      if (purpose === 'signup') {
+        const existing = await findUsersByPhone(env, phone);
+        if (existing[0]) return json({ error: 'Ese teléfono ya está en uso' }, 409);
+      }
 
-  return json({ error: 'Acción desconocida' }, 400);
+      const latest = await latestOtpChallenge(env, phone, purpose);
+      const state = otpRowState(latest);
+      const allowed = canSendOtp(state, now);
+      if (!allowed.ok) return json({ error: allowed.error }, 429);
+
+      const next = nextSendState(state, now);
+      const code = String(100000 + Math.floor(Math.random() * 900000));
+      const codeHash = hashOtpCode(secret, phone, purpose, code);
+      const id = next.fresh || !latest
+        ? `otp-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+        : latest.id;
+
+      if (next.fresh || !latest) {
+        await d1(
+          env,
+          `INSERT INTO otp_challenges
+            (id, phone, purpose, code_hash, send_count, attempt_count, last_sent_at, expires_at, verified_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+          [id, phone, purpose, codeHash, next.sendCount, 0, next.lastSentAt, next.expiresAt, next.createdAt]
+        );
+      } else {
+        await d1(
+          env,
+          `UPDATE otp_challenges
+           SET code_hash = ?, send_count = ?, attempt_count = 0, last_sent_at = ?, expires_at = ?
+           WHERE id = ?`,
+          [codeHash, next.sendCount, next.lastSentAt, next.expiresAt, id]
+        );
+      }
+
+      const sent = await sendTwilioSms(env, phone, `Tu código de verificación de Animaldex es: ${code} 🐾`);
+      if (!sent.ok) return json({ error: 'No se pudo enviar el SMS' }, 502);
+      return json({
+        ok: true,
+        retryAfter: Math.ceil(OTP_RESEND_GAP_MS / 1000),
+        expiresIn: Math.ceil(OTP_TTL_MS / 1000),
+      });
+    }
+
+    if (action === 'verify') {
+      const phone = normalizePhone(body.phone);
+      const code = String(body.code || '').trim();
+      if (!phone) return json({ error: 'Número de teléfono inválido' }, 400);
+      if (!secret) return json({ error: 'SMS no disponible' }, 503);
+      if (!/^\d{6}$/.test(code)) return json({ error: 'Código incorrecto' }, 400);
+
+      const latest = await latestOtpChallenge(env, phone, purpose);
+      const state = otpRowState(latest);
+      const allowed = canAttemptOtp(state, now);
+      if (!allowed.ok) return json({ error: allowed.error }, 400);
+
+      const expected = hashOtpCode(secret, phone, purpose, code);
+      if (!hashesEqual(expected, latest.code_hash)) {
+        await d1(env, 'UPDATE otp_challenges SET attempt_count = attempt_count + 1 WHERE id = ?', [latest.id]);
+        const after = await d1(env, 'SELECT attempt_count FROM otp_challenges WHERE id = ?', [latest.id]);
+        if ((after[0]?.attempt_count || 0) >= OTP_MAX_ATTEMPTS) {
+          return json({ error: 'Demasiados intentos. Solicitá un código nuevo.' }, 429);
+        }
+        return json({ error: 'Código incorrecto' }, 400);
+      }
+
+      await d1(env, 'UPDATE otp_challenges SET verified_at = ? WHERE id = ?', [now, latest.id]);
+      const exp = now + OTP_TICKET_TTL_MS;
+      const ticket = signPhoneTicket(secret, purpose, phone, exp);
+      return json({ ok: true, verified: true, phone, ticket, exp });
+    }
+
+    return json({ error: 'Acción desconocida' }, 400);
+  } catch (e) {
+    return json({ error: `SMS: ${e.message}` }, 502);
+  }
 }
 
 // ============================================================

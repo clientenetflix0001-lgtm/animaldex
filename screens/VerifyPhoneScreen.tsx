@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
-import { sendVerificationCode, verifyCode, SendCodeResult } from '../lib/api';
+import { sendVerificationCode, verifyCode } from '../lib/api';
+import { normalizePhone } from '../lib/phone';
 import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 
@@ -25,32 +26,29 @@ export default function VerifyPhoneScreen() {
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
+  const [lockedPhone, setLockedPhone] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
-  const [demoCode, setDemoCode] = useState('');
-  const sessionRef = useRef<SendCodeResult | null>(null);
 
   const sendCode = useCallback(async () => {
-    const clean = phone.replace(/[^+\d]/g, '');
-    if (!/^\+?\d{8,15}$/.test(clean)) {
-      setError('Ingresa un número válido con código de país, ej. +521234567890');
+    const n = normalizePhone(phone);
+    if (!n) {
+      setError('Ingresá un celular argentino válido, ej. 3875197086');
       return;
     }
     setError('');
     setLoading(true);
     try {
-      const result = await sendVerificationCode(clean);
-      sessionRef.current = result;
-      setDemoCode(result.demoCode ?? '');
-      setInfo(
-        result.provider === 'twilio'
-          ? `Enviamos un SMS a ${clean} 📱`
-          : 'Modo demo (sin credenciales de Twilio): usa el código de abajo 👇'
-      );
+      await sendVerificationCode(n, 'verify_phone');
+      setLockedPhone(n);
+      setInfo(`Enviamos un SMS a ${n}`);
       setStep('code');
     } catch (e: any) {
-      setError(e?.message || 'No se pudo enviar el código');
+      const msg = String(e?.message || '');
+      setError(/SMS no disponible|503/i.test(msg)
+        ? 'La verificación por SMS estará disponible próximamente.'
+        : (msg || 'No se pudo enviar el código'));
     } finally {
       setLoading(false);
     }
@@ -61,20 +59,23 @@ export default function VerifyPhoneScreen() {
       setError('El código tiene 6 dígitos');
       return;
     }
-    const session = sessionRef.current;
-    if (!session) return;
+    if (!lockedPhone) return;
     setError('');
     setLoading(true);
-    const clean = phone.replace(/[^+\d]/g, '');
-    const result = await verifyCode(clean, code.trim(), session.token, session.exp);
-    setLoading(false);
-    if (result.ok && result.verified) {
-      setVerifiedPhone(clean);
-      setStep('done');
-    } else {
-      setError(result.error || 'Código incorrecto');
+    try {
+      const result = await verifyCode(lockedPhone, code.trim(), 'verify_phone');
+      if (result.ok && result.ticket) {
+        setVerifiedPhone(lockedPhone, result.ticket);
+        setStep('done');
+      } else {
+        setError(result.error || 'Código incorrecto');
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Código incorrecto');
+    } finally {
+      setLoading(false);
     }
-  }, [code, phone, setVerifiedPhone]);
+  }, [code, lockedPhone, setVerifiedPhone]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -95,13 +96,13 @@ export default function VerifyPhoneScreen() {
             <>
               <Text style={styles.title}>Verifica tu cuenta</Text>
               <Text style={styles.subtitle}>
-                Te enviaremos un código por SMS (vía Twilio) para confirmar que eres tú.
+                Te enviaremos un código por SMS para confirmar que eres tú.
               </Text>
               <View style={styles.inputWrap}>
                 <Ionicons name="call-outline" size={18} color={colors.textMuted} />
                 <TextInput
                   style={styles.input}
-                  placeholder="+52 123 456 7890"
+                  placeholder="387 519 7086"
                   placeholderTextColor={colors.textMuted}
                   keyboardType="phone-pad"
                   value={phone}
@@ -125,12 +126,6 @@ export default function VerifyPhoneScreen() {
             <>
               <Text style={styles.title}>Ingresa el código</Text>
               <Text style={styles.subtitle}>{info}</Text>
-              {demoCode !== '' && (
-                <View style={styles.demoBox}>
-                  <Ionicons name="key-outline" size={16} color={colors.secondary} />
-                  <Text style={styles.demoCode}>{demoCode}</Text>
-                </View>
-              )}
               <View style={styles.inputWrap}>
                 <Ionicons name="keypad-outline" size={18} color={colors.textMuted} />
                 <TextInput
@@ -153,7 +148,7 @@ export default function VerifyPhoneScreen() {
                   <Text style={styles.primaryBtnText}>Verificar</Text>
                 )}
               </Pressable>
-              <Pressable onPress={() => { setStep('phone'); setCode(''); setError(''); }}>
+              <Pressable onPress={() => { setStep('phone'); setCode(''); setError(''); setLockedPhone(null); }}>
                 <Text style={styles.linkText}>Cambiar número</Text>
               </Pressable>
             </>
@@ -232,17 +227,6 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   linkText: { color: colors.secondary, fontWeight: '700', fontSize: 14, marginTop: spacing.lg },
-  demoBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.secondarySoft,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    marginBottom: spacing.lg,
-  },
-  demoCode: { fontWeight: '900', fontSize: 20, color: colors.secondary, letterSpacing: 4 },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',

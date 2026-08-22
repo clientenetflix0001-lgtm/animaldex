@@ -1,3 +1,5 @@
+import { usernameLooksLikePhone } from './phone';
+
 /** Formato público de handle humano/página: 3-20 caracteres, minúsculas. */
 export const USERNAME_RE = /^[a-z0-9_.]{3,20}$/;
 
@@ -68,7 +70,9 @@ export function isReservedPublicUsername(value: string): boolean {
 
 export function isValidPublicUsername(value: string): boolean {
   const handle = normalizePublicUsername(value);
-  return USERNAME_RE.test(handle) && !isReservedPublicUsername(handle);
+  if (!USERNAME_RE.test(handle) || isReservedPublicUsername(handle)) return false;
+  if (usernameLooksLikePhone(handle)) return false;
+  return true;
 }
 
 type Nav = {
