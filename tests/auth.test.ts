@@ -129,6 +129,8 @@ describe('worker / hashing / no demo OTP', () => {
   it('does not leak demo OTP codes', () => {
     assert.doesNotMatch(worker, /demoCode/);
     assert.doesNotMatch(worker, /animaldex-demo-otp-secret/);
+    assert.match(worker, /action === 'status'/);
+    assert.match(worker, /smsConfigured/);
   });
 
   it('login accepts identifier and falls back to username', () => {

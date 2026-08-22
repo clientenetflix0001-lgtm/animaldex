@@ -45,7 +45,10 @@ export default function VerifyPhoneScreen() {
       setInfo(`Enviamos un SMS a ${n}`);
       setStep('code');
     } catch (e: any) {
-      setError(e?.message || 'SMS no disponible');
+      const msg = String(e?.message || '');
+      setError(/SMS no disponible|503/i.test(msg)
+        ? 'La verificación por SMS estará disponible próximamente.'
+        : (msg || 'No se pudo enviar el código'));
     } finally {
       setLoading(false);
     }

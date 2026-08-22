@@ -363,6 +363,15 @@ function otpSecret(env) {
   return env.OTP_SECRET || '';
 }
 
+function smsConfigured(env) {
+  return !!(
+    otpSecret(env) &&
+    env.TWILIO_ACCOUNT_SID &&
+    env.TWILIO_AUTH_TOKEN &&
+    env.TWILIO_PHONE_NUMBER
+  );
+}
+
 function hashOtpCode(secret, phone, purpose, code) {
   return createHmac('sha256', secret).update(`otp|${purpose}|${phone}|${code}`).digest('hex');
 }
@@ -2157,13 +2166,14 @@ async function handleSms(request, env) {
   try {
     await ensureAuthSchema(env);
 
+    if (action === 'status') {
+      return json({ ok: true, available: smsConfigured(env) });
+    }
+
     if (action === 'send') {
       const phone = normalizePhone(body.phone);
       if (!phone) return json({ error: 'Número de teléfono inválido' }, 400);
-      if (!secret) return json({ error: 'SMS no disponible' }, 503);
-      if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_PHONE_NUMBER) {
-        return json({ error: 'SMS no disponible' }, 503);
-      }
+      if (!smsConfigured(env)) return json({ error: 'SMS no disponible' }, 503);
       if (otpIpLimited(ip, now)) {
         return json({ error: 'Demasiados envíos. Probá de nuevo más tarde.' }, 429);
       }

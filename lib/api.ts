@@ -40,6 +40,13 @@ async function post(path: string, body: object): Promise<any> {
   return json;
 }
 
+export async function smsStatus(): Promise<{ ok: boolean; available: boolean }> {
+  return await post('/sms', { action: 'status' });
+}
+
+export const PHONE_SIGNUP_UNAVAILABLE =
+  'El registro por celular estará disponible próximamente. Por ahora puedes registrarte con correo electrónico.';
+
 export async function sendVerificationCode(
   phone: string,
   purpose: OtpPurpose = 'signup'

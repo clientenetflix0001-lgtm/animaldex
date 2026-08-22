@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { useStore } from '../lib/store';
 import { auth, db } from '../lib/db';
-import { sendVerificationCode, verifyCode } from '../lib/api';
+import { sendVerificationCode, verifyCode, smsStatus, PHONE_SIGNUP_UNAVAILABLE } from '../lib/api';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint } from '../lib/responsive';
 import { RootStackParamList } from '../lib/types';
@@ -62,6 +62,7 @@ export default function AuthScreen() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
 
   useEffect(() => {
     if (route.params?.mode === 'register') goRegister();
@@ -74,6 +75,7 @@ export default function AuthScreen() {
     setTab('login');
     setStep('login');
     setError('');
+    setInfo('');
     setPassword2('');
     setOtpCode('');
   }, []);
@@ -82,7 +84,26 @@ export default function AuthScreen() {
     setTab('register');
     setStep('registerChoice');
     setError('');
+    setInfo('');
     setOtpCode('');
+  }, []);
+
+  const choosePhoneSignup = useCallback(async () => {
+    setError('');
+    setInfo('');
+    setLoading(true);
+    try {
+      const status = await smsStatus();
+      if (!status.available) {
+        setInfo(PHONE_SIGNUP_UNAVAILABLE);
+        return;
+      }
+      setStep('phoneNumber');
+    } catch {
+      setInfo(PHONE_SIGNUP_UNAVAILABLE);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const composedPhone = useCallback(() => {
@@ -188,7 +209,8 @@ export default function AuthScreen() {
       setOtpCode('');
       setStep('phoneOtp');
     } catch (e: any) {
-      setError(e?.message || 'SMS no disponible. Probá con correo electrónico.');
+      const msg = String(e?.message || '');
+      setError(/SMS no disponible|503/i.test(msg) ? PHONE_SIGNUP_UNAVAILABLE : (msg || PHONE_SIGNUP_UNAVAILABLE));
     } finally {
       setLoading(false);
     }
@@ -373,10 +395,14 @@ export default function AuthScreen() {
             <Text style={styles.choiceText}>Correo electrónico</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
-          <Pressable style={styles.choiceBtn} onPress={() => { setError(''); setStep('phoneNumber'); }}>
+          <Pressable style={styles.choiceBtn} onPress={choosePhoneSignup} disabled={loading}>
             <Ionicons name="phone-portrait-outline" size={22} color={colors.primary} />
             <Text style={styles.choiceText}>Número de celular</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            )}
           </Pressable>
           <Pressable onPress={goLogin} hitSlop={8}>
             <Text style={styles.switchLink}>¿Ya tienes cuenta? Iniciar sesión</Text>
@@ -513,6 +539,13 @@ export default function AuthScreen() {
             onSubmit={onPrimary}
           />
         </>
+      )}
+
+      {info !== '' && (
+        <View style={styles.infoBox}>
+          <Ionicons name="information-circle" size={15} color={colors.secondary} />
+          <Text style={styles.infoText}>{info}</Text>
+        </View>
       )}
 
       {error !== '' && (
@@ -771,6 +804,17 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
   },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.secondarySoft,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    marginBottom: spacing.md,
+  },
+  infoText: { color: colors.text, fontSize: 13, fontWeight: '600', flex: 1, lineHeight: 18 },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
