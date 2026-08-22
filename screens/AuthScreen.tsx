@@ -413,6 +413,12 @@ export default function AuthScreen() {
           <Pressable onPress={goLogin} hitSlop={8}>
             <Text style={styles.switchLink}>¿Ya tienes cuenta? Iniciar sesión</Text>
           </Pressable>
+          {info !== '' && (
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle" size={15} color={colors.secondary} />
+              <Text style={styles.infoText}>{info}</Text>
+            </View>
+          )}
         </>
       )}
 
@@ -545,13 +551,6 @@ export default function AuthScreen() {
             onSubmit={onPrimary}
           />
         </>
-      )}
-
-      {info !== '' && step === 'registerChoice' && (
-        <View style={styles.infoBox}>
-          <Ionicons name="information-circle" size={15} color={colors.secondary} />
-          <Text style={styles.infoText}>{info}</Text>
-        </View>
       )}
 
       {error !== '' && (
