@@ -37,8 +37,10 @@ interface StoreState {
   // Sesión
   user: ApiUser | null;
   authReady: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   register: (username: string, name: string, password: string) => Promise<void>;
+  registerEmail: (email: string, password: string, username: string) => Promise<void>;
+  registerPhone: (phone: string, password: string, username: string, ticket: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   // Datos del usuario
@@ -55,7 +57,7 @@ interface StoreState {
   toggleFollowPet: (petId: string) => void;
   toggleFollowUser: (userId: string) => void;
   addComment: (postId: string, text: string) => void;
-  setVerifiedPhone: (phone: string | null) => void;
+  setVerifiedPhone: (phone: string | null, ticket?: string) => void;
   // Comentarios optimistas locales (mientras la red confirma)
   myComments: Record<string, Comment[]>;
   ready: boolean;
@@ -140,8 +142,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     else AsyncStorage.setItem(PENDING_TAG_KEY, String(code)).catch(() => {});
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const res = await auth.login(username, password);
+  const login = useCallback(async (identifier: string, password: string) => {
+    const res = await auth.login(identifier, password);
     await setToken(res.token);
     setUser(res.user);
     setVerifiedPhoneState(res.user.verifiedPhone);
@@ -159,6 +161,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setFollowedPets([]);
     setFollowedUsers([]);
   }, []);
+
+  const applyNewSession = useCallback(async (res: { token: string; user: ApiUser }) => {
+    await setToken(res.token);
+    setUser(res.user);
+    setVerifiedPhoneState(res.user.verifiedPhone);
+    setMyPets([]);
+    setLikedPosts([]);
+    setSavedPosts([]);
+    setFollowedPets([]);
+    setFollowedUsers([]);
+  }, []);
+
+  const registerEmail = useCallback(async (email: string, password: string, username: string) => {
+    const res = await auth.registerEmail(email, password, username);
+    await applyNewSession(res);
+  }, [applyNewSession]);
+
+  const registerPhone = useCallback(async (phone: string, password: string, username: string, ticket: string) => {
+    const res = await auth.registerPhone(phone, password, username, ticket);
+    await applyNewSession(res);
+  }, [applyNewSession]);
 
   const logout = useCallback(async () => {
     try {
@@ -233,9 +256,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     db.comment(postId, text).catch(() => {});
   }, []);
 
-  const setVerifiedPhone = useCallback((phone: string | null) => {
+  const setVerifiedPhone = useCallback((phone: string | null, ticket?: string) => {
     setVerifiedPhoneState(phone);
-    db.setPhone(phone).catch(() => {});
+    db.setPhone(phone, ticket).catch(() => {});
   }, []);
 
   const notifyPostCreated = useCallback((post: Post) => {
@@ -263,6 +286,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       authReady,
       login,
       register,
+      registerEmail,
+      registerPhone,
       logout,
       refreshUser,
       myPets,
@@ -295,6 +320,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       authReady,
       login,
       register,
+      registerEmail,
+      registerPhone,
       logout,
       refreshUser,
       myPets,
