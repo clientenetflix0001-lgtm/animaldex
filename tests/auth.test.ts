@@ -114,6 +114,8 @@ describe('QR pendingTagCode conservation', () => {
     assert.match(auth, /pendingTagCode/);
     assert.doesNotMatch(auth, /setPendingTagCode/);
     assert.doesNotMatch(auth, /animaldex-pending-tag-code/);
+    assert.match(auth, /chooseEmailSignup/);
+    assert.match(auth, /setInfo\(''\)/);
     const store = readFileSync(join(root, 'lib/store.tsx'), 'utf8');
     assert.match(store, /animaldex-pending-tag-code/);
   });

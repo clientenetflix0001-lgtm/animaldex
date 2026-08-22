@@ -88,6 +88,12 @@ export default function AuthScreen() {
     setOtpCode('');
   }, []);
 
+  const chooseEmailSignup = useCallback(() => {
+    setError('');
+    setInfo('');
+    setStep('emailCredentials');
+  }, []);
+
   const choosePhoneSignup = useCallback(async () => {
     setError('');
     setInfo('');
@@ -390,7 +396,7 @@ export default function AuthScreen() {
       {step === 'registerChoice' && (
         <>
           <Text style={styles.stepTitle}>¿Cómo quieres continuar?</Text>
-          <Pressable style={styles.choiceBtn} onPress={() => { setError(''); setStep('emailCredentials'); }}>
+          <Pressable style={styles.choiceBtn} onPress={chooseEmailSignup}>
             <Ionicons name="mail-outline" size={22} color={colors.primary} />
             <Text style={styles.choiceText}>Correo electrónico</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -541,7 +547,7 @@ export default function AuthScreen() {
         </>
       )}
 
-      {info !== '' && (
+      {info !== '' && step === 'registerChoice' && (
         <View style={styles.infoBox}>
           <Ionicons name="information-circle" size={15} color={colors.secondary} />
           <Text style={styles.infoText}>{info}</Text>

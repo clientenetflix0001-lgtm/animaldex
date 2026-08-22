@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -49,7 +49,9 @@ export default function AddPetScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'AddPet'>>();
   const tagCode = route.params?.tagCode;
   const editPetId = route.params?.petId;
-  const { refreshMyPets } = useStore();
+  const { refreshMyPets, setPendingTagCode } = useStore();
+  const savingRef = useRef(false);
+  const createdPetRef = useRef<{ id: string; username: string | null; name: string } | null>(null);
   const { activeProfile } = useProfiles();
   const routeProfileId = route.params?.profileId;
   const protectorProfileId =
@@ -185,7 +187,13 @@ export default function AddPetScreen() {
   const birthOk = isValidBirthDateParts(birthYear, birthMonth, birthDay);
   const birthDate = birthOk && birthYear && birthMonth && birthDay ? formatBirthDate(birthYear, birthMonth, birthDay) : null;
 
+  const goToCreatedPet = useCallback((pet: { id: string; username?: string | null }) => {
+    const petId = pet.username || pet.id;
+    navigation.replace('PetProfile', { petId });
+  }, [navigation]);
+
   const save = useCallback(async () => {
+    if (savingRef.current) return;
     if (name.trim().length < 1) {
       Alert.alert('Falta el nombre', 'Ponle nombre a tu mascota 🐾');
       return;
@@ -195,7 +203,7 @@ export default function AddPetScreen() {
       Alert.alert('Usuario inválido', 'El @ de tu mascota debe tener 3-20 caracteres: letras, números, punto o _.');
       return;
     }
-    if (available === false) {
+    if (available === false && !createdPetRef.current) {
       Alert.alert('Usuario ocupado', 'Ese nombre o @ ya lo tiene otra mascota. Probá otro.');
       return;
     }
@@ -203,6 +211,7 @@ export default function AddPetScreen() {
       Alert.alert('Fecha inválida', 'Revisá el día, el mes y el año. No se permiten fechas inexistentes ni futuras.');
       return;
     }
+    savingRef.current = true;
     setSaving(true);
     try {
       const emoji = FORM_SPECIES.find((s) => s.id === species)?.emoji ?? '🐾';
@@ -220,31 +229,42 @@ export default function AddPetScreen() {
         neutered,
         profileId: isProtectorPet ? profileId : null,
       };
-      const { pet } = editPetId
-        ? await db.updatePet(realId || editPetId, payload)
-        : await db.createPet(payload);
-      await refreshMyPets();
+
+      let pet: { id: string; username?: string | null; name: string };
+      if (editPetId) {
+        const updated = await db.updatePet(realId || editPetId, payload);
+        pet = updated.pet;
+      } else if (createdPetRef.current) {
+        pet = createdPetRef.current;
+      } else {
+        const created = await db.createPet(payload);
+        pet = created.pet;
+        createdPetRef.current = {
+          id: pet.id,
+          username: pet.username || handle,
+          name: pet.name,
+        };
+      }
+
       if (!editPetId && tagCode != null) {
         try {
           await db.claimTag(tagCode, pet.id);
-          Alert.alert(
-            '¡Listo! 🎉',
-            `${pet.name} (@${pet.username || handle}) ya tiene su chapita QR activada.`,
-            [{ text: 'Ver perfil', onPress: () => navigation.replace('PetProfile', { petId: pet.username || pet.id }) }]
-          );
         } catch (e: any) {
           Alert.alert(
             'Mascota guardada',
-            `${pet.name} se registró, pero no se pudo vincular la chapita: ${e?.message || 'inténtalo de nuevo.'}`,
-            [{ text: 'Ver perfil', onPress: () => navigation.replace('PetProfile', { petId: pet.username || pet.id }) }]
+            `${pet.name} ya existe, pero no se pudo vincular la chapita: ${e?.message || 'inténtalo de nuevo.'} Tocá Guardar para reintentar el vínculo, sin crear otra mascota.`
           );
+          return;
         }
-        return;
+        setPendingTagCode(null);
       }
-      navigation.replace('PetProfile', { petId: pet.username || pet.id });
+
+      refreshMyPets().catch(() => {});
+      goToCreatedPet(pet);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo guardar');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [
@@ -264,7 +284,8 @@ export default function AddPetScreen() {
     isProtectorPet,
     profileId,
     refreshMyPets,
-    navigation,
+    goToCreatedPet,
+    setPendingTagCode,
     tagCode,
     realId,
     editPetId,
