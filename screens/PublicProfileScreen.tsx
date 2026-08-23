@@ -5,6 +5,7 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
+  ScrollView,
   useWindowDimensions,
   ActivityIndicator,
 } from 'react-native';
@@ -17,7 +18,7 @@ import { db, ApiPet } from '../lib/db';
 import { apiPostToPost } from '../lib/store';
 import { Post, formatCount } from '../lib/data';
 import { postNavParams, sharePublicProfile } from '../lib/share';
-import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
@@ -25,15 +26,13 @@ import { colors, spacing, radius } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import type { PublicProfile } from '../features/profiles/profileTypes';
-import { ageLabelFromBirthDate } from '../lib/birthDate';
 import UserProfileScreen from './UserProfileScreen';
 import {
   filterProtectorPets,
-  careStatusLabel,
-  waitingLabel,
   type StatusFilter,
   type SpeciesFilter,
 } from '../lib/petFields';
+import ProtectorPetGridItem, { PROTECTOR_GRID_GAP } from '../components/ProtectorPetGridItem';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 import { isReservedPublicUsername } from '../lib/publicHandles';
 
@@ -47,8 +46,8 @@ const TABS: { id: TabKey; label: string }[] = [
 
 const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
   { id: 'todas', label: 'Todas' },
-  { id: 'en_adopcion', label: 'En adopción' },
-  { id: 'en_recuperacion', label: 'En recuperación' },
+  { id: 'en_adopcion', label: 'Adopción' },
+  { id: 'en_recuperacion', label: 'Recuperación' },
 ];
 
 const SPECIES_FILTERS: { id: SpeciesFilter; label: string }[] = [
@@ -146,8 +145,11 @@ export default function PublicProfileScreen() {
     () => filterProtectorPets(pets, statusFilter, speciesFilter),
     [pets, statusFilter, speciesFilter]
   );
+  const gridPets = useMemo(
+    () => (filteredPets.length % 2 === 1 ? [...filteredPets, null] : filteredPets),
+    [filteredPets]
+  );
 
-  const tile = (width - spacing.lg * 2 - 12) / 2;
   const postTile = (width - spacing.lg * 2 - 4) / 3;
 
   if (!loading && profile?.type === 'personal' && profile.accountId) {
@@ -281,16 +283,8 @@ export default function PublicProfileScreen() {
           </View>
           {tab === 'mascotas' && (
             <View style={styles.filters}>
-              <ScrollChips
-                items={STATUS_FILTERS}
-                value={statusFilter}
-                onChange={setStatusFilter}
-              />
-              <ScrollChips
-                items={SPECIES_FILTERS}
-                value={speciesFilter}
-                onChange={setSpeciesFilter}
-              />
+              <FilterRow items={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
+              <FilterRow items={SPECIES_FILTERS} value={speciesFilter} onChange={setSpeciesFilter} />
             </View>
           )}
         </>
@@ -342,34 +336,28 @@ export default function PublicProfileScreen() {
         />
       ) : (
         <FlatList
-          data={filteredPets}
+          data={gridPets}
           key="mascotas"
-          keyExtractor={(p) => p.id}
+          keyExtractor={(p, i) => p?.id ?? `spacer-${i}`}
           ListHeaderComponent={header}
           numColumns={2}
-          columnWrapperStyle={filteredPets.length ? { gap: 12, paddingHorizontal: spacing.lg } : undefined}
-          contentContainerStyle={{ paddingBottom: guest ? 260 : 40, gap: 12 }}
-          renderItem={({ item }) => {
-            const age = ageLabelFromBirthDate(item.birthDate) || item.age;
-            const wait =
-              item.careStatus === 'en_adopcion' ? waitingLabel(item.adoptionStartedAt) : '';
-            return (
-              <Pressable
-                style={[styles.petTile, { width: tile }]}
+          columnWrapperStyle={gridPets.length ? { gap: PROTECTOR_GRID_GAP } : undefined}
+          contentContainerStyle={{ paddingBottom: guest ? 260 : 40, gap: PROTECTOR_GRID_GAP }}
+          renderItem={({ item }) =>
+            item ? (
+              <ProtectorPetGridItem
+                petId={item.id}
+                photo={item.avatarUrl}
+                name={item.name}
+                careStatus={item.careStatus}
+                adoptionStartedAt={item.adoptionStartedAt}
+                birthDate={item.birthDate}
                 onPress={() => navigation.navigate('PetProfile', { petId: item.username || item.id })}
-              >
-                <Image
-                  source={{ uri: thumb(item.avatarUrl || petFallbackAvatar(item.id), 400) }}
-                  style={[styles.petImg, { width: tile - 16, height: tile - 16 }]}
-                />
-                <Text style={styles.petName}>{item.name}</Text>
-                <Text style={styles.petMeta}>
-                  {[careStatusLabel(item.careStatus), age].filter(Boolean).join(' · ')}
-                </Text>
-                {!!wait && <Text style={styles.petWait}>{wait}</Text>}
-              </Pressable>
-            );
-          }}
+              />
+            ) : (
+              <View style={{ flex: 1 }} />
+            )
+          }
           ListEmptyComponent={
             <Text style={styles.empty}>
               {pets.length === 0
@@ -384,7 +372,7 @@ export default function PublicProfileScreen() {
   );
 }
 
-function ScrollChips<T extends string>({
+function FilterRow<T extends string>({
   items,
   value,
   onChange,
@@ -394,7 +382,11 @@ function ScrollChips<T extends string>({
   onChange: (id: T) => void;
 }) {
   return (
-    <View style={styles.chipRow}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chipRow}
+    >
       {items.map((item) => (
         <Pressable
           key={item.id}
@@ -404,7 +396,7 @@ function ScrollChips<T extends string>({
           <Text style={[styles.filterText, value === item.id && styles.filterTextOn]}>{item.label}</Text>
         </Pressable>
       ))}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -455,20 +447,20 @@ const styles = StyleSheet.create({
   editText: { fontWeight: '700', fontSize: 13, color: colors.text },
   tabRow: {
     flexDirection: 'row',
-    marginTop: spacing.xl,
+    marginTop: spacing.sm,
     marginHorizontal: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, paddingHorizontal: 2 },
+  tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 2 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
   tabLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, textAlign: 'center' },
   tabLabelOn: { color: colors.primary },
-  filters: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filters: { paddingHorizontal: spacing.sm, paddingTop: spacing.sm, paddingBottom: spacing.xs, gap: 6 },
+  chipRow: { flexDirection: 'row', gap: 6, paddingRight: spacing.sm },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radius.full,
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -477,14 +469,5 @@ const styles = StyleSheet.create({
   filterChipOn: { backgroundColor: colors.primarysoft, borderColor: colors.primary },
   filterText: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
   filterTextOn: { color: colors.primary },
-  petTile: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: 8,
-  },
-  petImg: { borderRadius: radius.sm, backgroundColor: colors.border, marginBottom: 8 },
-  petName: { fontWeight: '800', color: colors.text, fontSize: 14 },
-  petMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  petWait: { color: colors.primary, fontSize: 11, fontWeight: '700', marginTop: 4 },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 24, paddingHorizontal: 28 },
 });

@@ -11,6 +11,7 @@ import { useNotifications } from '../lib/realtime';
 import { userFallbackAvatar, thumb } from '../lib/images';
 import { colors, radius, spacing } from '../lib/theme';
 import { SIDEBAR_FULL, SIDEBAR_RAIL } from '../lib/responsive';
+import { navigateMainTab } from '../lib/tabProfileStack';
 
 export const TAB_ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap }> = {
   Inicio: { on: 'home', off: 'home-outline' },
@@ -56,7 +57,7 @@ export function Sidebar({ state, navigation, mode }: Props) {
       {/* Logo */}
       <Pressable
         style={[styles.logoRow, !full && styles.logoRail]}
-        onPress={() => navigation.navigate('Inicio')}
+        onPress={() => navigateMainTab(navigation, 'Inicio')}
       >
         <Text style={styles.logoEmoji}>🐾</Text>
         {full && <Text style={styles.logoText}>Animaldex</Text>}
@@ -85,7 +86,7 @@ export function Sidebar({ state, navigation, mode }: Props) {
           return (
             <Pressable
               key={route.key}
-              onPress={() => navigation.navigate(route.name)}
+              onPress={() => navigateMainTab(navigation, route.name)}
               style={(st: any) => [
                 styles.item,
                 !full && styles.itemRail,
