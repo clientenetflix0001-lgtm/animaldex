@@ -557,6 +557,22 @@ function otpIpLimited(ip, now) {
   return false;
 }
 
+// Rate limit mínimo de shareLocation: 1 envío / 45s por IP + mascota (memoria, sin tabla).
+const SHARE_LOCATION_WINDOW_MS = 45 * 1000;
+const SHARE_LOCATION_MAX = 1;
+const shareLocationByKey = new Map();
+function shareLocationLimited(ip, petId, now) {
+  const key = `${ip || 'unknown'}|${petId}`;
+  const rec = shareLocationByKey.get(key);
+  if (!rec || now - rec.start >= SHARE_LOCATION_WINDOW_MS) {
+    shareLocationByKey.set(key, { start: now, n: 1 });
+    return false;
+  }
+  if (rec.n >= SHARE_LOCATION_MAX) return true;
+  rec.n += 1;
+  return false;
+}
+
 function phoneLookupValues(phoneOrRaw) {
   const values = new Set();
   const compact = digitsAndPlus(phoneOrRaw);
@@ -1532,20 +1548,29 @@ async function handleDb(request, env) {
     // este endpoint solo recibe el resultado YA consentido y lo envía por SMS
     // al dueño de la mascota (su teléfono verificado).
     if (action === 'shareLocation') {
-      const petId = clean(body.petId, 80);
+      const petRef = clean(body.petId, 80);
       const lat = Number(body.lat);
       const lon = Number(body.lon);
       const accuracy = body.accuracy != null ? Number(body.accuracy) : null;
-      if (!petId || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      if (!petRef || !Number.isFinite(lat) || !Number.isFinite(lon)) {
         return json({ error: 'Faltan datos de ubicación' }, 400);
       }
       if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
         return json({ error: 'Coordenadas inválidas' }, 400);
       }
 
-      const pets = await d1(env, 'SELECT id, name, user_id FROM pets WHERE id = ?', [petId]);
+      const pets = await d1(
+        env,
+        'SELECT id, name, user_id FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1',
+        [petRef, petRef]
+      );
       if (!pets[0]) return json({ error: 'Mascota no encontrada' }, 404);
       const pet = pets[0];
+
+      const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || '';
+      if (shareLocationLimited(ip, pet.id, now)) {
+        return json({ error: 'Esperá un momento antes de volver a compartir la ubicación.' }, 429);
+      }
 
       const owners = await d1(env, 'SELECT id, name, verified_phone FROM users WHERE id = ?', [pet.user_id]);
       const owner = owners[0];
@@ -1565,7 +1590,7 @@ async function handleDb(request, env) {
       await d1(
         env,
         'INSERT INTO location_shares (id, pet_id, owner_id, lat, lon, accuracy, sms_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, petId, pet.user_id, lat, lon, accuracy, status, now]
+        [id, pet.id, pet.user_id, lat, lon, accuracy, status, now]
       );
 
       return json({ ok: true, status, notified: status === 'sent' });
