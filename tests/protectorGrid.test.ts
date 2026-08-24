@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { waitingLabelCompact, filterProtectorPets } from '../lib/petFields.ts';
-import { ageLabelFromBirthDate } from '../lib/birthDate.ts';
+import { filterProtectorPets } from '../lib/petFields.ts';
+import { adoptionStatusOverlay, compactAgeLabel } from '../lib/compactTime.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const pub = readFileSync(join(root, 'screens/PublicProfileScreen.tsx'), 'utf8');
@@ -26,10 +26,10 @@ describe('grilla compacta proteccionista', () => {
     assert.doesNotMatch(pub, /styles\.petTile/);
   });
 
-  it('overlay: estado arriba, nombre abajo, sin tarjeta blanca', () => {
+  it('overlay: estado arriba, nombre abajo, edad a la derecha', () => {
     assert.match(item, /styles\.pill/);
-    assert.match(item, /waitingLabelCompact/);
-    assert.match(item, /ageLabelFromBirthDate/);
+    assert.match(item, /adoptionStatusOverlay/);
+    assert.match(item, /compactAgeLabel/);
     assert.match(item, /LinearGradient/);
     assert.doesNotMatch(item, /backgroundColor: colors\.card/);
   });
@@ -40,23 +40,21 @@ describe('grilla compacta proteccionista', () => {
 });
 
 describe('overlays de datos', () => {
-  it('adopción usa adoption_started_at compacto, no created_at', () => {
-    const t0 = Date.UTC(2026, 0, 1);
-    assert.equal(waitingLabelCompact(t0 - 73 * 86400000, t0), '73 días');
-    assert.equal(waitingLabelCompact(t0 - 150 * 86400000, t0), '5 meses');
-    assert.equal(waitingLabelCompact(t0 - 400 * 86400000, t0), '1 año');
+  it('adopción usa adoption_started_at; edad usa birth_date', () => {
+    const now = new Date(2026, 7, 23).getTime();
+    assert.equal(adoptionStatusOverlay('en_adopcion', new Date(2026, 7, 17).getTime(), now), 'En adopción · Esperando 6D');
+    assert.equal(compactAgeLabel('2024-08-23', new Date(2026, 7, 23)), 'Edad 2 AÑOS');
     assert.match(item, /adoptionStartedAt/);
+    assert.match(item, /birthDate/);
     assert.doesNotMatch(item, /created_at|createdAt/);
   });
 
-  it('recuperación muestra edad de birth_date y omite espera', () => {
-    assert.equal(ageLabelFromBirthDate('2021-08-23', new Date('2026-08-23')), '5 años');
-    assert.equal(ageLabelFromBirthDate(null), '');
+  it('recuperación no muestra espera en la píldora', () => {
+    assert.equal(adoptionStatusOverlay('en_recuperacion', Date.now()), 'En recuperación');
     const pets = [
       { careStatus: 'en_recuperacion', species: 'perro', adoptionStartedAt: 1 },
     ];
     assert.equal(filterProtectorPets(pets, 'en_recuperacion', 'todos').length, 1);
-    assert.match(item, /careStatus === 'en_recuperacion'/);
   });
 });
 

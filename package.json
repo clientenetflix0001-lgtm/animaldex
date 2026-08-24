@@ -42,7 +42,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test:auth": "node --experimental-strip-types --test tests/auth.test.ts",
-    "test:grid": "node --experimental-strip-types --test tests/protectorGrid.test.ts"
+    "test:grid": "node --experimental-strip-types --test tests/protectorGrid.test.ts",
+    "test:time": "node --experimental-strip-types --test tests/compactTime.test.ts"
   },
   "private": true
 }
