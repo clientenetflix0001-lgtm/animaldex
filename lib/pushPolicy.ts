@@ -10,7 +10,30 @@ export const EXPO_PUSH_BATCH_MAX = 100;
 export const EXPO_PROJECT_ID = 'f2b4eacd-6e1a-4dbc-89cd-b65598756451';
 
 export const PUSH_CHANNEL_PETS = 'mascotas';
+export const PUSH_CHANNEL_PETS_URGENT = 'mascotas-urgentes';
 export const PUSH_CHANNEL_REMINDERS = 'recordatorios';
+export const LOCATION_ACTIVITY_SUBTITLE = 'Tocá para ver la ubicación.';
+
+export function displayPersonName(user: { name?: string | null; username?: string | null } | null | undefined): string | null {
+  const name = String(user?.name || '').trim();
+  if (name) return name;
+  const username = String(user?.username || '').trim();
+  return username || null;
+}
+
+export function locationActivityCopy(petName: string, actorName?: string | null): { title: string; subtitle: string } {
+  const pet = String(petName || '').trim() || 'tu mascota';
+  if (actorName) {
+    return {
+      title: `${actorName} te envió la ubicación de ${pet}.`,
+      subtitle: LOCATION_ACTIVITY_SUBTITLE,
+    };
+  }
+  return {
+    title: `Un invitado te envió la ubicación de ${pet}.`,
+    subtitle: LOCATION_ACTIVITY_SUBTITLE,
+  };
+}
 
 export const DEFAULT_NOTIFICATION_PREFS = {
   location: true,
@@ -105,11 +128,17 @@ export function disableToken(row: PushTokenRow, now: number): PushTokenRow {
   return { ...row, enabled: false, updatedAt: now };
 }
 
-export function locationPushCopy(petName: string): { title: string; body: string } {
-  const name = String(petName || '').trim() || 'tu mascota';
+export function locationPushCopy(petName: string, actorName?: string | null): { title: string; body: string } {
+  const pet = String(petName || '').trim() || 'tu mascota';
+  if (actorName) {
+    return {
+      title: `📍 ${actorName} te envió una ubicación`,
+      body: `Ubicación compartida de ${pet}.`,
+    };
+  }
   return {
-    title: `📍 Nueva ubicación de ${name}`,
-    body: `Alguien compartió una ubicación desde el perfil de ${name}.`,
+    title: '📍 Un invitado te envió una ubicación',
+    body: `Ubicación compartida de ${pet}.`,
   };
 }
 
@@ -127,14 +156,16 @@ export function locationPushMessage(input: {
   petName: string;
   petId: string;
   shareId: string;
+  actorName?: string | null;
 }): Record<string, unknown> {
-  const copy = locationPushCopy(input.petName);
+  const copy = locationPushCopy(input.petName, input.actorName);
   return {
     to: input.token,
     title: copy.title,
     body: copy.body,
     sound: 'default',
-    channelId: PUSH_CHANNEL_PETS,
+    priority: 'high',
+    channelId: PUSH_CHANNEL_PETS_URGENT,
     data: {
       type: 'location',
       petId: input.petId,
@@ -158,6 +189,7 @@ export function birthdayPushMessage(input: {
     title: copy.title,
     body: copy.body,
     sound: 'default',
+    priority: 'default',
     channelId: PUSH_CHANNEL_REMINDERS,
     data: {
       type: 'birthday',

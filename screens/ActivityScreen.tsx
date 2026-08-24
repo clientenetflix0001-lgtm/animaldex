@@ -15,6 +15,7 @@ import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { openHumanProfile } from '../lib/publicHandles';
 import { useStore } from '../lib/store';
 import PushPermissionBanner from '../components/PushPermissionBanner';
+import { locationActivityCopy } from '../lib/pushPolicy';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -78,8 +79,10 @@ export default function ActivityScreen() {
         return 'empezó a seguirte';
       case 'follow_pet':
         return `empezó a seguir a ${n.petName ?? 'tu mascota'}`;
-      case 'location':
-        return `compartió su ubicación en el perfil de ${n.petName ?? 'tu mascota'} ${n.petEmoji ?? '🐾'}`;
+      case 'location': {
+        const copy = locationActivityCopy(n.petName ?? 'tu mascota', n.actorId ? n.actorName : null);
+        return copy.title;
+      }
       case 'birthday':
         return n.title || `¡Hoy ${n.petName ?? 'tu mascota'} cumple ${n.years === 1 ? '1 año' : `${n.years ?? ''} años`}!`;
       default:
@@ -157,7 +160,7 @@ export default function ActivityScreen() {
             {isBirthday && !!n.text && <Text style={styles.birthdayHint}>{n.text}</Text>}
             {isLocation && (
               <Text style={styles.locationLink}>
-                📍 Ver en el mapa {n.accuracy ? `· precisión ±${Math.round(n.accuracy)}m` : ''}
+                {locationActivityCopy(n.petName ?? 'tu mascota', n.actorId ? n.actorName : null).subtitle}
               </Text>
             )}
           </View>

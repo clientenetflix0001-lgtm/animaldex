@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { db } from './db';
-import { EXPO_PROJECT_ID, PUSH_CHANNEL_PETS, PUSH_CHANNEL_REMINDERS, isExpoPushToken, parsePushNav } from './pushPolicy';
+import { EXPO_PROJECT_ID, PUSH_CHANNEL_PETS, PUSH_CHANNEL_PETS_URGENT, PUSH_CHANNEL_REMINDERS, isExpoPushToken, parsePushNav } from './pushPolicy';
 import { interpretNotificationPermission, PUSH_PROMPT_DISMISSED_KEY } from './pushPrompt';
 import { navigationRef } from './navigationRef';
 
@@ -50,6 +50,17 @@ export async function ensureAndroidChannels(): Promise<void> {
     importance: native.Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 180],
     lightColor: '#FF6B4A',
+  });
+  await native.Notifications.setNotificationChannelAsync(PUSH_CHANNEL_PETS_URGENT, {
+    name: 'Alertas importantes de mascotas',
+    description: 'Ubicaciones y avisos urgentes de tus mascotas.',
+    importance: native.Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 120, 250],
+    lightColor: '#FF6B4A',
+    sound: 'default',
+    enableVibrate: true,
+    showBadge: true,
+    lockscreenVisibility: 1,
   });
   await native.Notifications.setNotificationChannelAsync(PUSH_CHANNEL_REMINDERS, {
     name: 'Recordatorios',

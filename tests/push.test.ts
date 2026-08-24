@@ -6,11 +6,15 @@ import { fileURLToPath } from 'node:url';
 
 import {
   EXPO_PUSH_BATCH_MAX,
+  PUSH_CHANNEL_PETS_URGENT,
+  PUSH_CHANNEL_REMINDERS,
   assignPushToken,
   birthdayPushIdempotencyKey,
   birthdayPushMessage,
   chunkTokens,
+  displayPersonName,
   isExpoPushToken,
+  locationActivityCopy,
   locationPushIdempotencyKey,
   locationPushMessage,
   mergeNotificationPrefs,
@@ -98,19 +102,52 @@ describe('idempotency and payload', () => {
   });
 
   it('payload de ubicación no incluye coords ni PII', () => {
-    const msg = locationPushMessage({
+    const guest = locationPushMessage({
       token: TOKEN_A,
-      petName: 'Luna',
+      petName: 'Ñaña',
       petId: 'pet-1787367172507-0yeh4c',
       shareId: 'loc-1',
     });
-    assert.equal(msg.title, '📍 Nueva ubicación de Luna');
-    assert.equal(payloadHasSensitiveLocation(msg), false);
-    const data = msg.data as Record<string, unknown>;
+    assert.equal(guest.title, '📍 Un invitado te envió una ubicación');
+    assert.equal(guest.body, 'Ubicación compartida de Ñaña.');
+    assert.equal(guest.priority, 'high');
+    assert.equal(guest.channelId, PUSH_CHANNEL_PETS_URGENT);
+    assert.equal(payloadHasSensitiveLocation(guest), false);
+    const data = guest.data as Record<string, unknown>;
     assert.equal(data.lat, undefined);
     assert.equal(data.lon, undefined);
     assert.equal(data.type, 'location');
     assert.equal(data.url, '/actividad');
+
+    const logged = locationPushMessage({
+      token: TOKEN_A,
+      petName: 'Ñaña',
+      petId: 'pet-1',
+      shareId: 'loc-2',
+      actorName: 'Lucas Fuentes',
+    });
+    assert.equal(logged.title, '📍 Lucas Fuentes te envió una ubicación');
+    assert.equal(logged.body, 'Ubicación compartida de Ñaña.');
+    assert.equal(logged.priority, 'high');
+    assert.equal(payloadHasSensitiveLocation(logged), false);
+  });
+
+  it('Activity y nombre público: name, luego username, invitado sin sesión', () => {
+    assert.equal(displayPersonName({ name: 'Lucas Fuentes', username: 'lucasfuentes' }), 'Lucas Fuentes');
+    assert.equal(displayPersonName({ name: '  ', username: 'lucasfuentes' }), 'lucasfuentes');
+    assert.equal(displayPersonName(null), null);
+    assert.equal(
+      locationActivityCopy('Ñaña', 'Lucas Fuentes').title,
+      'Lucas Fuentes te envió la ubicación de Ñaña.'
+    );
+    assert.equal(locationActivityCopy('Ñaña', null).title, 'Un invitado te envió la ubicación de Ñaña.');
+    assert.equal(locationActivityCopy('Ñaña', null).subtitle, 'Tocá para ver la ubicación.');
+    const activity = readFileSync(join(root, 'screens/ActivityScreen.tsx'), 'utf8');
+    assert.match(activity, /locationActivityCopy/);
+    assert.doesNotMatch(activity, /compartió su ubicación en el perfil/);
+    const push = readFileSync(join(root, 'lib/push.ts'), 'utf8');
+    assert.match(push, /PUSH_CHANNEL_PETS_URGENT/);
+    assert.match(push, /Alertas importantes de mascotas/);
   });
 
   it('payload de cumpleaños navega a PetProfile', () => {
@@ -122,6 +159,8 @@ describe('idempotency and payload', () => {
       years: 3,
     });
     assert.equal(msg.title, '🎂 ¡Hoy Luna cumple 3 años!');
+    assert.equal(msg.priority, 'default');
+    assert.equal(msg.channelId, PUSH_CHANNEL_REMINDERS);
     assert.deepEqual(parsePushNav(msg.data as never), { kind: 'pet', petId: 'lunaqr13' });
   });
 });

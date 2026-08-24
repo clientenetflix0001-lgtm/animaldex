@@ -70,8 +70,9 @@ describe('Worker shareLocation resuelve handle o id y persiste pet.id', () => {
     assert.match(action, /SELECT id, name, verified_phone FROM users WHERE id = \?[\s\S]*pet\.user_id/);
     assert.match(
       worker,
-      /FROM location_shares ls JOIN pets pt ON pt\.id = ls\.pet_id\s+WHERE ls\.owner_id = \?/
+      /FROM location_shares ls JOIN pets pt ON pt\.id = ls\.pet_id\s+LEFT JOIN users u ON u\.id = ls\.actor_user_id\s+WHERE ls\.owner_id = \?/
     );
+    assert.match(worker, /ALTER TABLE location_shares ADD COLUMN actor_user_id TEXT/);
   });
 
   it('rate limit en memoria, sin tabla nueva', () => {
@@ -79,6 +80,14 @@ describe('Worker shareLocation resuelve handle o id y persiste pet.id', () => {
     assert.match(worker, /function shareLocationLimited/);
     assert.match(action, /shareLocationLimited\(ip, pet\.id, now\)/);
     assert.doesNotMatch(action, /CREATE TABLE.*location_share_limits/i);
+  });
+
+  it('actor sale de la sesión opcional; el cliente no puede falsificar el nombre', () => {
+    assert.match(action, /const actorUserId = await authUser\(request, env, body\)/);
+    assert.match(action, /INSERT INTO location_shares[\s\S]*actor_user_id[\s\S]*actorUserId/);
+    assert.doesNotMatch(action, /body\.actorName/);
+    assert.doesNotMatch(action, /body\.actorUserId/);
+    assert.doesNotMatch(screen, /actorName/);
   });
 });
 

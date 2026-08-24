@@ -23,6 +23,7 @@ import {
   assignPushToken,
   birthdayPushIdempotencyKey,
   birthdayPushMessage,
+  displayPersonName,
   isExpoPushToken,
   locationPushIdempotencyKey,
   locationPushMessage,
@@ -309,6 +310,14 @@ async function ensurePushSchema(env) {
     created_at INTEGER NOT NULL
   )`);
   env._pushSchemaReady = true;
+}
+
+async function ensureLocationActorColumn(env) {
+  if (env._locationActorReady) return;
+  try {
+    await env.DB.prepare('ALTER TABLE location_shares ADD COLUMN actor_user_id TEXT').run();
+  } catch (_) {}
+  env._locationActorReady = true;
 }
 
 function mapPushTokenRow(r) {
@@ -1245,6 +1254,7 @@ async function handleDb(request, env) {
     await ensureProfilesSchema(env);
     await ensureActivityEventsSchema(env);
     await ensurePushSchema(env);
+    await ensureLocationActorColumn(env);
 
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
@@ -1766,6 +1776,14 @@ async function handleDb(request, env) {
       const owners = await d1(env, 'SELECT id, name, verified_phone FROM users WHERE id = ?', [pet.user_id]);
       const owner = owners[0];
 
+      // Actor SOLO desde sesión opcional. Ignorar cualquier nombre enviado por el cliente.
+      const actorUserId = await authUser(request, env, body);
+      let actorName = null;
+      if (actorUserId) {
+        const actors = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [actorUserId]);
+        actorName = displayPersonName(actors[0] || null);
+      }
+
       const id = `loc-${now}-${Math.random().toString(36).slice(2, 8)}`;
       let status = 'no_phone';
       let smsResult = null;
@@ -1778,10 +1796,11 @@ async function handleDb(request, env) {
         status = smsResult.ok ? 'sent' : smsResult.provider === 'demo' ? 'demo' : 'failed';
       }
 
+      await ensureLocationActorColumn(env);
       await d1(
         env,
-        'INSERT INTO location_shares (id, pet_id, owner_id, lat, lon, accuracy, sms_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, pet.id, pet.user_id, lat, lon, accuracy, status, now]
+        'INSERT INTO location_shares (id, pet_id, owner_id, lat, lon, accuracy, sms_status, created_at, actor_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, pet.id, pet.user_id, lat, lon, accuracy, status, now, actorUserId]
       );
 
       try {
@@ -1796,6 +1815,7 @@ async function handleDb(request, env) {
               petName: pet.name,
               petId: pet.id,
               shareId: id,
+              actorName,
             }),
         });
       } catch (_) {}
@@ -2408,8 +2428,11 @@ async function handleDb(request, env) {
            WHERE f.target_type = 'pet' AND pt.user_id = ? AND f.user_id != ? ORDER BY f.created_at DESC LIMIT 20`, [userId, userId]),
         // Ubicaciones compartidas por visitantes (vía QR/chapita) en mis mascotas.
         // Notificación 100% gratuita: vive solo en D1, sin SMS.
-        d1(env, `SELECT ls.id, ls.created_at, ls.lat, ls.lon, ls.accuracy, ls.sms_status, pt.id AS pet_id, pt.name AS pet_name, pt.emoji AS pet_emoji
+        d1(env, `SELECT ls.id, ls.created_at, ls.lat, ls.lon, ls.accuracy, ls.sms_status, ls.actor_user_id,
+                pt.id AS pet_id, pt.name AS pet_name, pt.emoji AS pet_emoji,
+                u.name AS actor_name, u.username AS actor_username
            FROM location_shares ls JOIN pets pt ON pt.id = ls.pet_id
+           LEFT JOIN users u ON u.id = ls.actor_user_id
            WHERE ls.owner_id = ? ORDER BY ls.created_at DESC LIMIT 20`, [userId]),
         d1(env, `SELECT id, type, user_id, pet_id, title, body, metadata, created_at
            FROM activity_events
@@ -2421,22 +2444,26 @@ async function handleDb(request, env) {
         ...comments.map((r) => ({ id: `comment-${r.actor_id}-${r.post_id}-${r.created_at}`, type: 'comment', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, postId: r.post_id, postImage: r.post_image || null, text: (r.text || '').slice(0, 80), createdAt: r.created_at })),
         ...followsUser.map((r) => ({ id: `fu-${r.actor_id}-${r.created_at}`, type: 'follow_user', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, createdAt: r.created_at })),
         ...followsPet.map((r) => ({ id: `fp-${r.actor_id}-${r.pet_id}-${r.created_at}`, type: 'follow_pet', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, petId: r.pet_id, petName: r.pet_name, createdAt: r.created_at })),
-        ...locations.map((r) => ({
-          id: `loc-${r.id}`,
-          type: 'location',
-          actorId: null,
-          actorName: 'Alguien',
-          actorUsername: 'anónimo',
-          actorAvatar: null,
-          petId: r.pet_id,
-          petName: r.pet_name,
-          petEmoji: r.pet_emoji,
-          lat: r.lat,
-          lon: r.lon,
-          accuracy: r.accuracy,
-          smsStatus: r.sms_status,
-          createdAt: r.created_at,
-        })),
+        ...locations.map((r) => {
+          const actorId = r.actor_user_id || null;
+          const actorName = actorId ? displayPersonName({ name: r.actor_name, username: r.actor_username }) : null;
+          return {
+            id: `loc-${r.id}`,
+            type: 'location',
+            actorId,
+            actorName: actorName || '',
+            actorUsername: '',
+            actorAvatar: null,
+            petId: r.pet_id,
+            petName: r.pet_name,
+            petEmoji: r.pet_emoji,
+            lat: r.lat,
+            lon: r.lon,
+            accuracy: r.accuracy,
+            smsStatus: r.sms_status,
+            createdAt: r.created_at,
+          };
+        }),
         ...birthdays.map((r) => {
           let meta = {};
           try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { meta = {}; }
