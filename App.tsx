@@ -6,7 +6,6 @@ import {
   DefaultTheme,
   RouteProp,
   LinkingOptions,
-  createNavigationContainerRef,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -50,6 +49,8 @@ import { useBreakpoint } from './lib/responsive';
 import { Sidebar } from './components/Sidebar';
 import { extractTagCode } from './lib/tags';
 import { createTabProfileStack, navigateMainTab } from './lib/tabProfileStack';
+import { navigationRef } from './lib/navigationRef';
+import { attachPushResponseListeners, ensurePushHandler, registerPushTokenIfGranted } from './lib/push';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -57,8 +58,6 @@ const Tab = createBottomTabNavigator<TabParamList>();
 // Ref global de navegación: permite navegar desde fuera del árbol de
 // componentes (por ejemplo, al detectar un deep link ?qr=xx antes de
 // que el usuario haya iniciado sesión).
-export const navigationRef = createNavigationContainerRef<RootStackParamList>();
-
 function MyProfileTab() {
   return <UserProfileScreen showBack={false} />;
 }
@@ -296,6 +295,26 @@ function TagDeepLinkHandler() {
   return null;
 }
 
+function PushBootstrap() {
+  const { user, authReady } = useStore();
+
+  useEffect(() => {
+    ensurePushHandler().catch(() => {});
+    let off = () => {};
+    attachPushResponseListeners().then((fn) => {
+      off = fn;
+    }).catch(() => {});
+    return () => off();
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || !user) return;
+    registerPushTokenIfGranted().catch(() => {});
+  }, [authReady, user]);
+
+  return null;
+}
+
 const screenHeaderOptions = {
   headerBackTitle: 'Atrás',
   headerTintColor: colors.text,
@@ -484,6 +503,7 @@ export default function App() {
               >
                 <StatusBar style="dark" />
                 <TagDeepLinkHandler />
+                <PushBootstrap />
                 <RootNavigator />
               </NavigationContainer>
             </NotificationsProvider>

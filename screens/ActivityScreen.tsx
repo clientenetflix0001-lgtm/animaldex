@@ -13,6 +13,8 @@ import { colors, spacing, radius } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { openHumanProfile } from '../lib/publicHandles';
+import { useStore } from '../lib/store';
+import PushPermissionBanner from '../components/PushPermissionBanner';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -36,6 +38,7 @@ export default function ActivityScreen() {
   const navigation = useNavigation<Nav>();
   const { desktopWeb } = useBreakpoint();
   const { notifications: realNotifs, unread, markSeen, refresh } = useNotifications();
+  const { myPets } = useStore();
   const demoNotifications = useMemo(generateNotifications, []);
   const [refreshing, setRefreshing] = useState(false);
   const [seenAtOpen, setSeenAtOpen] = useState(0);
@@ -204,6 +207,7 @@ export default function ActivityScreen() {
             </View>
           )}
         </View>
+        <PushPermissionBanner hasPets={myPets.length > 0} />
         <FlatList
           data={rows}
           keyExtractor={(r) => (r.kind === 'header' ? r.id : r.kind === 'real' ? `r-${r.item.id}` : `d-${r.item.id}`)}
