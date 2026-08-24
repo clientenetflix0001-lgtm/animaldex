@@ -82,6 +82,19 @@ describe('Worker shareLocation resuelve handle o id y persiste pet.id', () => {
   });
 });
 
+describe('petProfile público', () => {
+  it('7. /pet/:handle sigue resolviendo id o username', () => {
+    const start = worker.indexOf("if (action === 'petProfile')");
+    assert.ok(start >= 0, 'petProfile action missing');
+    const next = worker.indexOf('if (action ===', start + 10);
+    const action = worker.slice(start, next > start ? next : undefined);
+    assert.match(
+      action,
+      /SELECT \* FROM pets WHERE id = \? OR LOWER\(username\) = LOWER\(\?\) LIMIT 1/
+    );
+  });
+});
+
 describe('resolución canónica (modelo SQL)', () => {
   const luna = { id: 'pet-1755830000000-abc12x', username: 'lunaqr13', user_id: 'u-owner-1' };
 
