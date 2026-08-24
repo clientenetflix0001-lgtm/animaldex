@@ -19,6 +19,7 @@ import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList, TabParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ProfileSwitcher } from '../features/profiles';
+import WantToAdoptButton from '../components/WantToAdoptButton';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Inicio'>,
@@ -315,6 +316,9 @@ export default function FeedScreen() {
       <View style={styles.desktopRoot}>
         <View style={styles.desktopCenter}>
           <View style={styles.desktopFeedCol}>
+            <View style={styles.desktopAdoptRow}>
+              <WantToAdoptButton onPress={() => navigation.navigate('AdoptionDiscovery')} />
+            </View>
             {feedList}
             {newPill}
           </View>
@@ -370,7 +374,12 @@ export default function FeedScreen() {
           </Pressable>
         </View>
       </View>
-      <ProfileSwitcher />
+      <View style={styles.switcherRow}>
+        <View style={styles.switcherSlot}>
+          <ProfileSwitcher />
+        </View>
+        <WantToAdoptButton onPress={() => navigation.navigate('AdoptionDiscovery')} />
+      </View>
       <View style={{ flex: 1 }}>
         {feedList}
         {newPill}
@@ -409,6 +418,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  switcherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: spacing.lg,
+    marginBottom: 6,
+    gap: spacing.sm,
+  },
+  switcherSlot: { flex: 1, minWidth: 0 },
+  desktopAdoptRow: {
+    alignItems: 'flex-end',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+  },
   searchBtn: {
     width: 32,
     height: 32,

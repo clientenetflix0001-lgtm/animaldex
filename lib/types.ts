@@ -38,4 +38,5 @@ export type RootStackParamList = {
   SellerShop: { userId: string };
   MarketFavorites: undefined;
   PublicProfile: { profileId?: string; username?: string };
+  AdoptionDiscovery: undefined;
 };

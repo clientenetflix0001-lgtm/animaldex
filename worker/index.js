@@ -1481,6 +1481,75 @@ async function handleDb(request, env) {
       return json({ ok: true, pets: rows.map(petRow) });
     }
 
+    // Discovery de adopción (fuente A): mascotas de protectoras/refugios
+    // en_adopcion. Fuente B (alertas) queda para más adelante.
+    // Lectura pública; no crea tablas ni índices nuevos.
+    if (action === 'adoptionFeed') {
+      const locality = clean(body.locality, 100);
+      const species = clean(body.species, 20).toLowerCase();
+      const size = normalizeSize(body.size);
+      const sexRaw = clean(body.sex, 20).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const sex = sexRaw === 'macho' || sexRaw === 'hembra' ? sexRaw : '';
+      const before = Number(body.before) || now + 1000;
+      const limit = Math.min(Number(body.limit) || 8, 20);
+
+      const conditions = [
+        'p.archived_at IS NULL',
+        "p.care_status = 'en_adopcion'",
+        "pr.type = 'protector'",
+      ];
+      const params = [];
+      if (species === 'perro' || species === 'gato') {
+        conditions.push('p.species = ?');
+        params.push(species);
+      } else if (species === 'otro') {
+        conditions.push("p.species != 'perro' AND p.species != 'gato'");
+      }
+      if (size) {
+        conditions.push('p.size = ?');
+        params.push(size);
+      }
+      if (sex) {
+        conditions.push("LOWER(COALESCE(p.sex, '')) = ?");
+        params.push(sex);
+      }
+      conditions.push('p.created_at < ?');
+      params.push(before);
+
+      const locOrder = locality
+        ? "CASE WHEN LOWER(COALESCE(pr.location, '')) LIKE ? THEN 0 ELSE 1 END, "
+        : '';
+      const bind = locality
+        ? [`%${locality.toLowerCase()}%`, ...params, limit + 1]
+        : [...params, limit + 1];
+
+      const rows = await d1(
+        env,
+        `SELECT p.*, pr.id AS shelter_id, pr.name AS shelter_name, pr.username AS shelter_username,
+                pr.location AS shelter_location
+         FROM pets p
+         INNER JOIN profiles pr ON pr.id = p.profile_id AND pr.type = 'protector'
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY ${locOrder}p.created_at DESC, p.id DESC
+         LIMIT ?`,
+        bind
+      );
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      return json({
+        ok: true,
+        items: page.map((r) => ({
+          ...petRow(r),
+          source: 'protector_pet',
+          shelterId: r.shelter_id,
+          shelterName: r.shelter_name,
+          shelterUsername: r.shelter_username,
+          shelterLocation: r.shelter_location || null,
+        })),
+        hasMore,
+      });
+    }
+
     if (action === 'comments') {
       const postId = clean(body.postId, 80);
       const rows = await d1(

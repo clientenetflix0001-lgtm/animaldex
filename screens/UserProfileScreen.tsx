@@ -20,6 +20,7 @@ import { useStore, apiPostToPost } from '../lib/store';
 import { postNavParams, sharePublicProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
+import WantToAdoptButton from '../components/WantToAdoptButton';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
@@ -241,13 +242,21 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
 
       {/* Acciones */}
       {isMe ? (
-        <View style={styles.actionRow}>
-          <Pressable style={styles.editBtn} onPress={() => navigation.navigate('EditProfile')}>
-            <Text style={styles.editText}>Editar perfil</Text>
-          </Pressable>
-          <Pressable style={styles.editBtn} onPress={() => navigation.navigate('AddPet')}>
-            <Text style={styles.editText}>+ Mascota</Text>
-          </Pressable>
+        <View>
+          <View style={styles.actionRow}>
+            <Pressable style={styles.editBtn} onPress={() => navigation.navigate('EditProfile')}>
+              <Text style={styles.editText}>Editar perfil</Text>
+            </Pressable>
+            <Pressable style={styles.editBtn} onPress={() => navigation.navigate('AddPet')}>
+              <Text style={styles.editText}>+ Mascota</Text>
+            </Pressable>
+          </View>
+          <View style={styles.adoptRow}>
+            <WantToAdoptButton
+              size="block"
+              onPress={() => navigation.navigate('AdoptionDiscovery')}
+            />
+          </View>
         </View>
       ) : (
         <View style={styles.actionRow}>
@@ -448,6 +457,10 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.lg,
+  },
+  adoptRow: {
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.sm,
   },
   editBtn: {
     flex: 1,

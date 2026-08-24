@@ -39,6 +39,7 @@ import CreateListingScreen from './screens/CreateListingScreen';
 import ListingDetailScreen from './screens/ListingDetailScreen';
 import SellerShopScreen from './screens/SellerShopScreen';
 import MarketFavoritesScreen from './screens/MarketFavoritesScreen';
+import AdoptionDiscoveryScreen from './screens/AdoptionDiscoveryScreen';
 
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
@@ -440,6 +441,11 @@ function RootNavigator() {
         name="MarketFavorites"
         component={MarketFavoritesScreen}
         options={{ title: 'Favoritos', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="AdoptionDiscovery"
+        component={AdoptionDiscoveryScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );
