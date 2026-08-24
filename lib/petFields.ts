@@ -82,6 +82,18 @@ export function waitingLabel(startedAt: number | null | undefined, now: number =
   return years === 1 ? 'Esperando hace 1 año' : `Esperando hace ${years} años`;
 }
 
+/** Versión corta para overlay de grilla. Solo usa adoption_started_at. */
+export function waitingLabelCompact(startedAt: number | null | undefined, now: number = Date.now()): string {
+  if (!startedAt || startedAt > now) return '';
+  const days = Math.floor((now - startedAt) / 86400000);
+  if (days < 1) return 'Hoy';
+  if (days < 90) return days === 1 ? '1 día' : `${days} días`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return months === 1 ? '1 mes' : `${months} meses`;
+  const years = Math.floor(days / 365);
+  return years === 1 ? '1 año' : `${years} años`;
+}
+
 export type StatusFilter = 'todas' | 'en_adopcion' | 'en_recuperacion';
 export type SpeciesFilter = 'todos' | 'perro' | 'gato' | 'otro';
 

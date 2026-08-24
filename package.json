@@ -43,7 +43,9 @@
     "web": "expo start --web",
     "test:auth": "node --experimental-strip-types --test tests/auth.test.ts",
     "test:birthday": "node --experimental-strip-types --test tests/petBirthday.test.ts",
-    "test:location": "node --experimental-strip-types --test tests/shareLocation.test.ts"
+    "test:location": "node --experimental-strip-types --test tests/shareLocation.test.ts",
+    "test:grid": "node --experimental-strip-types --test tests/protectorGrid.test.ts",
+    "test:time": "node --experimental-strip-types --test tests/compactTime.test.ts"
   },
   "private": true
 }
