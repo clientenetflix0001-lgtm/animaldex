@@ -213,7 +213,7 @@ export default function PublicProfileScreen() {
           <Text style={styles.name}>{profile.name}</Text>
           {isProtector && <Ionicons name="checkmark-circle" size={18} color={colors.secondary} />}
         </View>
-        <Text style={styles.handle}>@{profile.username}</Text>
+        {!isProtector ? <Text style={styles.handle}>@{profile.username}</Text> : null}
         <ProfileBadge type={profile.type} />
         {!!profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
         {!!profile.phone && (
@@ -317,7 +317,7 @@ export default function PublicProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safeWhite} edges={['top']}>
       {tab === 'posts' ? (
         <FlatList
           data={posts}
@@ -402,6 +402,7 @@ function FilterRow<T extends string>({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  safeWhite: { flex: 1, backgroundColor: '#FFFFFF' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',

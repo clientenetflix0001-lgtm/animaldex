@@ -77,3 +77,32 @@ describe('navegación: tabs anidados, linking intacto', () => {
     assert.match(worker, /POST_CAPTION_MAX = 1000/);
   });
 });
+
+describe('perfil protector: fondo blanco y username único', () => {
+  it('usa #FFFFFF solo en el SafeAreaView del ramal protector', () => {
+    assert.match(pub, /safeWhite: \{ flex: 1, backgroundColor: '#FFFFFF' \}/);
+    assert.match(
+      pub,
+      /if \(!isProtector\) \{[\s\S]*?<SafeAreaView style=\{styles\.safe\} edges=\{\['top'\]\}>[\s\S]*return \(\s*<SafeAreaView style=\{styles\.safeWhite\}/,
+    );
+    assert.match(pub, /<Text style=\{styles\.topUser\}>@\{profile\.username\}<\/Text>/);
+    assert.match(
+      pub,
+      /\{!isProtector \? <Text style=\{styles\.handle\}>@\{profile\.username\}<\/Text> : null\}/,
+    );
+    assert.doesNotMatch(
+      pub,
+      /<View style=\{styles\.nameRow\}>[\s\S]*?<\/View>\s*<Text style=\{styles\.handle\}>/,
+    );
+  });
+
+  it('no cambia theme global, grilla ni overlays', () => {
+    const theme = readFileSync(join(root, 'lib/theme.ts'), 'utf8');
+    assert.match(theme, /bg: '#FFF9F2'/);
+    assert.match(theme, /primary: '#FF6B4A'/);
+    assert.match(pub, /numColumns=\{2\}/);
+    assert.match(pub, /PROTECTOR_GRID_GAP/);
+    assert.match(item, /adoptionStatusOverlay/);
+    assert.match(item, /compactAgeLabel/);
+  });
+});
