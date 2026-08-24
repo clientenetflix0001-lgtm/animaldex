@@ -24,6 +24,7 @@ const ICONS: Record<string, { name: keyof typeof Ionicons.glyphMap; bg: string }
   comment: { name: 'chatbubble', bg: colors.primary },
   mention: { name: 'at', bg: colors.gold },
   location: { name: 'location', bg: colors.secondary },
+  birthday: { name: 'gift', bg: colors.gold },
 };
 
 type Row =
@@ -76,6 +77,8 @@ export default function ActivityScreen() {
         return `empezó a seguir a ${n.petName ?? 'tu mascota'}`;
       case 'location':
         return `compartió su ubicación en el perfil de ${n.petName ?? 'tu mascota'} ${n.petEmoji ?? '🐾'}`;
+      case 'birthday':
+        return n.title || `¡Hoy ${n.petName ?? 'tu mascota'} cumple ${n.years === 1 ? '1 año' : `${n.years ?? ''} años`}!`;
       default:
         return 'interactuó contigo';
     }
@@ -97,12 +100,15 @@ export default function ActivityScreen() {
       const icon = ICONS[n.type] ?? ICONS.like;
       const isNew = n.createdAt > seenAtOpen - 1 && seenAtOpen > 0 && n.createdAt > seenAtOpen;
       const isLocation = n.type === 'location';
+      const isBirthday = n.type === 'birthday';
       return (
         <Pressable
           style={[styles.row, isNew && styles.rowNew]}
           onPress={() => {
             if (isLocation) {
               openLocation(n);
+            } else if (isBirthday && (n.petUsername || n.petId)) {
+              navigation.navigate('PetProfile', { petId: n.petUsername || n.petId });
             } else if (n.type === 'follow_pet' && n.petId) {
               navigation.navigate('PetProfile', { petId: n.petId });
             } else if (n.postId) {
@@ -115,7 +121,11 @@ export default function ActivityScreen() {
           }}
         >
           <View>
-            {isLocation ? (
+            {isBirthday ? (
+              <View style={[styles.avatar, styles.birthdayAvatar]}>
+                <Text style={styles.birthdayEmoji}>🎂</Text>
+              </View>
+            ) : isLocation ? (
               <View style={[styles.avatar, styles.locationAvatar]}>
                 <Ionicons name="paw" size={20} color={colors.secondary} />
               </View>
@@ -132,7 +142,7 @@ export default function ActivityScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.text}>
-              {isLocation ? (
+              {isBirthday || isLocation ? (
                 realText(n)
               ) : (
                 <>
@@ -141,6 +151,7 @@ export default function ActivityScreen() {
               )}
             </Text>
             <Text style={styles.time}>{formatTime(timeAgoMinutes(n.createdAt))}</Text>
+            {isBirthday && !!n.text && <Text style={styles.birthdayHint}>{n.text}</Text>}
             {isLocation && (
               <Text style={styles.locationLink}>
                 📍 Ver en el mapa {n.accuracy ? `· precisión ±${Math.round(n.accuracy)}m` : ''}
@@ -257,6 +268,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  birthdayAvatar: {
+    backgroundColor: '#FFF4CC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  birthdayEmoji: { fontSize: 22 },
+  birthdayHint: { fontSize: 12, color: colors.textMuted, marginTop: 3 },
   badge: {
     position: 'absolute',
     bottom: -2,

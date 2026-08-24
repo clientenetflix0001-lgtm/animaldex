@@ -9,6 +9,13 @@
 // ============================================================
 
 import { scryptSync, randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
+import {
+  argentinaDateParts,
+  birthdayIdempotencyKey,
+  birthdayMatchParams,
+  birthdayNotificationCopy,
+  evaluatePersonalPetBirthday,
+} from '../lib/petBirthday.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -156,6 +163,7 @@ async function ensureProfilesSchema(env) {
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN location TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN phone TEXT').run(); } catch (_) {}
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_profile ON pets (profile_id)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_birth_date ON pets (birth_date)');
   // Historial de adopciones completadas. Una fila = una transferencia real del
   // MISMO pet_id (no se duplica el perfil). care_status no escribe acá.
   // Futuro (no expuesto todavía):
@@ -230,6 +238,89 @@ async function ensureAuthSchema(env) {
     ).run();
   } catch (_) {}
   env._authSchemaReady = true;
+}
+
+async function ensureActivityEventsSchema(env) {
+  if (env._activityEventsReady) return;
+  await d1(env, `CREATE TABLE IF NOT EXISTS activity_events (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    pet_id TEXT,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    body TEXT,
+    metadata TEXT,
+    created_at INTEGER NOT NULL
+  )`);
+  await d1(env, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_events_key ON activity_events (idempotency_key)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_activity_events_user ON activity_events (user_id, created_at DESC)');
+  env._activityEventsReady = true;
+}
+
+async function runPersonalPetBirthdays(env, nowMs = Date.now()) {
+  await ensureProfilesSchema(env);
+  await ensureActivityEventsSchema(env);
+  const today = argentinaDateParts(nowMs);
+  const { monthDay, includeFeb29OnFeb28 } = birthdayMatchParams(today);
+  const rows = await d1(
+    env,
+    `SELECT p.id, p.name, p.username, p.user_id, p.birth_date, p.emoji, p.avatar_url,
+            p.profile_id, p.archived_at, pr.type AS profile_type
+       FROM pets p
+       LEFT JOIN profiles pr ON pr.id = p.profile_id
+      WHERE p.archived_at IS NULL
+        AND p.birth_date IS NOT NULL
+        AND (p.profile_id IS NULL OR pr.type = 'personal')
+        AND (
+          substr(p.birth_date, 6, 5) = ?
+          OR (? = 1 AND substr(p.birth_date, 6, 5) = '02-29')
+        )`,
+    [monthDay, includeFeb29OnFeb28 ? 1 : 0]
+  );
+
+  let inserted = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    try {
+      const decision = evaluatePersonalPetBirthday(
+        {
+          birthDate: row.birth_date,
+          archivedAt: row.archived_at,
+          profileId: row.profile_id,
+          profileType: row.profile_type,
+        },
+        nowMs
+      );
+      if (!decision.notify) {
+        skipped += 1;
+        continue;
+      }
+      const key = birthdayIdempotencyKey(row.id, today.year);
+      const copy = birthdayNotificationCopy(row.name, decision.years);
+      const metadata = JSON.stringify({
+        ownerUserId: row.user_id,
+        petId: row.id,
+        petUsername: row.username || null,
+        petName: row.name,
+        petEmoji: row.emoji || null,
+        petAvatar: row.avatar_url || null,
+        years: decision.years,
+      });
+      const res = await env.DB.prepare(
+        `INSERT OR IGNORE INTO activity_events
+          (id, type, user_id, pet_id, idempotency_key, title, body, metadata, created_at)
+         VALUES (?, 'birthday', ?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(key, row.user_id, row.id, key, copy.title, copy.body, metadata, nowMs)
+        .run();
+      if (res && res.meta && res.meta.changes > 0) inserted += 1;
+      else skipped += 1;
+    } catch (_) {
+      skipped += 1;
+    }
+  }
+  return { considered: rows.length, inserted, skipped, date: `${today.year}-${monthDay}` };
 }
 
 async function ensurePersonalProfile(env, userId) {
@@ -946,6 +1037,7 @@ async function handleDb(request, env) {
   try {
     await ensureAuthSchema(env);
     await ensureProfilesSchema(env);
+    await ensureActivityEventsSchema(env);
 
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
@@ -2015,7 +2107,7 @@ async function handleDb(request, env) {
     }
 
     if (action === 'notifications') {
-      const [likes, comments, followsUser, followsPet, locations] = await Promise.all([
+      const [likes, comments, followsUser, followsPet, locations, birthdays] = await Promise.all([
         d1(env, `SELECT l.created_at, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url, p.id AS post_id, p.image AS post_image
            FROM likes l JOIN posts p ON p.id = l.post_id JOIN users u ON u.id = l.user_id
            WHERE p.user_id = ? AND l.user_id != ? ORDER BY l.created_at DESC LIMIT 20`, [userId, userId]),
@@ -2033,6 +2125,10 @@ async function handleDb(request, env) {
         d1(env, `SELECT ls.id, ls.created_at, ls.lat, ls.lon, ls.accuracy, ls.sms_status, pt.id AS pet_id, pt.name AS pet_name, pt.emoji AS pet_emoji
            FROM location_shares ls JOIN pets pt ON pt.id = ls.pet_id
            WHERE ls.owner_id = ? ORDER BY ls.created_at DESC LIMIT 20`, [userId]),
+        d1(env, `SELECT id, type, user_id, pet_id, title, body, metadata, created_at
+           FROM activity_events
+           WHERE user_id = ? AND type = 'birthday'
+           ORDER BY created_at DESC LIMIT 20`, [userId]),
       ]);
       const items = [
         ...likes.map((r) => ({ id: `like-${r.actor_id}-${r.post_id}-${r.created_at}`, type: 'like', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, postId: r.post_id, postImage: r.post_image || null, createdAt: r.created_at })),
@@ -2055,6 +2151,26 @@ async function handleDb(request, env) {
           smsStatus: r.sms_status,
           createdAt: r.created_at,
         })),
+        ...birthdays.map((r) => {
+          let meta = {};
+          try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { meta = {}; }
+          return {
+            id: r.id,
+            type: 'birthday',
+            actorId: r.user_id,
+            actorName: meta.petName || '',
+            actorUsername: '',
+            actorAvatar: meta.petAvatar || null,
+            petId: r.pet_id || meta.petId || null,
+            petUsername: meta.petUsername || null,
+            petName: meta.petName || null,
+            petEmoji: meta.petEmoji || null,
+            title: r.title,
+            text: r.body || '',
+            years: meta.years || null,
+            createdAt: r.created_at,
+          };
+        }),
       ].sort((a, b) => b.createdAt - a.createdAt).slice(0, 40);
       return json({ ok: true, notifications: items });
     }
@@ -2277,6 +2393,15 @@ export default {
       return json({ error: 'Ruta no encontrada' }, 404);
     } catch (e) {
       return json({ error: `Worker: ${e.message}` }, 500);
+    }
+  },
+
+  async scheduled(event, env) {
+    const nowMs = event && event.scheduledTime ? Number(event.scheduledTime) : Date.now();
+    try {
+      await runPersonalPetBirthdays(env, nowMs);
+    } catch (e) {
+      console.log('pet-birthday-cron', e && e.message);
     }
   },
 };

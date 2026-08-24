@@ -11,3 +11,7 @@ database_id = "c0ae095d-b9a5-4acd-b500-8a9c2be03010"
 [vars]
 CF_ACCOUNT_ID = "76a9bc649184dfbf09c0b4319bcaa85b"
 CF_DELIVERY_HASH = "8m1UaEl3HZU-HEHN3G4Exg"
+
+# Una vez al día. 11:00 UTC = 08:00 America/Argentina/Salta (UTC−3, sin DST).
+[triggers]
+crons = ["0 11 * * *"]

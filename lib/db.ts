@@ -224,7 +224,7 @@ export interface ApiTag {
 
 export interface ApiNotification {
   id: string;
-  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location';
+  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday';
   actorId: string | null;
   actorName: string;
   actorUsername: string;
@@ -232,9 +232,12 @@ export interface ApiNotification {
   postId?: string;
   postImage?: string | null;
   petId?: string;
+  petUsername?: string | null;
   petName?: string;
   petEmoji?: string;
+  title?: string;
   text?: string;
+  years?: number | null;
   lat?: number;
   lon?: number;
   accuracy?: number | null;
