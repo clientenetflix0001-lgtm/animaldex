@@ -6,7 +6,6 @@ import {
   DefaultTheme,
   RouteProp,
   LinkingOptions,
-  createNavigationContainerRef,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -49,6 +48,9 @@ import { RootStackParamList, TabParamList } from './lib/types';
 import { useBreakpoint } from './lib/responsive';
 import { Sidebar } from './components/Sidebar';
 import { extractTagCode } from './lib/tags';
+import { createTabProfileStack, navigateMainTab } from './lib/tabProfileStack';
+import { navigationRef } from './lib/navigationRef';
+import { attachPushResponseListeners, ensurePushHandler, registerPushTokenIfGranted } from './lib/push';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -56,11 +58,24 @@ const Tab = createBottomTabNavigator<TabParamList>();
 // Ref global de navegación: permite navegar desde fuera del árbol de
 // componentes (por ejemplo, al detectar un deep link ?qr=xx antes de
 // que el usuario haya iniciado sesión).
-export const navigationRef = createNavigationContainerRef<RootStackParamList>();
-
 function MyProfileTab() {
   return <UserProfileScreen showBack={false} />;
 }
+
+function InicioRoot() {
+  return <FeedReelsSwiper initialPage={0} />;
+}
+
+function ReelsRoot() {
+  return <FeedReelsSwiper initialPage={1} />;
+}
+
+const InicioStack = createTabProfileStack(InicioRoot);
+const ReelsStack = createTabProfileStack(ReelsRoot);
+const AlertasStack = createTabProfileStack(AlertsScreen);
+const MercadoStack = createTabProfileStack(MarketScreen);
+const ActividadStack = createTabProfileStack(ActivityScreen);
+const PerfilStack = createTabProfileStack(MyProfileTab);
 
 function UserProfileRoute() {
   const route = useRoute<RouteProp<RootStackParamList, 'UserProfile'>>();
@@ -109,7 +124,7 @@ function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
         return (
           <Pressable
             key={name}
-            onPress={() => navigation.navigate(name)}
+            onPress={() => navigateMainTab(navigation, name)}
             style={styles.tabItem}
             accessibilityRole="button"
             accessibilityLabel={name === 'Crear' ? 'Crear' : name}
@@ -160,13 +175,13 @@ function Tabs() {
           sceneStyle: { paddingLeft: sidebarWidth, backgroundColor: colors.bg },
         }}
       >
-        <Tab.Screen name="Inicio">{() => <FeedReelsSwiper initialPage={0} />}</Tab.Screen>
-        <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
-        <Tab.Screen name="Alertas" component={AlertsScreen} />
-        <Tab.Screen name="Mercado" component={MarketScreen} />
+        <Tab.Screen name="Inicio" component={InicioStack} />
+        <Tab.Screen name="Reels" component={ReelsStack} />
+        <Tab.Screen name="Alertas" component={AlertasStack} />
+        <Tab.Screen name="Mercado" component={MercadoStack} />
         <Tab.Screen name="Crear" component={CreatePostScreen} />
-        <Tab.Screen name="Actividad" component={ActivityScreen} />
-        <Tab.Screen name="Perfil" component={MyProfileTab} />
+        <Tab.Screen name="Actividad" component={ActividadStack} />
+        <Tab.Screen name="Perfil" component={PerfilStack} />
       </Tab.Navigator>
     );
   }
@@ -174,18 +189,21 @@ function Tabs() {
   // ---------- Móvil / tablet ----------
   // Barra visible: Inicio | Reels | Alertas | + | Mercado | Perfil
   // Actividad sigue registrada (misma pantalla) pero NO se muestra abajo.
+  // Perfiles (mascota / público / usuario) viven DENTRO de cada pila de tab
+  // para no tapar la barra. El Root Stack conserva las mismas pantallas
+  // para deep links y App Links (/pet/:handle, /:username).
   return (
     <Tab.Navigator
       tabBar={(props) => <MobileTabBar state={props.state} navigation={props.navigation} />}
       screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen name="Inicio">{() => <FeedReelsSwiper initialPage={0} />}</Tab.Screen>
-      <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
-      <Tab.Screen name="Alertas" component={AlertsScreen} />
+      <Tab.Screen name="Inicio" component={InicioStack} />
+      <Tab.Screen name="Reels" component={ReelsStack} />
+      <Tab.Screen name="Alertas" component={AlertasStack} />
       <Tab.Screen name="Crear" component={CreatePostScreen} />
-      <Tab.Screen name="Mercado" component={MarketScreen} />
-      <Tab.Screen name="Perfil" component={MyProfileTab} />
-      <Tab.Screen name="Actividad" component={ActivityScreen} />
+      <Tab.Screen name="Mercado" component={MercadoStack} />
+      <Tab.Screen name="Perfil" component={PerfilStack} />
+      <Tab.Screen name="Actividad" component={ActividadStack} />
     </Tab.Navigator>
   );
 }
@@ -273,6 +291,26 @@ function TagDeepLinkHandler() {
     };
     tryNavigate();
   }, [authReady, user, pendingTagCode, setPendingTagCode]);
+
+  return null;
+}
+
+function PushBootstrap() {
+  const { user, authReady } = useStore();
+
+  useEffect(() => {
+    ensurePushHandler().catch(() => {});
+    let off = () => {};
+    attachPushResponseListeners().then((fn) => {
+      off = fn;
+    }).catch(() => {});
+    return () => off();
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || !user) return;
+    registerPushTokenIfGranted().catch(() => {});
+  }, [authReady, user]);
 
   return null;
 }
@@ -465,6 +503,7 @@ export default function App() {
               >
                 <StatusBar style="dark" />
                 <TagDeepLinkHandler />
+                <PushBootstrap />
                 <RootNavigator />
               </NavigationContainer>
             </NotificationsProvider>

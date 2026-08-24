@@ -14,12 +14,14 @@
     "expo-camera": "~57.0.3",
     "expo-clipboard": "~57.0.1",
     "expo-constants": "^57.0.9",
+    "expo-device": "~57.0.1",
     "expo-font": "~57.0.1",
     "expo-haptics": "~57.0.1",
     "expo-image": "^57.0.2",
     "expo-image-picker": "~57.0.8",
     "expo-linear-gradient": "~57.0.1",
     "expo-location": "~57.0.8",
+    "expo-notifications": "~57.0.13",
     "expo-secure-store": "^57.0.1",
     "expo-status-bar": "~57.0.1",
     "expo-updates": "~57.0.12",
@@ -43,7 +45,10 @@
     "web": "expo start --web",
     "test:auth": "node --experimental-strip-types --test tests/auth.test.ts",
     "test:birthday": "node --experimental-strip-types --test tests/petBirthday.test.ts",
-    "test:location": "node --experimental-strip-types --test tests/shareLocation.test.ts"
+    "test:location": "node --experimental-strip-types --test tests/shareLocation.test.ts",
+    "test:grid": "node --experimental-strip-types --test tests/protectorGrid.test.ts",
+    "test:time": "node --experimental-strip-types --test tests/compactTime.test.ts",
+    "test:push": "node --experimental-strip-types --test tests/push.test.ts"
   },
   "private": true
 }

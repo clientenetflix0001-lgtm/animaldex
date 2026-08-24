@@ -1,6 +1,25 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
+
+export type TabProfileStackParamList = {
+  TabRoot: undefined;
+  PetProfile: { petId: string };
+  PublicProfile: { profileId?: string; username?: string };
+  UserProfile: { userId: string };
+};
+
+export type TabParamList = {
+  Inicio: NavigatorScreenParams<TabProfileStackParamList> | undefined;
+  Reels: NavigatorScreenParams<TabProfileStackParamList> | undefined;
+  Alertas: NavigatorScreenParams<TabProfileStackParamList> | undefined;
+  Mercado: NavigatorScreenParams<TabProfileStackParamList> | undefined;
+  Crear: undefined;
+  Actividad: NavigatorScreenParams<TabProfileStackParamList> | undefined;
+  Perfil: NavigatorScreenParams<TabProfileStackParamList> | undefined;
+};
+
 export type RootStackParamList = {
   Auth: { mode?: 'login' | 'register' } | undefined;
-  Tabs: undefined;
+  Tabs: NavigatorScreenParams<TabParamList> | undefined;
   Explorar: undefined;
   PetProfile: { petId: string };
   UserProfile: { userId: string };
@@ -19,14 +38,4 @@ export type RootStackParamList = {
   SellerShop: { userId: string };
   MarketFavorites: undefined;
   PublicProfile: { profileId?: string; username?: string };
-};
-
-export type TabParamList = {
-  Inicio: undefined;
-  Reels: undefined;
-  Alertas: undefined;
-  Mercado: undefined;
-  Crear: undefined;
-  Actividad: undefined;
-  Perfil: undefined;
 };

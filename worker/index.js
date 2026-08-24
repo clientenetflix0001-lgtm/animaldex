@@ -16,6 +16,22 @@ import {
   birthdayNotificationCopy,
   evaluatePersonalPetBirthday,
 } from '../lib/petBirthday.ts';
+import {
+  EXPO_PUSH_BATCH_MAX,
+  EXPO_PUSH_RECEIPTS_URL,
+  EXPO_PUSH_SEND_URL,
+  assignPushToken,
+  birthdayPushIdempotencyKey,
+  birthdayPushMessage,
+  displayPersonName,
+  isExpoPushToken,
+  locationPushIdempotencyKey,
+  locationPushMessage,
+  mergeNotificationPrefs,
+  prefAllows,
+  tokensToDisableFromReceipts,
+  tokensToDisableFromTickets,
+} from '../lib/pushPolicy.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -258,9 +274,175 @@ async function ensureActivityEventsSchema(env) {
   env._activityEventsReady = true;
 }
 
+async function ensurePushSchema(env) {
+  if (env._pushSchemaReady) return;
+  await d1(env, `CREATE TABLE IF NOT EXISTS user_push_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    expo_push_token TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL,
+    device_id TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL
+  )`);
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_user_push_tokens_user ON user_push_tokens (user_id, enabled)');
+  await d1(env, `CREATE TABLE IF NOT EXISTS user_notification_prefs (
+    user_id TEXT PRIMARY KEY,
+    location INTEGER NOT NULL DEFAULT 1,
+    birthday INTEGER NOT NULL DEFAULT 1,
+    lost_pet INTEGER NOT NULL DEFAULT 1,
+    adoption INTEGER NOT NULL DEFAULT 1,
+    comment INTEGER NOT NULL DEFAULT 1,
+    like INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL
+  )`);
+  await d1(env, `CREATE TABLE IF NOT EXISTS push_sends (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`);
+  await d1(env, `CREATE TABLE IF NOT EXISTS push_tickets (
+    id TEXT PRIMARY KEY,
+    expo_push_token TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`);
+  env._pushSchemaReady = true;
+}
+
+async function ensureLocationActorColumn(env) {
+  if (env._locationActorReady) return;
+  try {
+    await env.DB.prepare('ALTER TABLE location_shares ADD COLUMN actor_user_id TEXT').run();
+  } catch (_) {}
+  env._locationActorReady = true;
+}
+
+function mapPushTokenRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    userId: r.user_id,
+    expoPushToken: r.expo_push_token,
+    platform: r.platform,
+    deviceId: r.device_id || null,
+    enabled: Number(r.enabled) === 1,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    lastSeenAt: r.last_seen_at,
+  };
+}
+
+async function loadNotificationPrefs(env, userId) {
+  const rows = await d1(env, 'SELECT * FROM user_notification_prefs WHERE user_id = ?', [userId]);
+  return mergeNotificationPrefs(rows[0] || null);
+}
+
+async function disablePushTokens(env, tokens, nowMs) {
+  if (!tokens.length) return;
+  for (const token of tokens) {
+    await d1(env, 'UPDATE user_push_tokens SET enabled = 0, updated_at = ? WHERE expo_push_token = ?', [nowMs, token]);
+  }
+}
+
+async function sendExpoPush(messages) {
+  if (!messages.length) return { tickets: [], tokens: [] };
+  const tokens = messages.map((m) => String(m.to || ''));
+  const resp = await fetch(EXPO_PUSH_SEND_URL, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Accept-Encoding': 'gzip, deflate',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(messages.length === 1 ? messages[0] : messages),
+  });
+  const json = await resp.json().catch(() => ({}));
+  const tickets = Array.isArray(json.data) ? json.data : json.data ? [json.data] : [];
+  return { tickets, tokens };
+}
+
+async function notifyUserPush(env, input) {
+  const nowMs = input.nowMs || Date.now();
+  await ensurePushSchema(env);
+  const claim = await env.DB.prepare(
+    'INSERT OR IGNORE INTO push_sends (id, type, user_id, created_at) VALUES (?, ?, ?, ?)'
+  )
+    .bind(input.idempotencyKey, input.type, input.userId, nowMs)
+    .run();
+  if (!claim || !claim.meta || claim.meta.changes < 1) return { sent: 0, skipped: 'duplicate' };
+
+  const prefs = await loadNotificationPrefs(env, input.userId);
+  if (!prefAllows(prefs, input.type)) return { sent: 0, skipped: 'pref_off' };
+
+  const rows = await d1(
+    env,
+    'SELECT * FROM user_push_tokens WHERE user_id = ? AND enabled = 1',
+    [input.userId]
+  );
+  if (!rows.length) return { sent: 0, skipped: 'no_token' };
+
+  const messages = rows.map((r) => input.buildMessage(r.expo_push_token));
+  let sent = 0;
+  for (let i = 0; i < messages.length; i += EXPO_PUSH_BATCH_MAX) {
+    const batch = messages.slice(i, i + EXPO_PUSH_BATCH_MAX);
+    try {
+      const { tickets, tokens } = await sendExpoPush(batch);
+      const dead = tokensToDisableFromTickets(tickets, tokens);
+      if (dead.length) await disablePushTokens(env, dead, nowMs);
+      for (let t = 0; t < tickets.length; t++) {
+        if (tickets[t] && tickets[t].status === 'ok' && tickets[t].id) {
+          sent += 1;
+          await d1(
+            env,
+            'INSERT OR IGNORE INTO push_tickets (id, expo_push_token, created_at) VALUES (?, ?, ?)',
+            [tickets[t].id, tokens[t], nowMs]
+          ).catch(() => {});
+        }
+      }
+    } catch (_) {
+      // El evento de Activity ya está persistido; no revertimos el claim.
+    }
+  }
+  return { sent };
+}
+
+async function processPushReceipts(env, nowMs = Date.now()) {
+  await ensurePushSchema(env);
+  const rows = await d1(env, 'SELECT id, expo_push_token FROM push_tickets ORDER BY created_at ASC LIMIT 80');
+  if (!rows.length) return { checked: 0 };
+  const ids = rows.map((r) => r.id);
+  const ticketToToken = {};
+  rows.forEach((r) => {
+    ticketToToken[r.id] = r.expo_push_token;
+  });
+  try {
+    const resp = await fetch(EXPO_PUSH_RECEIPTS_URL, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    const json = await resp.json().catch(() => ({}));
+    const receipts = json.data || {};
+    const dead = tokensToDisableFromReceipts(receipts, ticketToToken);
+    if (dead.length) await disablePushTokens(env, dead, nowMs);
+    for (const id of ids) {
+      if (receipts[id]) {
+        await d1(env, 'DELETE FROM push_tickets WHERE id = ?', [id]).catch(() => {});
+      }
+    }
+    return { checked: ids.length, disabled: dead.length };
+  } catch (_) {
+    return { checked: 0 };
+  }
+}
+
 async function runPersonalPetBirthdays(env, nowMs = Date.now()) {
   await ensureProfilesSchema(env);
   await ensureActivityEventsSchema(env);
+  await ensurePushSchema(env);
   const today = argentinaDateParts(nowMs);
   const { monthDay, includeFeb29OnFeb28 } = birthdayMatchParams(today);
   const rows = await d1(
@@ -314,8 +496,25 @@ async function runPersonalPetBirthdays(env, nowMs = Date.now()) {
       )
         .bind(key, row.user_id, row.id, key, copy.title, copy.body, metadata, nowMs)
         .run();
-      if (res && res.meta && res.meta.changes > 0) inserted += 1;
-      else skipped += 1;
+      if (res && res.meta && res.meta.changes > 0) {
+        inserted += 1;
+        try {
+          await notifyUserPush(env, {
+            userId: row.user_id,
+            type: 'birthday',
+            idempotencyKey: birthdayPushIdempotencyKey(row.id, today.year),
+            nowMs,
+            buildMessage: (token) =>
+              birthdayPushMessage({
+                token,
+                petName: row.name,
+                petId: row.id,
+                petUsername: row.username || null,
+                years: decision.years,
+              }),
+          });
+        } catch (_) {}
+      } else skipped += 1;
     } catch (_) {
       skipped += 1;
     }
@@ -1054,6 +1253,8 @@ async function handleDb(request, env) {
     await ensureAuthSchema(env);
     await ensureProfilesSchema(env);
     await ensureActivityEventsSchema(env);
+    await ensurePushSchema(env);
+    await ensureLocationActorColumn(env);
 
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
@@ -1575,6 +1776,14 @@ async function handleDb(request, env) {
       const owners = await d1(env, 'SELECT id, name, verified_phone FROM users WHERE id = ?', [pet.user_id]);
       const owner = owners[0];
 
+      // Actor SOLO desde sesión opcional. Ignorar cualquier nombre enviado por el cliente.
+      const actorUserId = await authUser(request, env, body);
+      let actorName = null;
+      if (actorUserId) {
+        const actors = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [actorUserId]);
+        actorName = displayPersonName(actors[0] || null);
+      }
+
       const id = `loc-${now}-${Math.random().toString(36).slice(2, 8)}`;
       let status = 'no_phone';
       let smsResult = null;
@@ -1587,11 +1796,29 @@ async function handleDb(request, env) {
         status = smsResult.ok ? 'sent' : smsResult.provider === 'demo' ? 'demo' : 'failed';
       }
 
+      await ensureLocationActorColumn(env);
       await d1(
         env,
-        'INSERT INTO location_shares (id, pet_id, owner_id, lat, lon, accuracy, sms_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, pet.id, pet.user_id, lat, lon, accuracy, status, now]
+        'INSERT INTO location_shares (id, pet_id, owner_id, lat, lon, accuracy, sms_status, created_at, actor_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, pet.id, pet.user_id, lat, lon, accuracy, status, now, actorUserId]
       );
+
+      try {
+        await notifyUserPush(env, {
+          userId: pet.user_id,
+          type: 'location',
+          idempotencyKey: locationPushIdempotencyKey(id),
+          nowMs: now,
+          buildMessage: (token) =>
+            locationPushMessage({
+              token,
+              petName: pet.name,
+              petId: pet.id,
+              shareId: id,
+              actorName,
+            }),
+        });
+      } catch (_) {}
 
       return json({ ok: true, status, notified: status === 'sent' });
     }
@@ -1600,6 +1827,60 @@ async function handleDb(request, env) {
 
     const userId = await authUser(request, env, body);
     if (!userId) return json({ error: 'Inicia sesión para continuar' }, 401);
+
+    if (action === 'registerPushToken') {
+      const expoPushToken = clean(body.expoPushToken, 200);
+      const platform = clean(body.platform, 20) || 'android';
+      const deviceId = clean(body.deviceId, 80) || null;
+      if (!isExpoPushToken(expoPushToken)) return json({ error: 'Token de push inválido' }, 400);
+      const existing = await d1(env, 'SELECT * FROM user_push_tokens WHERE expo_push_token = ?', [expoPushToken]);
+      const planned = assignPushToken(mapPushTokenRow(existing[0]) || null, {
+        userId,
+        expoPushToken,
+        platform,
+        deviceId,
+        now,
+        newId: `ptok-${now}-${Math.random().toString(36).slice(2, 8)}`,
+      });
+      if (planned.action === 'insert') {
+        await d1(
+          env,
+          `INSERT INTO user_push_tokens
+            (id, user_id, expo_push_token, platform, device_id, enabled, created_at, updated_at, last_seen_at)
+           VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+          [
+            planned.row.id,
+            planned.row.userId,
+            planned.row.expoPushToken,
+            planned.row.platform,
+            planned.row.deviceId,
+            planned.row.createdAt,
+            planned.row.updatedAt,
+            planned.row.lastSeenAt,
+          ]
+        );
+      } else {
+        await d1(
+          env,
+          `UPDATE user_push_tokens
+              SET user_id = ?, platform = ?, device_id = ?, enabled = 1, updated_at = ?, last_seen_at = ?
+            WHERE expo_push_token = ?`,
+          [planned.row.userId, planned.row.platform, planned.row.deviceId, planned.row.updatedAt, planned.row.lastSeenAt, expoPushToken]
+        );
+      }
+      return json({ ok: true, action: planned.action });
+    }
+
+    if (action === 'unregisterPushToken') {
+      const expoPushToken = clean(body.expoPushToken, 200);
+      if (!isExpoPushToken(expoPushToken)) return json({ ok: true });
+      await d1(
+        env,
+        'UPDATE user_push_tokens SET enabled = 0, updated_at = ? WHERE expo_push_token = ? AND user_id = ?',
+        [now, expoPushToken, userId]
+      );
+      return json({ ok: true });
+    }
 
     // Vincula una chapita QR (todavía sin asignar) a una mascota del usuario
     // autenticado. Se usa justo después de crear la mascota en el flujo de
@@ -2147,8 +2428,11 @@ async function handleDb(request, env) {
            WHERE f.target_type = 'pet' AND pt.user_id = ? AND f.user_id != ? ORDER BY f.created_at DESC LIMIT 20`, [userId, userId]),
         // Ubicaciones compartidas por visitantes (vía QR/chapita) en mis mascotas.
         // Notificación 100% gratuita: vive solo en D1, sin SMS.
-        d1(env, `SELECT ls.id, ls.created_at, ls.lat, ls.lon, ls.accuracy, ls.sms_status, pt.id AS pet_id, pt.name AS pet_name, pt.emoji AS pet_emoji
+        d1(env, `SELECT ls.id, ls.created_at, ls.lat, ls.lon, ls.accuracy, ls.sms_status, ls.actor_user_id,
+                pt.id AS pet_id, pt.name AS pet_name, pt.emoji AS pet_emoji,
+                u.name AS actor_name, u.username AS actor_username
            FROM location_shares ls JOIN pets pt ON pt.id = ls.pet_id
+           LEFT JOIN users u ON u.id = ls.actor_user_id
            WHERE ls.owner_id = ? ORDER BY ls.created_at DESC LIMIT 20`, [userId]),
         d1(env, `SELECT id, type, user_id, pet_id, title, body, metadata, created_at
            FROM activity_events
@@ -2160,22 +2444,26 @@ async function handleDb(request, env) {
         ...comments.map((r) => ({ id: `comment-${r.actor_id}-${r.post_id}-${r.created_at}`, type: 'comment', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, postId: r.post_id, postImage: r.post_image || null, text: (r.text || '').slice(0, 80), createdAt: r.created_at })),
         ...followsUser.map((r) => ({ id: `fu-${r.actor_id}-${r.created_at}`, type: 'follow_user', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, createdAt: r.created_at })),
         ...followsPet.map((r) => ({ id: `fp-${r.actor_id}-${r.pet_id}-${r.created_at}`, type: 'follow_pet', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, petId: r.pet_id, petName: r.pet_name, createdAt: r.created_at })),
-        ...locations.map((r) => ({
-          id: `loc-${r.id}`,
-          type: 'location',
-          actorId: null,
-          actorName: 'Alguien',
-          actorUsername: 'anónimo',
-          actorAvatar: null,
-          petId: r.pet_id,
-          petName: r.pet_name,
-          petEmoji: r.pet_emoji,
-          lat: r.lat,
-          lon: r.lon,
-          accuracy: r.accuracy,
-          smsStatus: r.sms_status,
-          createdAt: r.created_at,
-        })),
+        ...locations.map((r) => {
+          const actorId = r.actor_user_id || null;
+          const actorName = actorId ? displayPersonName({ name: r.actor_name, username: r.actor_username }) : null;
+          return {
+            id: `loc-${r.id}`,
+            type: 'location',
+            actorId,
+            actorName: actorName || '',
+            actorUsername: '',
+            actorAvatar: null,
+            petId: r.pet_id,
+            petName: r.pet_name,
+            petEmoji: r.pet_emoji,
+            lat: r.lat,
+            lon: r.lon,
+            accuracy: r.accuracy,
+            smsStatus: r.sms_status,
+            createdAt: r.created_at,
+          };
+        }),
         ...birthdays.map((r) => {
           let meta = {};
           try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { meta = {}; }
@@ -2427,6 +2715,11 @@ export default {
       await runPersonalPetBirthdays(env, nowMs);
     } catch (e) {
       console.log('pet-birthday-cron', e && e.message);
+    }
+    try {
+      await processPushReceipts(env, nowMs);
+    } catch (e) {
+      console.log('push-receipts', e && e.message);
     }
   },
 };

@@ -388,6 +388,14 @@ export const db = {
     call('/db', { action: 'counts', postIds }),
   notifications: (): Promise<{ notifications: ApiNotification[] }> =>
     call('/db', { action: 'notifications' }),
+  registerPushToken: (
+    expoPushToken: string,
+    platform: string,
+    deviceId?: string | null
+  ): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'registerPushToken', expoPushToken, platform, deviceId }),
+  unregisterPushToken: (expoPushToken: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'unregisterPushToken', expoPushToken }),
   // Ubicación GPS compartida con consentimiento visible del visitante,
   // enviada por SMS al dueño de la mascota (requiere que tenga tel. verificado).
   shareLocation: (
