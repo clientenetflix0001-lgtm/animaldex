@@ -42,7 +42,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test:auth": "node --experimental-strip-types --test tests/auth.test.ts",
-    "test:birthday": "node --experimental-strip-types --test tests/petBirthday.test.ts"
+    "test:birthday": "node --experimental-strip-types --test tests/petBirthday.test.ts",
+    "test:location": "node --experimental-strip-types --test tests/shareLocation.test.ts"
   },
   "private": true
 }
