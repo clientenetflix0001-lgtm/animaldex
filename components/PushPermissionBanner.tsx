@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, radius } from '../lib/theme';
 import {
   dismissPushPrompt,
@@ -8,28 +9,34 @@ import {
   requestPushPermission,
   wasPushPromptDismissed,
 } from '../lib/push';
+import { shouldShowPushPrompt } from '../lib/pushPrompt';
 
 export default function PushPermissionBanner({ hasPets }: { hasPets: boolean }) {
   const [visible, setVisible] = useState(false);
 
-  useEffect(() => {
-    if (Platform.OS === 'web' || !hasPets) {
-      setVisible(false);
-      return;
-    }
-    let alive = true;
-    (async () => {
-      if (await wasPushPromptDismissed()) return;
-      const status = await getPushPermissionStatus();
-      if (alive && (status === 'undetermined' || status === 'denied')) {
-        if (status === 'denied') return;
-        setVisible(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS === 'web' || !hasPets) {
+        setVisible(false);
+        return;
       }
-    })().catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [hasPets]);
+      let alive = true;
+      (async () => {
+        const dismissed = await wasPushPromptDismissed();
+        const permission = await getPushPermissionStatus();
+        if (!alive) return;
+        if (permission === 'granted') {
+          await registerPushTokenIfGranted().catch(() => {});
+          if (alive) setVisible(false);
+          return;
+        }
+        setVisible(shouldShowPushPrompt({ hasPets: true, dismissed, permission }));
+      })().catch(() => {});
+      return () => {
+        alive = false;
+      };
+    }, [hasPets])
+  );
 
   if (!visible) return null;
 
@@ -42,9 +49,15 @@ export default function PushPermissionBanner({ hasPets }: { hasPets: boolean }) 
           style={styles.primary}
           onPress={async () => {
             const ok = await requestPushPermission();
-            if (ok) await registerPushTokenIfGranted();
-            await dismissPushPrompt();
-            setVisible(false);
+            if (ok) {
+              await registerPushTokenIfGranted();
+              await dismissPushPrompt();
+              setVisible(false);
+              return;
+            }
+            const permission = await getPushPermissionStatus();
+            const dismissed = await wasPushPromptDismissed();
+            setVisible(shouldShowPushPrompt({ hasPets: true, dismissed, permission }));
           }}
         >
           <Text style={styles.primaryText}>Activar</Text>

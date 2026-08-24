@@ -3,9 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { db } from './db';
 import { EXPO_PROJECT_ID, PUSH_CHANNEL_PETS, PUSH_CHANNEL_REMINDERS, isExpoPushToken, parsePushNav } from './pushPolicy';
+import { interpretNotificationPermission, PUSH_PROMPT_DISMISSED_KEY } from './pushPrompt';
 import { navigationRef } from './navigationRef';
 
-const PROMPT_DISMISSED_KEY = 'animaldex-push-prompt-dismissed';
 const UNREGISTER_TIMEOUT_MS = 2500;
 
 type NotificationsModule = typeof import('expo-notifications');
@@ -62,21 +62,28 @@ export async function getPushPermissionStatus(): Promise<'granted' | 'denied' | 
   const native = await loadNative();
   if (!native) return 'unavailable';
   const current = await native.Notifications.getPermissionsAsync();
-  if (current.granted) return 'granted';
-  if (!current.canAskAgain) return 'denied';
-  return current.status === 'undetermined' ? 'undetermined' : 'denied';
+  return interpretNotificationPermission({
+    granted: current.granted,
+    canAskAgain: current.canAskAgain,
+    status: current.status,
+  });
 }
 
 export async function wasPushPromptDismissed(): Promise<boolean> {
   try {
-    return (await AsyncStorage.getItem(PROMPT_DISMISSED_KEY)) === '1';
+    return (await AsyncStorage.getItem(PUSH_PROMPT_DISMISSED_KEY)) === '1';
   } catch {
     return false;
   }
 }
 
 export async function dismissPushPrompt(): Promise<void> {
-  await AsyncStorage.setItem(PROMPT_DISMISSED_KEY, '1').catch(() => {});
+  await AsyncStorage.setItem(PUSH_PROMPT_DISMISSED_KEY, '1').catch(() => {});
+}
+
+/** Para pruebas: borrar el "Ahora no" local. No toca el permiso de Android. */
+export async function clearPushPromptDismissed(): Promise<void> {
+  await AsyncStorage.removeItem(PUSH_PROMPT_DISMISSED_KEY).catch(() => {});
 }
 
 export async function requestPushPermission(): Promise<boolean> {

@@ -20,6 +20,7 @@ import {
   tokensToDisableFromReceipts,
   tokensToDisableFromTickets,
 } from '../lib/pushPolicy.ts';
+import { interpretNotificationPermission, shouldShowPushPrompt } from '../lib/pushPrompt.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TOKEN_A = 'ExponentPushToken[aaaaaaaaaaaaaaaaaaaaaa]';
@@ -161,6 +162,41 @@ describe('client cannot push to another user + web safe', () => {
     const start = worker.indexOf("if (action === 'registerPushToken')");
     const before = worker.slice(0, start);
     assert.match(before, /const userId = await authUser/);
+  });
+
+  it('banner se muestra si Android reporta denied+canAskAgain (nunca pedido)', () => {
+    const androidNeverAsked = interpretNotificationPermission({
+      granted: false,
+      status: 'denied',
+      canAskAgain: true,
+    });
+    assert.equal(androidNeverAsked, 'undetermined');
+    assert.equal(
+      shouldShowPushPrompt({ hasPets: true, dismissed: false, permission: androidNeverAsked }),
+      true
+    );
+    assert.equal(
+      shouldShowPushPrompt({ hasPets: true, dismissed: false, permission: 'granted' }),
+      false
+    );
+    assert.equal(
+      shouldShowPushPrompt({ hasPets: false, dismissed: false, permission: 'undetermined' }),
+      false
+    );
+    assert.equal(
+      shouldShowPushPrompt({ hasPets: true, dismissed: true, permission: 'undetermined' }),
+      false
+    );
+    assert.equal(
+      shouldShowPushPrompt({ hasPets: true, dismissed: false, permission: 'denied' }),
+      true
+    );
+
+    const banner = readFileSync(join(root, 'components/PushPermissionBanner.tsx'), 'utf8');
+    const activity = readFileSync(join(root, 'screens/ActivityScreen.tsx'), 'utf8');
+    assert.match(activity, /<PushPermissionBanner hasPets=\{myPets\.length > 0\} \/>/);
+    assert.doesNotMatch(banner, /if \(status === 'denied'\) return/);
+    assert.match(banner, /shouldShowPushPrompt/);
   });
 
   it('web degrada: no Service Worker push', () => {
