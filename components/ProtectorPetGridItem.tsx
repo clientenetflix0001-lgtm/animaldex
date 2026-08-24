@@ -2,8 +2,7 @@ import React, { memo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ageLabelFromBirthDate } from '../lib/birthDate';
-import { careStatusLabel, waitingLabelCompact } from '../lib/petFields';
+import { adoptionStatusOverlay, compactAgeLabel } from '../lib/compactTime';
 import { thumb, petFallbackAvatar } from '../lib/images';
 
 export const PROTECTOR_GRID_GAP = 3;
@@ -27,16 +26,8 @@ function ProtectorPetGridItem({
   petId,
   onPress,
 }: Props) {
-  const statusText =
-    careStatus === 'en_adopcion' || careStatus === 'en_recuperacion'
-      ? careStatusLabel(careStatus)
-      : '';
-  const secondary =
-    careStatus === 'en_adopcion'
-      ? waitingLabelCompact(adoptionStartedAt)
-      : careStatus === 'en_recuperacion'
-        ? ageLabelFromBirthDate(birthDate)
-        : '';
+  const statusText = adoptionStatusOverlay(careStatus, adoptionStartedAt);
+  const ageText = compactAgeLabel(birthDate);
 
   return (
     <Pressable
@@ -66,9 +57,9 @@ function ProtectorPetGridItem({
         <Text style={styles.name} numberOfLines={1}>
           {name}
         </Text>
-        {!!secondary && (
+        {!!ageText && (
           <Text style={styles.meta} numberOfLines={1}>
-            {secondary}
+            {ageText}
           </Text>
         )}
       </View>
@@ -99,15 +90,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     left: 6,
-    maxWidth: '86%',
+    maxWidth: '94%',
     backgroundColor: 'rgba(0,0,0,0.55)',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: 8,
   },
   pillText: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
   },
   bottom: {
