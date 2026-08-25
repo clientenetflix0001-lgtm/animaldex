@@ -361,6 +361,7 @@ export const db = {
     username: string;
     bio?: string;
     location?: string;
+    locality?: string | null;
     phone?: string;
     avatar?: string | null;
   }): Promise<{ profile: import('../features/profiles/profileTypes').PublicProfile }> =>
@@ -381,6 +382,7 @@ export const db = {
     careStatus?: ApiPet['careStatus'];
     birthDate?: string | null;
     size?: ApiPet['size'];
+    sex?: 'macho' | 'hembra' | null;
     neutered?: boolean | null;
   }): Promise<{ pet: ApiPet }> => call('/db', { action: 'createPet', ...pet }),
   checkPetUsername: (username: string, excludePetId?: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>

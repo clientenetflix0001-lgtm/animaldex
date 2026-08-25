@@ -143,6 +143,7 @@ function profileRow(r) {
     avatar: r.avatar_url || null,
     bio: r.bio || '',
     location: r.location || '',
+    locality: r.locality || null,
     phone: r.phone || '',
     createdAt: r.created_at,
   };
@@ -178,6 +179,7 @@ async function ensureProfilesSchema(env) {
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN archived_at INTEGER').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN location TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN phone TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN locality TEXT').run(); } catch (_) {}
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_profile ON pets (profile_id)');
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_birth_date ON pets (birth_date)');
   // Historial de adopciones completadas. Una fila = una transferencia real del
@@ -1056,6 +1058,13 @@ function normalizeSize(raw) {
   if (s === 'pequeno' || s === 'mediano' || s === 'grande') return s;
   return '';
 }
+/** Solo macho | hembra | null. Cualquier otro valor se rechaza. */
+function parsePetSex(raw) {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  const s = clean(raw, 20).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (s === 'macho' || s === 'hembra') return { ok: true, value: s };
+  return { ok: false };
+}
 function normalizeNeutered(value) {
   if (value === true || value === 1 || value === '1' || value === 'si' || value === 'sí' || value === 'true') return 1;
   if (value === false || value === 0 || value === '0' || value === 'no' || value === 'false') return 0;
@@ -1488,8 +1497,8 @@ async function handleDb(request, env) {
       const locality = clean(body.locality, 100);
       const species = clean(body.species, 20).toLowerCase();
       const size = normalizeSize(body.size);
-      const sexRaw = clean(body.sex, 20).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const sex = sexRaw === 'macho' || sexRaw === 'hembra' ? sexRaw : '';
+      const sexParsed = parsePetSex(body.sex === 'todos' ? null : body.sex);
+      const sex = sexParsed.ok ? sexParsed.value : '';
       const before = Number(body.before) || now + 1000;
       const limit = Math.min(Number(body.limit) || 8, 20);
 
@@ -1513,26 +1522,23 @@ async function handleDb(request, env) {
         conditions.push("LOWER(COALESCE(p.sex, '')) = ?");
         params.push(sex);
       }
+      if (locality) {
+        conditions.push('LOWER(pr.locality) = LOWER(?)');
+        params.push(locality);
+      }
       conditions.push('p.created_at < ?');
       params.push(before);
-
-      const locOrder = locality
-        ? "CASE WHEN LOWER(COALESCE(pr.location, '')) LIKE ? THEN 0 ELSE 1 END, "
-        : '';
-      const bind = locality
-        ? [`%${locality.toLowerCase()}%`, ...params, limit + 1]
-        : [...params, limit + 1];
 
       const rows = await d1(
         env,
         `SELECT p.*, pr.id AS shelter_id, pr.name AS shelter_name, pr.username AS shelter_username,
-                pr.location AS shelter_location
+                pr.location AS shelter_location, pr.locality AS shelter_locality
          FROM pets p
          INNER JOIN profiles pr ON pr.id = p.profile_id AND pr.type = 'protector'
          WHERE ${conditions.join(' AND ')}
-         ORDER BY ${locOrder}p.created_at DESC, p.id DESC
+         ORDER BY p.created_at DESC, p.id DESC
          LIMIT ?`,
-        bind
+        [...params, limit + 1]
       );
       const hasMore = rows.length > limit;
       const page = hasMore ? rows.slice(0, limit) : rows;
@@ -1545,6 +1551,7 @@ async function handleDb(request, env) {
           shelterName: r.shelter_name,
           shelterUsername: r.shelter_username,
           shelterLocation: r.shelter_location || null,
+          shelterLocality: r.shelter_locality || null,
         })),
         hasMore,
       });
@@ -2297,6 +2304,10 @@ async function handleDb(request, env) {
       const username = clean(String(body.username || '').replace(/^@/, ''), 20).toLowerCase();
       const bio = clean(body.bio, 200);
       const location = clean(body.location, 80);
+      let locality = owned[0].locality || null;
+      if (body.locality !== undefined) {
+        locality = clean(body.locality, 100) || null;
+      }
       const phone = clean(body.phone, 30);
       const avatar = clean(body.avatar, 500) || null;
       if (name.length < 2) return json({ error: 'Escribe el nombre del perfil' }, 400);
@@ -2311,8 +2322,8 @@ async function handleDb(request, env) {
       }
       await d1(
         env,
-        'UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, phone = ?, avatar_url = COALESCE(?, avatar_url) WHERE id = ?',
-        [name, username, bio, location, phone, avatar, profileId]
+        'UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, locality = ?, phone = ?, avatar_url = COALESCE(?, avatar_url) WHERE id = ?',
+        [name, username, bio, location, locality, phone, avatar, profileId]
       );
       const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId]);
       return json({ ok: true, profile: profileRow(rows[0]) });
@@ -2364,6 +2375,9 @@ async function handleDb(request, env) {
       const emoji = clean(body.emoji, 8) || emojiForSpecies(species);
       const avatarUrl = clean(body.avatarUrl, 500) || null;
       const size = normalizeSize(body.size) || null;
+      const sexParsed = parsePetSex(body.sex);
+      if (body.sex !== undefined && !sexParsed.ok) return json({ error: 'Sexo inválido' }, 400);
+      const sex = body.sex === undefined ? null : sexParsed.value;
       const neutered = normalizeNeutered(body.neutered);
       const birthDate = clean(body.birthDate, 10) || null;
       if (name.length < 1) return json({ error: 'Ponle nombre a tu mascota' }, 400);
@@ -2398,9 +2412,9 @@ async function handleDb(request, env) {
         env,
         `INSERT INTO pets (
           id, user_id, name, username, species, breed, age, bio, emoji, avatar_url, created_at,
-          profile_id, care_status, adoption_started_at, birth_date, size, neutered
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, userId, name, username, species, breed, '', bio, emoji, avatarUrl, now, profileId, careStatus, adoptionStartedAt, birthDate, size, neutered]
+          profile_id, care_status, adoption_started_at, birth_date, size, sex, neutered
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, userId, name, username, species, breed, '', bio, emoji, avatarUrl, now, profileId, careStatus, adoptionStartedAt, birthDate, size, sex, neutered]
       );
       const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [id]);
       return json({ ok: true, pet: petRow(rows[0]) });
@@ -2416,6 +2430,12 @@ async function handleDb(request, env) {
       const emoji = clean(body.emoji, 8) || emojiForSpecies(species) || p.emoji;
       const avatarUrl = body.avatarUrl != null ? (clean(body.avatarUrl, 500) || p.avatar_url) : p.avatar_url;
       const size = body.size != null ? (normalizeSize(body.size) || null) : (p.size || null);
+      let sex = p.sex || null;
+      if (body.sex !== undefined) {
+        const sexParsed = parsePetSex(body.sex);
+        if (!sexParsed.ok) return json({ error: 'Sexo inválido' }, 400);
+        sex = sexParsed.value;
+      }
       const neutered = body.neutered !== undefined ? normalizeNeutered(body.neutered) : (p.neutered == null ? null : Number(p.neutered));
       let birthDate = p.birth_date || null;
       if (body.birthDate !== undefined) {
@@ -2457,9 +2477,9 @@ async function handleDb(request, env) {
       await d1(
         env,
         `UPDATE pets SET name = ?, username = ?, species = ?, breed = ?, bio = ?, emoji = ?, avatar_url = ?,
-          care_status = ?, adoption_started_at = ?, birth_date = ?, size = ?, neutered = ?, age = ?
+          care_status = ?, adoption_started_at = ?, birth_date = ?, size = ?, sex = ?, neutered = ?, age = ?
          WHERE id = ?`,
-        [name, username, species, breed, bio, emoji, avatarUrl, careStatus, adoptionStartedAt, birthDate, size, neutered, '', p.id]
+        [name, username, species, breed, bio, emoji, avatarUrl, careStatus, adoptionStartedAt, birthDate, size, sex, neutered, '', p.id]
       );
       const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [p.id]);
       return json({ ok: true, pet: petRow(rows[0]) });

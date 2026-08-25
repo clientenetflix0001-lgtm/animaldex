@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { compactAgeLabel, adoptionStatusOverlay } from '../lib/compactTime.ts';
+import { parsePetSex } from '../lib/petFields.ts';
 import {
   ADOPTION_PAGE_SIZE,
   adoptionCardFromAlert,
@@ -12,6 +13,7 @@ import {
   alertFeedId,
   dedupeAdoptionCards,
   matchesAdoptionFilters,
+  localityMatches,
   mergeAdoptionSources,
   paginateAdoptionCards,
   petFeedId,
@@ -57,12 +59,13 @@ function pet(overrides: Partial<{
     careStatus: overrides.careStatus ?? 'en_adopcion',
     adoptionStartedAt: overrides.adoptionStartedAt ?? 1,
     size: overrides.size ?? 'pequeno',
-    sex: overrides.sex ?? 'hembra',
+    sex: overrides.sex !== undefined ? overrides.sex : 'hembra',
     species: overrides.species ?? 'perro',
     shelterProfileId: overrides.profileId ?? 'shelter-1',
     shelterName: 'APAN Salta',
     shelterUsername: 'apansalta',
-    shelterLocation: 'Salta Capital',
+    shelterLocation: 'Calle 123',
+    shelterLocality: 'Salta Capital',
     createdAt: overrides.createdAt ?? 100,
   };
 }
@@ -155,14 +158,15 @@ describe('edad, espera, ranking y paginación', () => {
     assert.equal(ADOPTION_PAGE_SIZE, 8);
   });
 
-  it('ranking prioriza localidad y no usa likes', () => {
+  it('ranking prioriza localidad exacta y no usa likes', () => {
     const far = pet({ id: 'far', adoptionStartedAt: 1, createdAt: 50 });
-    far.shelterLocation = 'Cafayate';
+    far.shelterLocality = 'Cafayate';
     const near = pet({ id: 'near', adoptionStartedAt: 20, createdAt: 40 });
     const ordered = rankAdoptionCards([far, near], 'Salta Capital');
     assert.equal(ordered[0].petId, 'near');
     const src = readFileSync(join(root, 'lib/adoptionDiscovery.ts'), 'utf8');
     assert.doesNotMatch(src, /likeCount/);
+    assert.doesNotMatch(src, /\.includes\(/);
   });
 });
 
@@ -184,7 +188,108 @@ describe('navegación PetProfile / PublicProfile y fuente A', () => {
     assert.match(chunk, /p\.created_at < \?/);
     assert.match(chunk, /hasMore/);
     assert.match(chunk, /source: 'protector_pet'/);
+    assert.match(chunk, /LOWER\(pr\.locality\) = LOWER\(\?\)/);
+    assert.match(chunk, /shelterLocality/);
     assert.doesNotMatch(chunk, /en_recuperacion/);
+    assert.doesNotMatch(chunk, /pr\.location, ''\)\) LIKE/);
+  });
+});
+
+describe('sexo macho/hembra', () => {
+  it('parsePetSex acepta macho, hembra y null; rechaza basura', () => {
+    assert.deepEqual(parsePetSex('macho'), { ok: true, value: 'macho' });
+    assert.deepEqual(parsePetSex('Hembra'), { ok: true, value: 'hembra' });
+    assert.deepEqual(parsePetSex(null), { ok: true, value: null });
+    assert.deepEqual(parsePetSex(''), { ok: true, value: null });
+    assert.deepEqual(parsePetSex(undefined), { ok: true, value: null });
+    assert.equal(parsePetSex('otro').ok, false);
+    assert.equal(parsePetSex('xyz').ok, false);
+  });
+
+  it('createPet persiste sex; inválidos se rechazan; updatePet cambia sex', () => {
+    function action(name: string) {
+      const start = worker.indexOf(`if (action === '${name}')`);
+      assert.ok(start >= 0, name);
+      const next = worker.indexOf('if (action ===', start + 10);
+      return worker.slice(start, next > start ? next : undefined);
+    }
+    const create = action('createPet');
+    const update = action('updatePet');
+    assert.match(create, /parsePetSex\(body\.sex\)/);
+    assert.match(create, /Sexo inválido/);
+    assert.match(create, /birth_date, size, sex, neutered/);
+    assert.match(update, /if \(body\.sex !== undefined\)/);
+    assert.match(update, /size = \?, sex = \?, neutered/);
+    assert.match(worker, /function parsePetSex/);
+    const addPet = readFileSync(join(root, 'screens/AddPetScreen.tsx'), 'utf8');
+    assert.match(addPet, /PET_SEXES/);
+    assert.match(addPet, /label\}>Sexo</);
+  });
+
+  it('legacy NULL no entra en Macho/Hembra pero sí en Todos', () => {
+    const unknown = pet({ id: 'u', sex: null });
+    const male = pet({ id: 'm', sex: 'macho' });
+    const female = pet({ id: 'f', sex: 'hembra' });
+    const all = { species: 'todos' as const, size: 'todos' as const, sex: 'todos' as const };
+    assert.equal(matchesAdoptionFilters(unknown, all), true);
+    assert.equal(matchesAdoptionFilters(unknown, { ...all, sex: 'macho' }), false);
+    assert.equal(matchesAdoptionFilters(unknown, { ...all, sex: 'hembra' }), false);
+    assert.equal(matchesAdoptionFilters(male, { ...all, sex: 'macho' }), true);
+    assert.equal(matchesAdoptionFilters(female, { ...all, sex: 'hembra' }), true);
+  });
+});
+
+describe('locality normalizada del protector', () => {
+  it('guarda profiles.locality y no pisa location', () => {
+    assert.match(worker, /ALTER TABLE profiles ADD COLUMN locality TEXT/);
+    const start = worker.indexOf("if (action === 'updatePublicProfile')");
+    const chunk = worker.slice(start, start + 1800);
+    assert.match(chunk, /locality = \?/);
+    assert.match(chunk, /location = \?, locality = \?, phone/);
+    const edit = readFileSync(join(root, 'screens/EditPublicProfileScreen.tsx'), 'utf8');
+    assert.match(edit, /LocalityPicker/);
+    assert.match(edit, /profileType === 'protector'/);
+    assert.match(edit, /location: location\.trim\(\)/);
+    assert.match(edit, /locality: profileType === 'protector' \? locality/);
+  });
+
+  it('adoptionFeed filtra exact match por locality; NULL queda fuera del filtro', () => {
+    const withLoc = pet({ id: 'a' });
+    const otherCity = pet({ id: 'b' });
+    otherCity.shelterLocality = 'Cafayate';
+    const missing = pet({ id: 'c' });
+    missing.shelterLocality = null;
+    const filters = {
+      species: 'todos' as const,
+      size: 'todos' as const,
+      sex: 'todos' as const,
+      locality: 'Salta Capital',
+    };
+    assert.equal(matchesAdoptionFilters(withLoc, filters), true);
+    assert.equal(matchesAdoptionFilters(otherCity, filters), false);
+    assert.equal(matchesAdoptionFilters(missing, filters), false);
+    assert.equal(matchesAdoptionFilters(missing, { ...filters, locality: null }), true);
+    assert.equal(localityMatches('Salta Capital', 'Salta'), false);
+    assert.equal(localityMatches('Salta Capital', 'Salta Capital'), true);
+  });
+
+  it('combina especie + porte + sexo + locality', () => {
+    const hit = pet({ id: 'hit', species: 'perro', size: 'pequeno', sex: 'hembra' });
+    const missSex = pet({ id: 's', species: 'perro', size: 'pequeno', sex: 'macho' });
+    const missCity = pet({ id: 'c', species: 'perro', size: 'pequeno', sex: 'hembra' });
+    missCity.shelterLocality = 'Orán';
+    const missNull = pet({ id: 'n', species: 'perro', size: 'pequeno', sex: 'hembra' });
+    missNull.shelterLocality = null;
+    const filters = {
+      species: 'perro' as const,
+      size: 'pequeno' as const,
+      sex: 'hembra' as const,
+      locality: 'Salta Capital',
+    };
+    assert.deepEqual(
+      [hit, missSex, missCity, missNull].filter((c) => matchesAdoptionFilters(c, filters)).map((c) => c.petId),
+      ['hit']
+    );
   });
 });
 

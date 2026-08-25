@@ -72,8 +72,8 @@ function AdoptionDiscoveryCard({
             <Text style={styles.shelter}>{card.shelterName}</Text>
           </Pressable>
         )}
-        {!!card.shelterLocation && (
-          <Text style={styles.loc}>📍 {card.shelterLocation}</Text>
+        {!!(card.shelterLocality || card.shelterLocation) && (
+          <Text style={styles.loc}>📍 {card.shelterLocality || card.shelterLocation}</Text>
         )}
         <WantToAdoptButton
           label="Quiero adoptarla"

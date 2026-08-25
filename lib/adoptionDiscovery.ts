@@ -9,9 +9,9 @@
  * con futura categoría "En adopción". mergeAdoptionSources() ya acepta
  * ambas listas para no reescribir la UI cuando B exista.
  *
- * Ubicación: profiles.location es texto libre (no hay localidad
- * normalizada en pets). El ranking puede bonificar un match frágil
- * (includes). No se filtra de forma estricta ni se usa GPS continuo.
+ * Ubicación: profiles.locality (normalizada, mismo catálogo que
+ * Alertas/Mercado) para filtrar exact match. profiles.location sigue
+ * siendo dirección visible y no se usa como filtro.
  */
 
 function speciesBucket(species: string | null | undefined): 'perro' | 'gato' | 'otro' {
@@ -68,6 +68,7 @@ export interface AdoptionCard {
   shelterName: string | null;
   shelterUsername: string | null;
   shelterLocation: string | null;
+  shelterLocality: string | null;
   createdAt: number;
 }
 
@@ -75,6 +76,7 @@ export interface AdoptionFilters {
   species: AdoptionSpeciesFilter;
   size: AdoptionSizeFilter;
   sex: AdoptionSexFilter;
+  locality?: string | null;
 }
 
 export interface AdoptionQuery extends AdoptionFilters {
@@ -111,6 +113,7 @@ export interface ApiAdoptionItem extends AdoptionPetInput {
   shelterName?: string | null;
   shelterUsername?: string | null;
   shelterLocation?: string | null;
+  shelterLocality?: string | null;
 }
 
 export function petFeedId(petId: string): string {
@@ -128,6 +131,7 @@ export function adoptionCardFromProtectorPet(
     name?: string | null;
     username?: string | null;
     location?: string | null;
+    locality?: string | null;
   } | null
 ): AdoptionCard | null {
   if (!pet?.id) return null;
@@ -152,6 +156,7 @@ export function adoptionCardFromProtectorPet(
     shelterName: (pet as ApiAdoptionItem).shelterName || shelter?.name || null,
     shelterUsername: (pet as ApiAdoptionItem).shelterUsername || shelter?.username || null,
     shelterLocation: (pet as ApiAdoptionItem).shelterLocation || shelter?.location || null,
+    shelterLocality: (pet as ApiAdoptionItem).shelterLocality || shelter?.locality || null,
     createdAt: pet.createdAt,
   };
 }
@@ -172,18 +177,18 @@ export function matchesAdoptionFilters(card: AdoptionCard, filters: AdoptionFilt
     const sex = String(card.sex || '').trim().toLowerCase();
     if (sex !== filters.sex) return false;
   }
+  if (filters.locality) {
+    if (!localityMatches(card.shelterLocality, filters.locality)) return false;
+  }
   return true;
 }
 
 export function localityMatches(
-  shelterLocation: string | null | undefined,
+  shelterLocality: string | null | undefined,
   locality: string | null | undefined
 ): boolean {
-  if (!locality || !shelterLocation) return false;
-  const a = shelterLocation.trim().toLowerCase();
-  const b = locality.trim().toLowerCase();
-  if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
+  if (!locality || !shelterLocality) return false;
+  return shelterLocality.trim().toLowerCase() === locality.trim().toLowerCase();
 }
 
 function varietyBucket(id: string): number {
@@ -192,15 +197,15 @@ function varietyBucket(id: string): number {
   return Math.abs(h) % 7;
 }
 
-/** Ranking determinista: localidad (frágil) → espera → actividad → variedad. */
+/** Ranking determinista: localidad exacta → espera → actividad → variedad. */
 export function rankAdoptionCards(
   cards: AdoptionCard[],
   locality?: string | null,
   _now: number = Date.now()
 ): AdoptionCard[] {
   return [...cards].sort((a, b) => {
-    const locA = localityMatches(a.shelterLocation, locality) ? 0 : 1;
-    const locB = localityMatches(b.shelterLocation, locality) ? 0 : 1;
+    const locA = localityMatches(a.shelterLocality, locality) ? 0 : 1;
+    const locB = localityMatches(b.shelterLocality, locality) ? 0 : 1;
     if (locA !== locB) return locA - locB;
     const waitA = a.adoptionStartedAt || a.createdAt;
     const waitB = b.adoptionStartedAt || b.createdAt;

@@ -53,7 +53,7 @@ async function fetchAdoptionFallback(query: AdoptionQuery): Promise<AdoptionPage
   const shelters = await Promise.all(
     missing.slice(0, 8).map((id) => db.publicProfile({ profileId: id }).catch(() => null))
   );
-  const byId = new Map<string, { name: string; username: string; location: string | null }>();
+  const byId = new Map<string, { name: string; username: string; location: string | null; locality: string | null }>();
   shelters.forEach((res, i) => {
     const id = missing[i];
     if (!res?.profile || !id) return;
@@ -61,6 +61,7 @@ async function fetchAdoptionFallback(query: AdoptionQuery): Promise<AdoptionPage
       name: res.profile.name,
       username: res.profile.username,
       location: res.profile.location || null,
+      locality: res.profile.locality || null,
     });
   });
 
@@ -72,6 +73,7 @@ async function fetchAdoptionFallback(query: AdoptionQuery): Promise<AdoptionPage
       shelterName: card.shelterName || extra.name,
       shelterUsername: card.shelterUsername || extra.username,
       shelterLocation: card.shelterLocation || extra.location,
+      shelterLocality: card.shelterLocality || extra.locality,
     };
   });
 
