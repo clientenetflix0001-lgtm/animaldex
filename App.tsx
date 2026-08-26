@@ -445,7 +445,7 @@ function RootNavigator() {
       <Stack.Screen
         name="AdoptionDiscovery"
         component={AdoptionDiscoveryScreen}
-        options={{ headerShown: false }}
+        options={{ headerShown: false, contentStyle: { backgroundColor: '#000' } }}
       />
     </Stack.Navigator>
   );

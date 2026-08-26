@@ -18,6 +18,7 @@ interface Props {
   onOpenPet: () => void;
   onOpenShelter: () => void;
   onComments: () => void;
+  bottomPad?: number;
 }
 
 function AdoptionDiscoveryCard({
@@ -28,10 +29,12 @@ function AdoptionDiscoveryCard({
   onOpenPet,
   onOpenShelter,
   onComments,
+  bottomPad = spacing.lg,
 }: Props) {
   const ageText = compactAgeLabel(card.birthDate);
   const statusText = adoptionStatusOverlay(card.careStatus, card.adoptionStartedAt) || '❤️ En adopción';
   const photo = thumb(card.photo || petFallbackAvatar(card.petId || card.id), 1080);
+  const pad = Math.max(spacing.md, bottomPad);
 
   return (
     <View style={[styles.page, { height }]}>
@@ -45,7 +48,7 @@ function AdoptionDiscoveryCard({
         pointerEvents="none"
       />
 
-      <View style={styles.side}>
+      <View style={[styles.side, { bottom: pad + 148 }]}>
         <Pressable onPress={onToggleLike} style={styles.sideBtn} accessibilityLabel="Me gusta">
           <Ionicons name={liked ? 'heart' : 'heart-outline'} size={28} color={liked ? colors.heart : '#fff'} />
         </Pressable>
@@ -61,7 +64,7 @@ function AdoptionDiscoveryCard({
         </Pressable>
       </View>
 
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { bottom: pad }]}>
         <Pressable onPress={onOpenPet}>
           <Text style={styles.name}>{card.name}</Text>
         </Pressable>
@@ -113,7 +116,6 @@ const styles = StyleSheet.create({
   side: {
     position: 'absolute',
     right: spacing.md,
-    bottom: 168,
     alignItems: 'center',
     gap: 16,
   },
@@ -127,7 +129,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: spacing.lg,
     right: 64,
-    bottom: spacing.lg,
   },
   name: { color: '#fff', fontSize: 26, fontWeight: '900' },
   meta: { color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 3 },

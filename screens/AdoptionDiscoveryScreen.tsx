@@ -7,8 +7,12 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  Platform,
+  StatusBar as RNStatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -19,6 +23,8 @@ import {
   ADOPTION_SEX_FILTERS,
   ADOPTION_SIZE_FILTERS,
   ADOPTION_SPECIES_FILTERS,
+  adoptionImmersiveInsets,
+  adoptionTabBarVisible,
   type AdoptionCard,
   type AdoptionSexFilter,
   type AdoptionSizeFilter,
@@ -26,13 +32,21 @@ import {
 } from '../lib/adoptionDiscovery';
 import { fetchAdoptionPage, loadSavedAdoptionLocality, saveAdoptionLocality } from '../lib/adoptionFeed';
 import { detectCurrentLocality, loadSavedAlertsLocality, withProvinceFallback } from '../lib/geo';
-import { colors, radius, spacing } from '../lib/theme';
+import { radius, spacing } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function AdoptionDiscoveryScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
+  const tabBarVisible = adoptionTabBarVisible(() => navigation.getParent());
+  const androidTop = Platform.OS === 'android' ? RNStatusBar.currentHeight ?? 0 : 0;
+  const pads = adoptionImmersiveInsets(
+    { top: Math.max(insets.top, androidTop), bottom: insets.bottom },
+    tabBarVisible
+  );
+  const cardBottomPad = pads.systemBottomPad + spacing.lg;
   const [locality, setLocality] = useState<string | null>(null);
   const [province, setProvince] = useState<string | null>(null);
   const [locating, setLocating] = useState(true);
@@ -144,6 +158,7 @@ export default function AdoptionDiscoveryScreen() {
       <AdoptionDiscoveryCard
         card={item}
         height={listH}
+        bottomPad={cardBottomPad}
         liked={!!liked[item.id]}
         onToggleLike={() => setLiked((prev) => ({ ...prev, [item.id]: !prev[item.id] }))}
         onOpenPet={() => openPet(item)}
@@ -151,65 +166,77 @@ export default function AdoptionDiscoveryScreen() {
         onComments={() => openPet(item)}
       />
     ),
-    [liked, listH, openPet, openShelter]
+    [liked, listH, cardBottomPad, openPet, openShelter]
   );
 
+  const onRootLayout = useCallback((e: { nativeEvent: { layout: { height: number } } }) => {
+    const next = Math.floor(e.nativeEvent.layout.height);
+    setListH((prev) => (prev === next ? prev : next));
+  }, []);
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.topBar}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={10} accessibilityLabel="Volver">
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
-        </Pressable>
-        <View style={styles.titleBlock}>
-          <Text style={styles.title}>Adoptar</Text>
-          <Pressable style={styles.locBtn} onPress={() => setPickerVisible(true)}>
-            <Ionicons name="location-outline" size={14} color={colors.primary} />
-            <Text style={styles.locText} numberOfLines={1}>
-              {locating ? 'Ubicación…' : locality || 'Elegir localidad'}
-            </Text>
-            <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+    <View style={styles.root} onLayout={onRootLayout}>
+      <StatusBar style="light" />
+      {loading || listH < 8 ? (
+        <ActivityIndicator color="#FFFFFF" style={{ marginTop: pads.headerPadTop + 160 }} />
+      ) : items.length === 0 ? (
+        <Text style={[styles.empty, { paddingTop: pads.headerPadTop + 160 }]}>
+          No hay mascotas en adopción con esos filtros. Probá otra combinación o localidad.
+        </Text>
+      ) : (
+        <FlatList
+          data={items}
+          extraData={liked}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          pagingEnabled
+          snapToInterval={listH}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          disableIntervalMomentum
+          showsVerticalScrollIndicator={false}
+          getItemLayout={(_, index) => ({ length: listH, offset: listH * index, index })}
+          windowSize={3}
+          initialNumToRender={1}
+          maxToRenderPerBatch={2}
+          removeClippedSubviews
+          onEndReachedThreshold={0.6}
+          onEndReached={() => {
+            if (hasMore && !loadingMore) loadPage(locality, false);
+          }}
+          ListFooterComponent={loadingMore ? <ActivityIndicator color="#FFFFFF" /> : null}
+        />
+      )}
+
+      <View style={styles.chrome} pointerEvents="box-none">
+        <LinearGradient
+          colors={['rgba(0,0,0,0.46)', 'rgba(0,0,0,0.16)', 'transparent']}
+          locations={[0, 0.62, 1]}
+          style={[styles.topFade, { height: pads.headerPadTop + 148 }]}
+          pointerEvents="none"
+        />
+        <View style={[styles.topBar, { paddingTop: pads.headerPadTop + spacing.sm }]}>
+          <Pressable onPress={() => navigation.goBack()} hitSlop={10} accessibilityLabel="Volver">
+            <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
           </Pressable>
+          <View style={styles.titleBlock}>
+            <Text style={styles.title}>Adoptar</Text>
+            <Pressable style={styles.locBtn} onPress={() => setPickerVisible(true)}>
+              <Ionicons name="location-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.locText} numberOfLines={1}>
+                {locating ? 'Ubicación…' : locality || 'Elegir localidad'}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color="#FFFFFF" />
+            </Pressable>
+          </View>
+          <View style={{ width: 24 }} />
         </View>
-        <View style={{ width: 24 }} />
-      </View>
 
-      <View style={styles.filters}>
-        <FilterRow items={ADOPTION_SPECIES_FILTERS} value={species} onChange={setSpecies} />
-        <FilterRow items={ADOPTION_SIZE_FILTERS} value={size} onChange={setSize} />
-        <FilterRow items={ADOPTION_SEX_FILTERS} value={sex} onChange={setSex} />
-      </View>
-
-      <View style={styles.listWrap} onLayout={(e) => setListH(Math.floor(e.nativeEvent.layout.height))}>
-        {loading || listH < 8 ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: 48 }} />
-        ) : items.length === 0 ? (
-          <Text style={styles.empty}>
-            No hay mascotas en adopción con esos filtros. Probá otra combinación o localidad.
-          </Text>
-        ) : (
-          <FlatList
-            data={items}
-            extraData={liked}
-            keyExtractor={(item) => item.id}
-            renderItem={renderItem}
-            pagingEnabled
-            snapToInterval={listH}
-            snapToAlignment="start"
-            decelerationRate="fast"
-            disableIntervalMomentum
-            showsVerticalScrollIndicator={false}
-            getItemLayout={(_, index) => ({ length: listH, offset: listH * index, index })}
-            windowSize={3}
-            initialNumToRender={1}
-            maxToRenderPerBatch={2}
-            removeClippedSubviews
-            onEndReachedThreshold={0.6}
-            onEndReached={() => {
-              if (hasMore && !loadingMore) loadPage(locality, false);
-            }}
-            ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} /> : null}
-          />
-        )}
+        <View style={styles.filters}>
+          <FilterRow items={ADOPTION_SPECIES_FILTERS} value={species} onChange={setSpecies} />
+          <FilterRow items={ADOPTION_SIZE_FILTERS} value={size} onChange={setSize} />
+          <FilterRow items={ADOPTION_SEX_FILTERS} value={sex} onChange={setSex} />
+        </View>
       </View>
 
       <LocalityPicker
@@ -224,7 +251,7 @@ export default function AdoptionDiscoveryScreen() {
           setPickerVisible(false);
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -253,30 +280,53 @@ function FilterRow<T extends string>({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  root: { flex: 1, backgroundColor: '#000000' },
+  chrome: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
+  topFade: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   titleBlock: { flex: 1, alignItems: 'center' },
-  title: { fontSize: 20, fontWeight: '900', color: colors.text },
+  title: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
   locBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, maxWidth: '90%' },
-  locText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
+  locText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
   filters: { paddingHorizontal: spacing.sm, paddingBottom: spacing.xs, gap: 6 },
   chipRow: { flexDirection: 'row', gap: 6, paddingRight: spacing.sm },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: radius.full,
-    backgroundColor: colors.card,
+    backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(255,255,255,0.92)',
   },
-  chipOn: { backgroundColor: colors.primarysoft, borderColor: colors.primary },
-  chipText: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
-  chipTextOn: { color: colors.primary },
-  listWrap: { flex: 1, backgroundColor: '#FFFFFF' },
-  empty: { textAlign: 'center', color: colors.textMuted, marginTop: 40, paddingHorizontal: 28, lineHeight: 20 },
+  chipOn: { backgroundColor: 'rgba(255,255,255,0.30)', borderColor: '#FFFFFF' },
+  chipText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  chipTextOn: { color: '#FFFFFF', fontWeight: '800' },
+  empty: { textAlign: 'center', color: 'rgba(255,255,255,0.86)', paddingHorizontal: 28, lineHeight: 20 },
 });

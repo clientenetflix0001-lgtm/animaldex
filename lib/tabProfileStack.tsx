@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import PetProfileScreen from '../screens/PetProfileScreen';
 import PublicProfileScreen from '../screens/PublicProfileScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
+import AdoptionDiscoveryScreen from '../screens/AdoptionDiscoveryScreen';
 import type { TabParamList, TabProfileStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<TabProfileStackParamList>();
@@ -39,6 +40,11 @@ export function createTabProfileStack(Root: React.ComponentType) {
         <Stack.Screen name="PetProfile" component={PetProfileScreen} />
         <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
         <Stack.Screen name="UserProfile" component={NestedUserProfile} />
+        <Stack.Screen
+          name="AdoptionDiscovery"
+          component={AdoptionDiscoveryScreen}
+          options={{ contentStyle: { backgroundColor: '#000' } }}
+        />
       </Stack.Navigator>
     );
   }

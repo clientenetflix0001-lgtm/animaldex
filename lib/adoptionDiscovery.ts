@@ -51,6 +51,30 @@ export const ADOPTION_SEX_FILTERS: { id: AdoptionSexFilter; label: string }[] = 
   { id: 'hembra', label: 'Hembra' },
 ];
 
+/** Insets de la UI inmersiva. El tab bar de Animaldex ya consume `bottom`. */
+export function adoptionImmersiveInsets(
+  insets: { top: number; bottom: number },
+  tabBarVisible: boolean
+): { headerPadTop: number; systemBottomPad: number } {
+  return {
+    headerPadTop: Math.max(0, Number(insets.top) || 0),
+    systemBottomPad: tabBarVisible ? 0 : Math.max(0, Number(insets.bottom) || 0),
+  };
+}
+
+export function adoptionTabBarVisible(
+  getParent?: () => { getState?: () => { type?: string }; getParent?: () => unknown } | undefined
+): boolean {
+  let node: { getState?: () => { type?: string }; getParent?: () => unknown } | undefined = getParent?.();
+  for (let i = 0; i < 4 && node; i++) {
+    if (node.getState?.()?.type === 'tab') return true;
+    node = typeof node.getParent === 'function'
+      ? (node.getParent() as typeof node)
+      : undefined;
+  }
+  return false;
+}
+
 export interface AdoptionCard {
   id: string;
   source: AdoptionSource;

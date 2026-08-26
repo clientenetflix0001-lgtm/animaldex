@@ -8,8 +8,13 @@ import { compactAgeLabel, adoptionStatusOverlay } from '../lib/compactTime.ts';
 import { parsePetSex } from '../lib/petFields.ts';
 import {
   ADOPTION_PAGE_SIZE,
+  ADOPTION_SEX_FILTERS,
+  ADOPTION_SIZE_FILTERS,
+  ADOPTION_SPECIES_FILTERS,
   adoptionCardFromAlert,
   adoptionCardFromProtectorPet,
+  adoptionImmersiveInsets,
+  adoptionTabBarVisible,
   alertFeedId,
   dedupeAdoptionCards,
   matchesAdoptionFilters,
@@ -81,6 +86,19 @@ describe('navegación hacia Adoptar', () => {
     assert.match(discovery, /navigate\('PublicProfile'/);
     assert.doesNotMatch(app, /AdoptionDiscovery: 'adoptar'/);
     assert.doesNotMatch(linking, /adoptar/);
+  });
+
+  it('vive también en createTabProfileStack para conservar BottomTabNavigator', () => {
+    const tabStack = readFileSync(join(root, 'lib/tabProfileStack.tsx'), 'utf8');
+    assert.match(tabStack, /name="AdoptionDiscovery"/);
+    assert.match(tabStack, /AdoptionDiscoveryScreen/);
+    assert.match(types, /TabProfileStackParamList = \{[\s\S]*AdoptionDiscovery: undefined/);
+    assert.match(app, /function MobileTabBar/);
+    assert.match(app, /MOBILE_TAB_ORDER/);
+    assert.match(app, /tabBar=\{\(props\) => <MobileTabBar/);
+    assert.doesNotMatch(app, /tabBar=\{\(\) => null\}/);
+    assert.doesNotMatch(discovery, /tabBarStyle:\s*\{\s*display:\s*'none'/);
+    assert.match(discovery, /navigation\.goBack\(\)/);
   });
 
   it('el botón reutilizable vive en Feed y en mi perfil', () => {
@@ -313,5 +331,84 @@ describe('capa de fetch', () => {
     assert.match(feedLib, /featuredPets/);
     assert.match(screen, /fetchAdoptionPage/);
     assert.match(screen, /ADOPTION_PAGE_SIZE/);
+  });
+});
+
+describe('layout inmersivo Adoptar', () => {
+  it('elimina el header blanco y superpone chrome sobre la foto', () => {
+    assert.doesNotMatch(discovery, /SafeAreaView/);
+    assert.doesNotMatch(discovery, /backgroundColor: '#FFFFFF'/);
+    assert.doesNotMatch(discovery, /backgroundColor: colors\.bg/);
+    assert.match(discovery, /styles\.chrome/);
+    assert.match(discovery, /pointerEvents="box-none"/);
+    assert.match(discovery, /LinearGradient/);
+    assert.match(discovery, /rgba\(0,0,0,0\.46\)/);
+    assert.doesNotMatch(discovery, /backgroundColor: '#000000',\s*height:/);
+    assert.match(discovery, /color="#FFFFFF"/);
+    assert.match(discovery, /styles\.chipOn/);
+  });
+
+  it('conserva filtros y valores enviados a fetchAdoptionPage', () => {
+    assert.deepEqual(ADOPTION_SPECIES_FILTERS.map((f) => f.id), ['todos', 'perro', 'gato', 'otro']);
+    assert.deepEqual(ADOPTION_SIZE_FILTERS.map((f) => f.id), ['todos', 'pequeno', 'mediano', 'grande']);
+    assert.deepEqual(ADOPTION_SEX_FILTERS.map((f) => f.id), ['todos', 'macho', 'hembra']);
+    assert.match(discovery, /ADOPTION_SPECIES_FILTERS/);
+    assert.match(discovery, /ADOPTION_SIZE_FILTERS/);
+    assert.match(discovery, /ADOPTION_SEX_FILTERS/);
+    assert.match(discovery, /setSpecies/);
+    assert.match(discovery, /setSize/);
+    assert.match(discovery, /setSex/);
+    assert.match(discovery, /\.\.\.filters,\s*locality: targetLocality/);
+    assert.match(discovery, /LocalityPicker/);
+    assert.match(discovery, /saveAdoptionLocality/);
+  });
+
+  it('AdoptionDiscoveryCard mantiene datos, acciones y CTA', () => {
+    assert.match(card, /compactAgeLabel\(card\.birthDate\)/);
+    assert.match(card, /adoptionStatusOverlay\(card\.careStatus, card\.adoptionStartedAt\)/);
+    assert.match(card, /card\.shelterName/);
+    assert.match(card, /card\.shelterLocality \|\| card\.shelterLocation/);
+    assert.match(card, /WantToAdoptButton/);
+    assert.match(card, /onToggleLike/);
+    assert.match(card, /onComments/);
+    assert.match(card, /sharePetProfile/);
+    assert.match(card, /thumb\(/);
+    assert.match(card, /export default memo\(AdoptionDiscoveryCard\)/);
+    assert.match(card, /bottomPad/);
+  });
+
+  it('calcula altura de página con insets reales, no padding fijo de un teléfono', () => {
+    const withTabs = adoptionImmersiveInsets({ top: 24, bottom: 48 }, true);
+    assert.deepEqual(withTabs, { headerPadTop: 24, systemBottomPad: 0 });
+    const threeButtons = adoptionImmersiveInsets({ top: 28, bottom: 48 }, false);
+    assert.equal(threeButtons.systemBottomPad, 48);
+    const gestures = adoptionImmersiveInsets({ top: 28, bottom: 16 }, false);
+    assert.equal(gestures.systemBottomPad, 16);
+    const zero = adoptionImmersiveInsets({ top: 0, bottom: 0 }, false);
+    assert.equal(zero.systemBottomPad, 0);
+
+    const tabParent = () => ({ getState: () => ({ type: 'tab' as const }) });
+    assert.equal(adoptionTabBarVisible(tabParent), true);
+    const stackParent = () => ({ getState: () => ({ type: 'stack' as const }) });
+    assert.equal(adoptionTabBarVisible(stackParent), false);
+
+    assert.match(discovery, /useSafeAreaInsets/);
+    assert.match(discovery, /adoptionImmersiveInsets/);
+    assert.match(discovery, /snapToInterval=\{listH\}/);
+    assert.match(discovery, /pagingEnabled/);
+    assert.match(discovery, /getItemLayout/);
+    assert.match(discovery, /windowSize=\{3\}/);
+    assert.doesNotMatch(discovery, /paddingBottom:\s*4[0-9]/);
+    assert.doesNotMatch(discovery, /paddingBottom:\s*80/);
+    assert.doesNotMatch(discovery, /paddingBottom:\s*48/);
+  });
+
+  it('no modifica adoptionFeed ni el Worker', () => {
+    const start = worker.indexOf("action === 'adoptionFeed'");
+    const chunk = worker.slice(start, start + 2800);
+    assert.match(chunk, /LOWER\(pr\.locality\) = LOWER\(\?\)/);
+    assert.match(chunk, /p\.care_status = 'en_adopcion'/);
+    const feedLib = readFileSync(join(root, 'lib/adoptionFeed.ts'), 'utf8');
+    assert.match(feedLib, /db\.adoptionFeed/);
   });
 });
