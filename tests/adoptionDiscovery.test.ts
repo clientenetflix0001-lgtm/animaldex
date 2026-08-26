@@ -339,7 +339,7 @@ describe('layout inmersivo Adoptar', () => {
     assert.doesNotMatch(discovery, /SafeAreaView/);
     assert.doesNotMatch(discovery, /backgroundColor: '#FFFFFF'/);
     assert.doesNotMatch(discovery, /backgroundColor: colors\.bg/);
-    assert.match(discovery, /styles\.chrome/);
+    assert.match(discovery, /styles\.topChrome/);
     assert.match(discovery, /pointerEvents="box-none"/);
     assert.match(discovery, /LinearGradient/);
     assert.match(discovery, /rgba\(0,0,0,0\.46\)/);
@@ -410,5 +410,33 @@ describe('layout inmersivo Adoptar', () => {
     assert.match(chunk, /p\.care_status = 'en_adopcion'/);
     const feedLib = readFileSync(join(root, 'lib/adoptionFeed.ts'), 'utf8');
     assert.match(feedLib, /db\.adoptionFeed/);
+  });
+
+  it('top chrome es overlay absoluto y no consume altura del FlatList', () => {
+    const chrome = discovery.slice(discovery.indexOf('topChrome:'));
+    const chromeBlock = chrome.slice(0, chrome.indexOf('topFade:'));
+    assert.match(chromeBlock, /position: 'absolute'/);
+    assert.match(chromeBlock, /top: 0/);
+    assert.match(chromeBlock, /left: 0/);
+    assert.match(chromeBlock, /right: 0/);
+    assert.doesNotMatch(chromeBlock, /bottom:\s*0/);
+    assert.doesNotMatch(chromeBlock, /absoluteFillObject/);
+    assert.match(discovery, /style=\{styles\.list\}/);
+    assert.match(discovery, /list: \{ flex: 1 \}/);
+    assert.match(discovery, /snapToInterval=\{listH\}/);
+    assert.match(discovery, /pagingEnabled/);
+    assert.match(discovery, /pointerEvents="box-none"/);
+    assert.match(discovery, /paddingTop: pads\.headerPadTop/);
+    assert.match(discovery, /useSafeAreaInsets/);
+    const tabStack = readFileSync(join(root, 'lib/tabProfileStack.tsx'), 'utf8');
+    assert.match(tabStack, /name="AdoptionDiscovery"/);
+    assert.match(app, /function MobileTabBar/);
+    assert.match(app, /tabBar=\{\(props\) => <MobileTabBar/);
+    assert.doesNotMatch(discovery, /tabBarStyle/);
+    assert.match(discovery, /setSpecies/);
+    assert.match(discovery, /setSize/);
+    assert.match(discovery, /setSex/);
+    assert.match(discovery, /onPress=\{\(\) => setPickerVisible\(true\)\}/);
+    assert.match(discovery, /onPress=\{\(\) => navigation\.goBack\(\)\}/);
   });
 });

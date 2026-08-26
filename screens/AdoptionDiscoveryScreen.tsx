@@ -185,6 +185,7 @@ export default function AdoptionDiscoveryScreen() {
         </Text>
       ) : (
         <FlatList
+          style={styles.list}
           data={items}
           extraData={liked}
           keyExtractor={(item) => item.id}
@@ -208,14 +209,19 @@ export default function AdoptionDiscoveryScreen() {
         />
       )}
 
-      <View style={styles.chrome} pointerEvents="box-none">
+      {/* Overlay top-only: no bottom/absoluteFill. On Android a stretched
+          sibling of FlatList was laid out in-flow under the photo. */}
+      <View style={styles.topChrome} pointerEvents="box-none" collapsable={false}>
         <LinearGradient
           colors={['rgba(0,0,0,0.46)', 'rgba(0,0,0,0.16)', 'transparent']}
           locations={[0, 0.62, 1]}
-          style={[styles.topFade, { height: pads.headerPadTop + 148 }]}
+          style={styles.topFade}
           pointerEvents="none"
         />
-        <View style={[styles.topBar, { paddingTop: pads.headerPadTop + spacing.sm }]}>
+        <View
+          style={[styles.topBar, { paddingTop: pads.headerPadTop + spacing.sm }]}
+          pointerEvents="box-none"
+        >
           <Pressable onPress={() => navigation.goBack()} hitSlop={10} accessibilityLabel="Volver">
             <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
           </Pressable>
@@ -232,7 +238,7 @@ export default function AdoptionDiscoveryScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        <View style={styles.filters}>
+        <View style={styles.filters} pointerEvents="box-none">
           <FilterRow items={ADOPTION_SPECIES_FILTERS} value={species} onChange={setSpecies} />
           <FilterRow items={ADOPTION_SIZE_FILTERS} value={size} onChange={setSize} />
           <FilterRow items={ADOPTION_SEX_FILTERS} value={sex} onChange={setSex} />
@@ -281,15 +287,17 @@ function FilterRow<T extends string>({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000000' },
-  chrome: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 2,
-  },
-  topFade: {
+  list: { flex: 1 },
+  topChrome: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    zIndex: 10,
+    elevation: 10,
+  },
+  topFade: {
+    ...StyleSheet.absoluteFillObject,
   },
   topBar: {
     flexDirection: 'row',
