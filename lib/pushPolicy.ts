@@ -245,15 +245,88 @@ export function tokensToDisableFromReceipts(
   return dead;
 }
 
-export function parsePushNav(data: { type?: string; petId?: string; petUsername?: string; url?: string } | null | undefined): {
+export type PushData = {
+  type?: string;
+  petId?: string;
+  petUsername?: string;
+  shareId?: string;
+  url?: string;
+};
+
+export type PushNavTarget = {
   kind: 'pet' | 'activity' | 'none';
   petId?: string;
-} {
-  const d = data || {};
-  if (d.type === 'birthday' || (d.url && String(d.url).startsWith('/pet/'))) {
-    const fromUrl = d.url ? String(d.url).replace(/^\/pet\//, '') : '';
+  shareId?: string;
+};
+
+function asPushField(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  const s = String(value).trim();
+  return s && s !== 'null' && s !== 'undefined' ? s : undefined;
+}
+
+/** Acepta el `data` de Expo, un JSON string, o `{ data: {...} }` anidado. */
+export function normalizePushData(raw: unknown): PushData {
+  if (raw == null) return {};
+  if (typeof raw === 'string') {
+    try {
+      return normalizePushData(JSON.parse(raw));
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw !== 'object') return {};
+  const d = raw as Record<string, unknown>;
+  const inner =
+    d.data && typeof d.data === 'object' && !Array.isArray(d.data)
+      ? (d.data as Record<string, unknown>)
+      : d;
+  return {
+    type: asPushField(inner.type),
+    petId: asPushField(inner.petId),
+    petUsername: asPushField(inner.petUsername),
+    shareId: asPushField(inner.shareId),
+    url: asPushField(inner.url),
+  };
+}
+
+export function parsePushNav(data: unknown): PushNavTarget {
+  const d = normalizePushData(data);
+  if (d.type === 'birthday' || (d.url && d.url.startsWith('/pet/'))) {
+    const fromUrl = d.url ? d.url.replace(/^\/pet\//, '') : '';
     return { kind: 'pet', petId: d.petUsername || fromUrl || d.petId };
   }
-  if (d.type === 'location' || d.url === '/actividad') return { kind: 'activity' };
+  if (d.type === 'location' || d.url === '/actividad') {
+    return { kind: 'activity', petId: d.petId, shareId: d.shareId };
+  }
   return { kind: 'none' };
+}
+
+export type PushTapPhase = 'foreground' | 'background' | 'cold';
+
+export function pushTapFlushDecision(input: {
+  hasPending: boolean;
+  navReady: boolean;
+  authReady: boolean;
+  hasUser: boolean;
+  navIsReady?: boolean;
+}): 'idle' | 'wait' | 'apply' {
+  if (!input.hasPending) return 'idle';
+  if (!input.authReady || !input.navReady || input.navIsReady === false) return 'wait';
+  if (!input.hasUser) return 'wait';
+  return 'apply';
+}
+
+/** Destino existente: cumpleaños → PetProfile; ubicación → tab Actividad. */
+export function pushNavDestination(
+  data: unknown
+): { name: 'PetProfile'; params: { petId: string } } | { name: 'Tabs'; params: { screen: 'Actividad' } } | null {
+  const nav = parsePushNav(data);
+  if (nav.kind === 'pet' && nav.petId) {
+    return { name: 'PetProfile', params: { petId: nav.petId } };
+  }
+  if (nav.kind === 'activity') {
+    return { name: 'Tabs', params: { screen: 'Actividad' } };
+  }
+  return null;
 }
