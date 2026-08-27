@@ -2,15 +2,9 @@
 export const APP_LINK_PREFIXES = [
   'animaldex://',
   'https://animaldex-web.pages.dev',
-  'https://animaldex.com',
-  'https://www.animaldex.com',
 ] as const;
 
-export const APP_LINK_HTTPS_HOSTS = [
-  'animaldex-web.pages.dev',
-  'animaldex.com',
-  'www.animaldex.com',
-] as const;
+export const APP_LINK_HTTPS_HOSTS = ['animaldex-web.pages.dev'] as const;
 
 export type AppLinkTab = 'Inicio' | 'Reels' | 'Alertas' | 'Mercado' | 'Crear' | 'Actividad' | 'Perfil';
 

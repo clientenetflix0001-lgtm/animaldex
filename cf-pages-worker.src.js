@@ -28,11 +28,9 @@
 // ---------- Android App Links: Digital Asset Links ----------
 // Se sirve en /.well-known/assetlinks.json para verificar la asociación
 // entre este dominio y la app Android (package com.lucasap123.animaldex).
-// El SHA-256 corresponde al keystore de firma gestionado por EAS
-// (obtenido desde las credenciales reales de EAS, no inventado). Si en el
-// futuro se publica en Google Play con "Play App Signing", hay que AÑADIR
-// además el SHA-256 de la clave de firma de Google (Play Console) a este
-// array; admite múltiples huellas.
+// El SHA-256 de EAS/Preview (upload keystore) DEBE conservarse para que
+// la APK Preview siga verificando. Play App Signing usa OTRO certificado:
+// hay que AÑADIR su huella, no reemplazar la de EAS. Ambos conviven.
 const ASSETLINKS_JSON = JSON.stringify([
   {
     relation: ['delegate_permission/common.handle_all_urls'],
@@ -41,6 +39,7 @@ const ASSETLINKS_JSON = JSON.stringify([
       package_name: 'com.lucasap123.animaldex',
       sha256_cert_fingerprints: [
         'AF:CE:8E:B1:04:D3:4C:6F:DF:61:C3:5F:15:73:3D:58:D9:F3:AE:90:41:2F:BA:BE:0C:FC:FB:C9:C0:C5:17:E6',
+        '9D:2A:54:C2:2D:DA:99:C0:39:BB:A2:73:B5:B3:8A:80:2D:22:05:D8:E2:7B:1D:6C:20:30:F9:58:51:8B:44:46',
       ],
     },
   },
