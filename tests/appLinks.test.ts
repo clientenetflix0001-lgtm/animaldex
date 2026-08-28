@@ -26,6 +26,7 @@ const HOSTS = ['https://animaldex-web.pages.dev'];
 const SHA_RE = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;
 const EAS_SHA = 'AF:CE:8E:B1:04:D3:4C:6F:DF:61:C3:5F:15:73:3D:58:D9:F3:AE:90:41:2F:BA:BE:0C:FC:FB:C9:C0:C5:17:E6';
 const PLAY_SHA = '9D:2A:54:C2:2D:DA:99:C0:39:BB:A2:73:B5:B3:8A:80:2D:22:05:D8:E2:7B:1D:6C:20:30:F9:58:51:8B:44:46';
+const PLAY_DEVICE_SHA = '6B:C8:C8:C8:84:F6:8A:46:8E:F6:BA:A2:AB:5D:D1:FF:FB:DC:90:EF:A6:BE:12:20:C4:F1:C2:69:94:45:74:F3';
 
 function parseAssetLinksFromSource(src: string) {
   const start = src.indexOf('const ASSETLINKS_JSON = JSON.stringify(');
@@ -224,7 +225,7 @@ describe('App.tsx y app.json solo pages.dev', () => {
 });
 
 describe('assetlinks.json propuesto (Pages, sin deploy)', () => {
-  it('mismo package con SHA EAS y SHA Play, formato DAL válido', () => {
+  it('mismo package con SHA EAS, SHA Play Console y SHA del APK instalado', () => {
     const statements = parseAssetLinksFromSource(pagesWorker);
     assert.equal(Array.isArray(statements), true);
     assert.equal(statements.length, 1);
@@ -233,12 +234,14 @@ describe('assetlinks.json propuesto (Pages, sin deploy)', () => {
     assert.equal(stmt.target.namespace, 'android_app');
     assert.equal(stmt.target.package_name, 'com.lucasap123.animaldex');
     const fps: string[] = stmt.target.sha256_cert_fingerprints;
-    assert.equal(fps.length, 2);
+    assert.equal(fps.length, 3);
     for (const fp of fps) assert.match(fp, SHA_RE);
     assert.equal(fps[0], EAS_SHA);
     assert.equal(fps[1], PLAY_SHA);
+    assert.equal(fps[2], PLAY_DEVICE_SHA);
     assert.equal(fps.includes(EAS_SHA), true);
-    assert.equal(new Set(fps).size, 2);
+    assert.equal(fps.includes(PLAY_DEVICE_SHA), true);
+    assert.equal(new Set(fps).size, 3);
     JSON.parse(JSON.stringify(statements));
   });
 });
