@@ -134,10 +134,16 @@ export default function PetProfileScreen() {
 
   // Compartir mi ubicación con el dueño (con permiso GPS visible del navegador/SO).
   // Solo se llama tras un toque explícito del visitante — nunca automático.
+  // Público: el Worker no exige sesión. Se envía realPet.id (nunca el handle de la ruta).
   const shareMyLocation = useCallback(async () => {
-    if (guest) { requireLogin(); return; }
     if (demoPet) {
       Alert.alert('No disponible', 'Esta mascota es una demostración y no tiene dueño real.');
+      return;
+    }
+    const internalId = realPet?.id;
+    if (!internalId) {
+      if (loading) return;
+      Alert.alert('Espera un momento', 'Todavía estamos cargando el perfil de la mascota.');
       return;
     }
     setSharingLocation(true);
@@ -152,7 +158,7 @@ export default function PetProfileScreen() {
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const result = await db.shareLocation(
-        petId,
+        internalId,
         pos.coords.latitude,
         pos.coords.longitude,
         pos.coords.accuracy ?? undefined
@@ -171,7 +177,7 @@ export default function PetProfileScreen() {
     } finally {
       setSharingLocation(false);
     }
-  }, [demoPet, petId, guest, requireLogin]);
+  }, [demoPet, realPet?.id, loading]);
 
   // ---------- Presentación ----------
   const name = demoPet?.name ?? realPet?.name ?? '...';
@@ -441,9 +447,9 @@ export default function PetProfileScreen() {
         <Pressable
           style={[styles.locationBtn, locationDone && styles.locationBtnDone]}
           onPress={shareMyLocation}
-          disabled={sharingLocation || locationDone}
+          disabled={sharingLocation || locationDone || (!demoPet && !realPet?.id)}
         >
-          {sharingLocation ? (
+          {sharingLocation || (!demoPet && !realPet?.id && loading) ? (
             <ActivityIndicator color={colors.secondary} size="small" />
           ) : (
             <Ionicons
@@ -457,6 +463,8 @@ export default function PetProfileScreen() {
               ? 'Ubicación compartida ✓'
               : sharingLocation
               ? 'Obteniendo ubicación...'
+              : !demoPet && !realPet?.id
+              ? 'Cargando perfil...'
               : `Compartir mi ubicación con el dueño de ${name}`}
           </Text>
         </Pressable>

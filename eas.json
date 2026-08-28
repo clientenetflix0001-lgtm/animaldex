@@ -13,6 +13,13 @@
     },
     "production": {
       "channel": "production"
+    },
+    "play-internal": {
+      "distribution": "store",
+      "channel": "play-internal",
+      "android": {
+        "buildType": "app-bundle"
+      }
     }
   },
   "submit": {

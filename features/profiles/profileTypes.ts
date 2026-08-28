@@ -10,6 +10,8 @@ export interface PublicProfile {
   bio: string;
   location?: string;
   phone?: string;
+  /** Localidad normalizada (mismo catálogo que Alertas/Mercado). Independiente de `location`. */
+  locality?: string | null;
   createdAt: number;
 }
 

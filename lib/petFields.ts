@@ -18,6 +18,26 @@ export const PET_SIZES = [
   { id: 'grande', label: 'Grande' },
 ] as const;
 
+export const PET_SEXES = [
+  { id: 'macho', label: 'Macho' },
+  { id: 'hembra', label: 'Hembra' },
+] as const;
+
+export type PetSex = (typeof PET_SEXES)[number]['id'];
+
+/** Solo macho | hembra | null. Cualquier otro valor se rechaza. */
+export function parsePetSex(raw: unknown): { ok: true; value: PetSex | null } | { ok: false } {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  const s = String(raw)
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .slice(0, 20);
+  if (s === 'macho' || s === 'hembra') return { ok: true, value: s };
+  return { ok: false };
+}
+
 export const FORM_SPECIES = [
   { id: 'perro', label: 'Perro', emoji: '🐶' },
   { id: 'gato', label: 'Gato', emoji: '🐱' },
@@ -80,6 +100,18 @@ export function waitingLabel(startedAt: number | null | undefined, now: number =
   if (months < 12) return months === 1 ? 'Esperando hace 1 mes' : `Esperando hace ${months} meses`;
   const years = Math.floor(days / 365);
   return years === 1 ? 'Esperando hace 1 año' : `Esperando hace ${years} años`;
+}
+
+/** Versión corta para overlay de grilla. Solo usa adoption_started_at. */
+export function waitingLabelCompact(startedAt: number | null | undefined, now: number = Date.now()): string {
+  if (!startedAt || startedAt > now) return '';
+  const days = Math.floor((now - startedAt) / 86400000);
+  if (days < 1) return 'Hoy';
+  if (days < 90) return days === 1 ? '1 día' : `${days} días`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return months === 1 ? '1 mes' : `${months} meses`;
+  const years = Math.floor(days / 365);
+  return years === 1 ? '1 año' : `${years} años`;
 }
 
 export type StatusFilter = 'todas' | 'en_adopcion' | 'en_recuperacion';

@@ -9,6 +9,29 @@
 // ============================================================
 
 import { scryptSync, randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
+import {
+  argentinaDateParts,
+  birthdayIdempotencyKey,
+  birthdayMatchParams,
+  birthdayNotificationCopy,
+  evaluatePersonalPetBirthday,
+} from '../lib/petBirthday.ts';
+import {
+  EXPO_PUSH_BATCH_MAX,
+  EXPO_PUSH_RECEIPTS_URL,
+  EXPO_PUSH_SEND_URL,
+  assignPushToken,
+  birthdayPushIdempotencyKey,
+  birthdayPushMessage,
+  displayPersonName,
+  isExpoPushToken,
+  locationPushIdempotencyKey,
+  locationPushMessage,
+  mergeNotificationPrefs,
+  prefAllows,
+  tokensToDisableFromReceipts,
+  tokensToDisableFromTickets,
+} from '../lib/pushPolicy.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -120,6 +143,7 @@ function profileRow(r) {
     avatar: r.avatar_url || null,
     bio: r.bio || '',
     location: r.location || '',
+    locality: r.locality || null,
     phone: r.phone || '',
     createdAt: r.created_at,
   };
@@ -155,7 +179,9 @@ async function ensureProfilesSchema(env) {
   try { await env.DB.prepare('ALTER TABLE pets ADD COLUMN archived_at INTEGER').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN location TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN phone TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN locality TEXT').run(); } catch (_) {}
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_profile ON pets (profile_id)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_birth_date ON pets (birth_date)');
   // Historial de adopciones completadas. Una fila = una transferencia real del
   // MISMO pet_id (no se duplica el perfil). care_status no escribe acá.
   // Futuro (no expuesto todavía):
@@ -230,6 +256,272 @@ async function ensureAuthSchema(env) {
     ).run();
   } catch (_) {}
   env._authSchemaReady = true;
+}
+
+async function ensureActivityEventsSchema(env) {
+  if (env._activityEventsReady) return;
+  await d1(env, `CREATE TABLE IF NOT EXISTS activity_events (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    pet_id TEXT,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    body TEXT,
+    metadata TEXT,
+    created_at INTEGER NOT NULL
+  )`);
+  await d1(env, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_events_key ON activity_events (idempotency_key)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_activity_events_user ON activity_events (user_id, created_at DESC)');
+  env._activityEventsReady = true;
+}
+
+async function ensurePushSchema(env) {
+  if (env._pushSchemaReady) return;
+  await d1(env, `CREATE TABLE IF NOT EXISTS user_push_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    expo_push_token TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL,
+    device_id TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL
+  )`);
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_user_push_tokens_user ON user_push_tokens (user_id, enabled)');
+  await d1(env, `CREATE TABLE IF NOT EXISTS user_notification_prefs (
+    user_id TEXT PRIMARY KEY,
+    location INTEGER NOT NULL DEFAULT 1,
+    birthday INTEGER NOT NULL DEFAULT 1,
+    lost_pet INTEGER NOT NULL DEFAULT 1,
+    adoption INTEGER NOT NULL DEFAULT 1,
+    comment INTEGER NOT NULL DEFAULT 1,
+    like INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL
+  )`);
+  await d1(env, `CREATE TABLE IF NOT EXISTS push_sends (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`);
+  await d1(env, `CREATE TABLE IF NOT EXISTS push_tickets (
+    id TEXT PRIMARY KEY,
+    expo_push_token TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`);
+  env._pushSchemaReady = true;
+}
+
+async function ensureLocationActorColumn(env) {
+  if (env._locationActorReady) return;
+  try {
+    await env.DB.prepare('ALTER TABLE location_shares ADD COLUMN actor_user_id TEXT').run();
+  } catch (_) {}
+  env._locationActorReady = true;
+}
+
+function mapPushTokenRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    userId: r.user_id,
+    expoPushToken: r.expo_push_token,
+    platform: r.platform,
+    deviceId: r.device_id || null,
+    enabled: Number(r.enabled) === 1,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    lastSeenAt: r.last_seen_at,
+  };
+}
+
+async function loadNotificationPrefs(env, userId) {
+  const rows = await d1(env, 'SELECT * FROM user_notification_prefs WHERE user_id = ?', [userId]);
+  return mergeNotificationPrefs(rows[0] || null);
+}
+
+async function disablePushTokens(env, tokens, nowMs) {
+  if (!tokens.length) return;
+  for (const token of tokens) {
+    await d1(env, 'UPDATE user_push_tokens SET enabled = 0, updated_at = ? WHERE expo_push_token = ?', [nowMs, token]);
+  }
+}
+
+async function sendExpoPush(messages) {
+  if (!messages.length) return { tickets: [], tokens: [] };
+  const tokens = messages.map((m) => String(m.to || ''));
+  const resp = await fetch(EXPO_PUSH_SEND_URL, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Accept-Encoding': 'gzip, deflate',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(messages.length === 1 ? messages[0] : messages),
+  });
+  const json = await resp.json().catch(() => ({}));
+  const tickets = Array.isArray(json.data) ? json.data : json.data ? [json.data] : [];
+  return { tickets, tokens };
+}
+
+async function notifyUserPush(env, input) {
+  const nowMs = input.nowMs || Date.now();
+  await ensurePushSchema(env);
+  const claim = await env.DB.prepare(
+    'INSERT OR IGNORE INTO push_sends (id, type, user_id, created_at) VALUES (?, ?, ?, ?)'
+  )
+    .bind(input.idempotencyKey, input.type, input.userId, nowMs)
+    .run();
+  if (!claim || !claim.meta || claim.meta.changes < 1) return { sent: 0, skipped: 'duplicate' };
+
+  const prefs = await loadNotificationPrefs(env, input.userId);
+  if (!prefAllows(prefs, input.type)) return { sent: 0, skipped: 'pref_off' };
+
+  const rows = await d1(
+    env,
+    'SELECT * FROM user_push_tokens WHERE user_id = ? AND enabled = 1',
+    [input.userId]
+  );
+  if (!rows.length) return { sent: 0, skipped: 'no_token' };
+
+  const messages = rows.map((r) => input.buildMessage(r.expo_push_token));
+  let sent = 0;
+  for (let i = 0; i < messages.length; i += EXPO_PUSH_BATCH_MAX) {
+    const batch = messages.slice(i, i + EXPO_PUSH_BATCH_MAX);
+    try {
+      const { tickets, tokens } = await sendExpoPush(batch);
+      const dead = tokensToDisableFromTickets(tickets, tokens);
+      if (dead.length) await disablePushTokens(env, dead, nowMs);
+      for (let t = 0; t < tickets.length; t++) {
+        if (tickets[t] && tickets[t].status === 'ok' && tickets[t].id) {
+          sent += 1;
+          await d1(
+            env,
+            'INSERT OR IGNORE INTO push_tickets (id, expo_push_token, created_at) VALUES (?, ?, ?)',
+            [tickets[t].id, tokens[t], nowMs]
+          ).catch(() => {});
+        }
+      }
+    } catch (_) {
+      // El evento de Activity ya está persistido; no revertimos el claim.
+    }
+  }
+  return { sent };
+}
+
+async function processPushReceipts(env, nowMs = Date.now()) {
+  await ensurePushSchema(env);
+  const rows = await d1(env, 'SELECT id, expo_push_token FROM push_tickets ORDER BY created_at ASC LIMIT 80');
+  if (!rows.length) return { checked: 0 };
+  const ids = rows.map((r) => r.id);
+  const ticketToToken = {};
+  rows.forEach((r) => {
+    ticketToToken[r.id] = r.expo_push_token;
+  });
+  try {
+    const resp = await fetch(EXPO_PUSH_RECEIPTS_URL, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    const json = await resp.json().catch(() => ({}));
+    const receipts = json.data || {};
+    const dead = tokensToDisableFromReceipts(receipts, ticketToToken);
+    if (dead.length) await disablePushTokens(env, dead, nowMs);
+    for (const id of ids) {
+      if (receipts[id]) {
+        await d1(env, 'DELETE FROM push_tickets WHERE id = ?', [id]).catch(() => {});
+      }
+    }
+    return { checked: ids.length, disabled: dead.length };
+  } catch (_) {
+    return { checked: 0 };
+  }
+}
+
+async function runPersonalPetBirthdays(env, nowMs = Date.now()) {
+  await ensureProfilesSchema(env);
+  await ensureActivityEventsSchema(env);
+  await ensurePushSchema(env);
+  const today = argentinaDateParts(nowMs);
+  const { monthDay, includeFeb29OnFeb28 } = birthdayMatchParams(today);
+  const rows = await d1(
+    env,
+    `SELECT p.id, p.name, p.username, p.user_id, p.birth_date, p.emoji, p.avatar_url,
+            p.profile_id, p.archived_at, pr.type AS profile_type
+       FROM pets p
+       LEFT JOIN profiles pr ON pr.id = p.profile_id
+      WHERE p.archived_at IS NULL
+        AND p.birth_date IS NOT NULL
+        AND (p.profile_id IS NULL OR pr.type = 'personal')
+        AND (
+          substr(p.birth_date, 6, 5) = ?
+          OR (? = 1 AND substr(p.birth_date, 6, 5) = '02-29')
+        )`,
+    [monthDay, includeFeb29OnFeb28 ? 1 : 0]
+  );
+
+  let inserted = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    try {
+      const decision = evaluatePersonalPetBirthday(
+        {
+          birthDate: row.birth_date,
+          archivedAt: row.archived_at,
+          profileId: row.profile_id,
+          profileType: row.profile_type,
+        },
+        nowMs
+      );
+      if (!decision.notify) {
+        skipped += 1;
+        continue;
+      }
+      const key = birthdayIdempotencyKey(row.id, today.year);
+      const copy = birthdayNotificationCopy(row.name, decision.years);
+      const metadata = JSON.stringify({
+        ownerUserId: row.user_id,
+        petId: row.id,
+        petUsername: row.username || null,
+        petName: row.name,
+        petEmoji: row.emoji || null,
+        petAvatar: row.avatar_url || null,
+        years: decision.years,
+      });
+      const res = await env.DB.prepare(
+        `INSERT OR IGNORE INTO activity_events
+          (id, type, user_id, pet_id, idempotency_key, title, body, metadata, created_at)
+         VALUES (?, 'birthday', ?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(key, row.user_id, row.id, key, copy.title, copy.body, metadata, nowMs)
+        .run();
+      if (res && res.meta && res.meta.changes > 0) {
+        inserted += 1;
+        try {
+          await notifyUserPush(env, {
+            userId: row.user_id,
+            type: 'birthday',
+            idempotencyKey: birthdayPushIdempotencyKey(row.id, today.year),
+            nowMs,
+            buildMessage: (token) =>
+              birthdayPushMessage({
+                token,
+                petName: row.name,
+                petId: row.id,
+                petUsername: row.username || null,
+                years: decision.years,
+              }),
+          });
+        } catch (_) {}
+      } else skipped += 1;
+    } catch (_) {
+      skipped += 1;
+    }
+  }
+  return { considered: rows.length, inserted, skipped, date: `${today.year}-${monthDay}` };
 }
 
 async function ensurePersonalProfile(env, userId) {
@@ -462,6 +754,22 @@ function otpIpLimited(ip, now) {
     return false;
   }
   if (rec.n >= 8) return true;
+  rec.n += 1;
+  return false;
+}
+
+// Rate limit mínimo de shareLocation: 1 envío / 45s por IP + mascota (memoria, sin tabla).
+const SHARE_LOCATION_WINDOW_MS = 45 * 1000;
+const SHARE_LOCATION_MAX = 1;
+const shareLocationByKey = new Map();
+function shareLocationLimited(ip, petId, now) {
+  const key = `${ip || 'unknown'}|${petId}`;
+  const rec = shareLocationByKey.get(key);
+  if (!rec || now - rec.start >= SHARE_LOCATION_WINDOW_MS) {
+    shareLocationByKey.set(key, { start: now, n: 1 });
+    return false;
+  }
+  if (rec.n >= SHARE_LOCATION_MAX) return true;
   rec.n += 1;
   return false;
 }
@@ -750,6 +1058,13 @@ function normalizeSize(raw) {
   if (s === 'pequeno' || s === 'mediano' || s === 'grande') return s;
   return '';
 }
+/** Solo macho | hembra | null. Cualquier otro valor se rechaza. */
+function parsePetSex(raw) {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  const s = clean(raw, 20).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (s === 'macho' || s === 'hembra') return { ok: true, value: s };
+  return { ok: false };
+}
 function normalizeNeutered(value) {
   if (value === true || value === 1 || value === '1' || value === 'si' || value === 'sí' || value === 'true') return 1;
   if (value === false || value === 0 || value === '0' || value === 'no' || value === 'false') return 0;
@@ -946,6 +1261,9 @@ async function handleDb(request, env) {
   try {
     await ensureAuthSchema(env);
     await ensureProfilesSchema(env);
+    await ensureActivityEventsSchema(env);
+    await ensurePushSchema(env);
+    await ensureLocationActorColumn(env);
 
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
@@ -1170,6 +1488,73 @@ async function handleDb(request, env) {
     if (action === 'featuredPets') {
       const rows = await d1(env, 'SELECT * FROM pets WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 20');
       return json({ ok: true, pets: rows.map(petRow) });
+    }
+
+    // Discovery de adopción (fuente A): mascotas de protectoras/refugios
+    // en_adopcion. Fuente B (alertas) queda para más adelante.
+    // Lectura pública; no crea tablas ni índices nuevos.
+    if (action === 'adoptionFeed') {
+      const locality = clean(body.locality, 100);
+      const species = clean(body.species, 20).toLowerCase();
+      const size = normalizeSize(body.size);
+      const sexParsed = parsePetSex(body.sex === 'todos' ? null : body.sex);
+      const sex = sexParsed.ok ? sexParsed.value : '';
+      const before = Number(body.before) || now + 1000;
+      const limit = Math.min(Number(body.limit) || 8, 20);
+
+      const conditions = [
+        'p.archived_at IS NULL',
+        "p.care_status = 'en_adopcion'",
+        "pr.type = 'protector'",
+      ];
+      const params = [];
+      if (species === 'perro' || species === 'gato') {
+        conditions.push('p.species = ?');
+        params.push(species);
+      } else if (species === 'otro') {
+        conditions.push("p.species != 'perro' AND p.species != 'gato'");
+      }
+      if (size) {
+        conditions.push('p.size = ?');
+        params.push(size);
+      }
+      if (sex) {
+        conditions.push("LOWER(COALESCE(p.sex, '')) = ?");
+        params.push(sex);
+      }
+      if (locality) {
+        conditions.push('LOWER(pr.locality) = LOWER(?)');
+        params.push(locality);
+      }
+      conditions.push('p.created_at < ?');
+      params.push(before);
+
+      const rows = await d1(
+        env,
+        `SELECT p.*, pr.id AS shelter_id, pr.name AS shelter_name, pr.username AS shelter_username,
+                pr.location AS shelter_location, pr.locality AS shelter_locality
+         FROM pets p
+         INNER JOIN profiles pr ON pr.id = p.profile_id AND pr.type = 'protector'
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY p.created_at DESC, p.id DESC
+         LIMIT ?`,
+        [...params, limit + 1]
+      );
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      return json({
+        ok: true,
+        items: page.map((r) => ({
+          ...petRow(r),
+          source: 'protector_pet',
+          shelterId: r.shelter_id,
+          shelterName: r.shelter_name,
+          shelterUsername: r.shelter_username,
+          shelterLocation: r.shelter_location || null,
+          shelterLocality: r.shelter_locality || null,
+        })),
+        hasMore,
+      });
     }
 
     if (action === 'comments') {
@@ -1440,23 +1825,40 @@ async function handleDb(request, env) {
     // este endpoint solo recibe el resultado YA consentido y lo envía por SMS
     // al dueño de la mascota (su teléfono verificado).
     if (action === 'shareLocation') {
-      const petId = clean(body.petId, 80);
+      const petRef = clean(body.petId, 80);
       const lat = Number(body.lat);
       const lon = Number(body.lon);
       const accuracy = body.accuracy != null ? Number(body.accuracy) : null;
-      if (!petId || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      if (!petRef || !Number.isFinite(lat) || !Number.isFinite(lon)) {
         return json({ error: 'Faltan datos de ubicación' }, 400);
       }
       if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
         return json({ error: 'Coordenadas inválidas' }, 400);
       }
 
-      const pets = await d1(env, 'SELECT id, name, user_id FROM pets WHERE id = ?', [petId]);
+      const pets = await d1(
+        env,
+        'SELECT id, name, user_id FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1',
+        [petRef, petRef]
+      );
       if (!pets[0]) return json({ error: 'Mascota no encontrada' }, 404);
       const pet = pets[0];
 
+      const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || '';
+      if (shareLocationLimited(ip, pet.id, now)) {
+        return json({ error: 'Esperá un momento antes de volver a compartir la ubicación.' }, 429);
+      }
+
       const owners = await d1(env, 'SELECT id, name, verified_phone FROM users WHERE id = ?', [pet.user_id]);
       const owner = owners[0];
+
+      // Actor SOLO desde sesión opcional. Ignorar cualquier nombre enviado por el cliente.
+      const actorUserId = await authUser(request, env, body);
+      let actorName = null;
+      if (actorUserId) {
+        const actors = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [actorUserId]);
+        actorName = displayPersonName(actors[0] || null);
+      }
 
       const id = `loc-${now}-${Math.random().toString(36).slice(2, 8)}`;
       let status = 'no_phone';
@@ -1470,11 +1872,29 @@ async function handleDb(request, env) {
         status = smsResult.ok ? 'sent' : smsResult.provider === 'demo' ? 'demo' : 'failed';
       }
 
+      await ensureLocationActorColumn(env);
       await d1(
         env,
-        'INSERT INTO location_shares (id, pet_id, owner_id, lat, lon, accuracy, sms_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, petId, pet.user_id, lat, lon, accuracy, status, now]
+        'INSERT INTO location_shares (id, pet_id, owner_id, lat, lon, accuracy, sms_status, created_at, actor_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, pet.id, pet.user_id, lat, lon, accuracy, status, now, actorUserId]
       );
+
+      try {
+        await notifyUserPush(env, {
+          userId: pet.user_id,
+          type: 'location',
+          idempotencyKey: locationPushIdempotencyKey(id),
+          nowMs: now,
+          buildMessage: (token) =>
+            locationPushMessage({
+              token,
+              petName: pet.name,
+              petId: pet.id,
+              shareId: id,
+              actorName,
+            }),
+        });
+      } catch (_) {}
 
       return json({ ok: true, status, notified: status === 'sent' });
     }
@@ -1483,6 +1903,60 @@ async function handleDb(request, env) {
 
     const userId = await authUser(request, env, body);
     if (!userId) return json({ error: 'Inicia sesión para continuar' }, 401);
+
+    if (action === 'registerPushToken') {
+      const expoPushToken = clean(body.expoPushToken, 200);
+      const platform = clean(body.platform, 20) || 'android';
+      const deviceId = clean(body.deviceId, 80) || null;
+      if (!isExpoPushToken(expoPushToken)) return json({ error: 'Token de push inválido' }, 400);
+      const existing = await d1(env, 'SELECT * FROM user_push_tokens WHERE expo_push_token = ?', [expoPushToken]);
+      const planned = assignPushToken(mapPushTokenRow(existing[0]) || null, {
+        userId,
+        expoPushToken,
+        platform,
+        deviceId,
+        now,
+        newId: `ptok-${now}-${Math.random().toString(36).slice(2, 8)}`,
+      });
+      if (planned.action === 'insert') {
+        await d1(
+          env,
+          `INSERT INTO user_push_tokens
+            (id, user_id, expo_push_token, platform, device_id, enabled, created_at, updated_at, last_seen_at)
+           VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+          [
+            planned.row.id,
+            planned.row.userId,
+            planned.row.expoPushToken,
+            planned.row.platform,
+            planned.row.deviceId,
+            planned.row.createdAt,
+            planned.row.updatedAt,
+            planned.row.lastSeenAt,
+          ]
+        );
+      } else {
+        await d1(
+          env,
+          `UPDATE user_push_tokens
+              SET user_id = ?, platform = ?, device_id = ?, enabled = 1, updated_at = ?, last_seen_at = ?
+            WHERE expo_push_token = ?`,
+          [planned.row.userId, planned.row.platform, planned.row.deviceId, planned.row.updatedAt, planned.row.lastSeenAt, expoPushToken]
+        );
+      }
+      return json({ ok: true, action: planned.action });
+    }
+
+    if (action === 'unregisterPushToken') {
+      const expoPushToken = clean(body.expoPushToken, 200);
+      if (!isExpoPushToken(expoPushToken)) return json({ ok: true });
+      await d1(
+        env,
+        'UPDATE user_push_tokens SET enabled = 0, updated_at = ? WHERE expo_push_token = ? AND user_id = ?',
+        [now, expoPushToken, userId]
+      );
+      return json({ ok: true });
+    }
 
     // Vincula una chapita QR (todavía sin asignar) a una mascota del usuario
     // autenticado. Se usa justo después de crear la mascota en el flujo de
@@ -1830,6 +2304,10 @@ async function handleDb(request, env) {
       const username = clean(String(body.username || '').replace(/^@/, ''), 20).toLowerCase();
       const bio = clean(body.bio, 200);
       const location = clean(body.location, 80);
+      let locality = owned[0].locality || null;
+      if (body.locality !== undefined) {
+        locality = clean(body.locality, 100) || null;
+      }
       const phone = clean(body.phone, 30);
       const avatar = clean(body.avatar, 500) || null;
       if (name.length < 2) return json({ error: 'Escribe el nombre del perfil' }, 400);
@@ -1844,8 +2322,8 @@ async function handleDb(request, env) {
       }
       await d1(
         env,
-        'UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, phone = ?, avatar_url = COALESCE(?, avatar_url) WHERE id = ?',
-        [name, username, bio, location, phone, avatar, profileId]
+        'UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, locality = ?, phone = ?, avatar_url = COALESCE(?, avatar_url) WHERE id = ?',
+        [name, username, bio, location, locality, phone, avatar, profileId]
       );
       const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId]);
       return json({ ok: true, profile: profileRow(rows[0]) });
@@ -1897,6 +2375,9 @@ async function handleDb(request, env) {
       const emoji = clean(body.emoji, 8) || emojiForSpecies(species);
       const avatarUrl = clean(body.avatarUrl, 500) || null;
       const size = normalizeSize(body.size) || null;
+      const sexParsed = parsePetSex(body.sex);
+      if (body.sex !== undefined && !sexParsed.ok) return json({ error: 'Sexo inválido' }, 400);
+      const sex = body.sex === undefined ? null : sexParsed.value;
       const neutered = normalizeNeutered(body.neutered);
       const birthDate = clean(body.birthDate, 10) || null;
       if (name.length < 1) return json({ error: 'Ponle nombre a tu mascota' }, 400);
@@ -1931,9 +2412,9 @@ async function handleDb(request, env) {
         env,
         `INSERT INTO pets (
           id, user_id, name, username, species, breed, age, bio, emoji, avatar_url, created_at,
-          profile_id, care_status, adoption_started_at, birth_date, size, neutered
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, userId, name, username, species, breed, '', bio, emoji, avatarUrl, now, profileId, careStatus, adoptionStartedAt, birthDate, size, neutered]
+          profile_id, care_status, adoption_started_at, birth_date, size, sex, neutered
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, userId, name, username, species, breed, '', bio, emoji, avatarUrl, now, profileId, careStatus, adoptionStartedAt, birthDate, size, sex, neutered]
       );
       const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [id]);
       return json({ ok: true, pet: petRow(rows[0]) });
@@ -1949,6 +2430,12 @@ async function handleDb(request, env) {
       const emoji = clean(body.emoji, 8) || emojiForSpecies(species) || p.emoji;
       const avatarUrl = body.avatarUrl != null ? (clean(body.avatarUrl, 500) || p.avatar_url) : p.avatar_url;
       const size = body.size != null ? (normalizeSize(body.size) || null) : (p.size || null);
+      let sex = p.sex || null;
+      if (body.sex !== undefined) {
+        const sexParsed = parsePetSex(body.sex);
+        if (!sexParsed.ok) return json({ error: 'Sexo inválido' }, 400);
+        sex = sexParsed.value;
+      }
       const neutered = body.neutered !== undefined ? normalizeNeutered(body.neutered) : (p.neutered == null ? null : Number(p.neutered));
       let birthDate = p.birth_date || null;
       if (body.birthDate !== undefined) {
@@ -1990,9 +2477,9 @@ async function handleDb(request, env) {
       await d1(
         env,
         `UPDATE pets SET name = ?, username = ?, species = ?, breed = ?, bio = ?, emoji = ?, avatar_url = ?,
-          care_status = ?, adoption_started_at = ?, birth_date = ?, size = ?, neutered = ?, age = ?
+          care_status = ?, adoption_started_at = ?, birth_date = ?, size = ?, sex = ?, neutered = ?, age = ?
          WHERE id = ?`,
-        [name, username, species, breed, bio, emoji, avatarUrl, careStatus, adoptionStartedAt, birthDate, size, neutered, '', p.id]
+        [name, username, species, breed, bio, emoji, avatarUrl, careStatus, adoptionStartedAt, birthDate, size, sex, neutered, '', p.id]
       );
       const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [p.id]);
       return json({ ok: true, pet: petRow(rows[0]) });
@@ -2015,7 +2502,7 @@ async function handleDb(request, env) {
     }
 
     if (action === 'notifications') {
-      const [likes, comments, followsUser, followsPet, locations] = await Promise.all([
+      const [likes, comments, followsUser, followsPet, locations, birthdays] = await Promise.all([
         d1(env, `SELECT l.created_at, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url, p.id AS post_id, p.image AS post_image
            FROM likes l JOIN posts p ON p.id = l.post_id JOIN users u ON u.id = l.user_id
            WHERE p.user_id = ? AND l.user_id != ? ORDER BY l.created_at DESC LIMIT 20`, [userId, userId]),
@@ -2030,31 +2517,62 @@ async function handleDb(request, env) {
            WHERE f.target_type = 'pet' AND pt.user_id = ? AND f.user_id != ? ORDER BY f.created_at DESC LIMIT 20`, [userId, userId]),
         // Ubicaciones compartidas por visitantes (vía QR/chapita) en mis mascotas.
         // Notificación 100% gratuita: vive solo en D1, sin SMS.
-        d1(env, `SELECT ls.id, ls.created_at, ls.lat, ls.lon, ls.accuracy, ls.sms_status, pt.id AS pet_id, pt.name AS pet_name, pt.emoji AS pet_emoji
+        d1(env, `SELECT ls.id, ls.created_at, ls.lat, ls.lon, ls.accuracy, ls.sms_status, ls.actor_user_id,
+                pt.id AS pet_id, pt.name AS pet_name, pt.emoji AS pet_emoji,
+                u.name AS actor_name, u.username AS actor_username
            FROM location_shares ls JOIN pets pt ON pt.id = ls.pet_id
+           LEFT JOIN users u ON u.id = ls.actor_user_id
            WHERE ls.owner_id = ? ORDER BY ls.created_at DESC LIMIT 20`, [userId]),
+        d1(env, `SELECT id, type, user_id, pet_id, title, body, metadata, created_at
+           FROM activity_events
+           WHERE user_id = ? AND type = 'birthday'
+           ORDER BY created_at DESC LIMIT 20`, [userId]),
       ]);
       const items = [
         ...likes.map((r) => ({ id: `like-${r.actor_id}-${r.post_id}-${r.created_at}`, type: 'like', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, postId: r.post_id, postImage: r.post_image || null, createdAt: r.created_at })),
         ...comments.map((r) => ({ id: `comment-${r.actor_id}-${r.post_id}-${r.created_at}`, type: 'comment', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, postId: r.post_id, postImage: r.post_image || null, text: (r.text || '').slice(0, 80), createdAt: r.created_at })),
         ...followsUser.map((r) => ({ id: `fu-${r.actor_id}-${r.created_at}`, type: 'follow_user', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, createdAt: r.created_at })),
         ...followsPet.map((r) => ({ id: `fp-${r.actor_id}-${r.pet_id}-${r.created_at}`, type: 'follow_pet', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, petId: r.pet_id, petName: r.pet_name, createdAt: r.created_at })),
-        ...locations.map((r) => ({
-          id: `loc-${r.id}`,
-          type: 'location',
-          actorId: null,
-          actorName: 'Alguien',
-          actorUsername: 'anónimo',
-          actorAvatar: null,
-          petId: r.pet_id,
-          petName: r.pet_name,
-          petEmoji: r.pet_emoji,
-          lat: r.lat,
-          lon: r.lon,
-          accuracy: r.accuracy,
-          smsStatus: r.sms_status,
-          createdAt: r.created_at,
-        })),
+        ...locations.map((r) => {
+          const actorId = r.actor_user_id || null;
+          const actorName = actorId ? displayPersonName({ name: r.actor_name, username: r.actor_username }) : null;
+          return {
+            id: `loc-${r.id}`,
+            type: 'location',
+            actorId,
+            actorName: actorName || '',
+            actorUsername: '',
+            actorAvatar: null,
+            petId: r.pet_id,
+            petName: r.pet_name,
+            petEmoji: r.pet_emoji,
+            lat: r.lat,
+            lon: r.lon,
+            accuracy: r.accuracy,
+            smsStatus: r.sms_status,
+            createdAt: r.created_at,
+          };
+        }),
+        ...birthdays.map((r) => {
+          let meta = {};
+          try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { meta = {}; }
+          return {
+            id: r.id,
+            type: 'birthday',
+            actorId: r.user_id,
+            actorName: meta.petName || '',
+            actorUsername: '',
+            actorAvatar: meta.petAvatar || null,
+            petId: r.pet_id || meta.petId || null,
+            petUsername: meta.petUsername || null,
+            petName: meta.petName || null,
+            petEmoji: meta.petEmoji || null,
+            title: r.title,
+            text: r.body || '',
+            years: meta.years || null,
+            createdAt: r.created_at,
+          };
+        }),
       ].sort((a, b) => b.createdAt - a.createdAt).slice(0, 40);
       return json({ ok: true, notifications: items });
     }
@@ -2277,6 +2795,20 @@ export default {
       return json({ error: 'Ruta no encontrada' }, 404);
     } catch (e) {
       return json({ error: `Worker: ${e.message}` }, 500);
+    }
+  },
+
+  async scheduled(event, env) {
+    const nowMs = event && event.scheduledTime ? Number(event.scheduledTime) : Date.now();
+    try {
+      await runPersonalPetBirthdays(env, nowMs);
+    } catch (e) {
+      console.log('pet-birthday-cron', e && e.message);
+    }
+    try {
+      await processPushReceipts(env, nowMs);
+    } catch (e) {
+      console.log('push-receipts', e && e.message);
     }
   },
 };

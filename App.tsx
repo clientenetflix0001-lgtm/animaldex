@@ -6,7 +6,6 @@ import {
   DefaultTheme,
   RouteProp,
   LinkingOptions,
-  createNavigationContainerRef,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -40,6 +39,7 @@ import CreateListingScreen from './screens/CreateListingScreen';
 import ListingDetailScreen from './screens/ListingDetailScreen';
 import SellerShopScreen from './screens/SellerShopScreen';
 import MarketFavoritesScreen from './screens/MarketFavoritesScreen';
+import AdoptionDiscoveryScreen from './screens/AdoptionDiscoveryScreen';
 
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
@@ -49,6 +49,14 @@ import { RootStackParamList, TabParamList } from './lib/types';
 import { useBreakpoint } from './lib/responsive';
 import { Sidebar } from './components/Sidebar';
 import { extractTagCode } from './lib/tags';
+import { createTabProfileStack, navigateMainTab } from './lib/tabProfileStack';
+import { navigationRef } from './lib/navigationRef';
+import { attachPushResponseListeners, ensurePushHandler, registerPushTokenIfGranted, setPushNavGate } from './lib/push';
+import {
+  APP_LINK_PREFIXES,
+  applyAppLinkIfReady,
+  rememberIncomingAppLink,
+} from './lib/appLinks';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -56,11 +64,24 @@ const Tab = createBottomTabNavigator<TabParamList>();
 // Ref global de navegación: permite navegar desde fuera del árbol de
 // componentes (por ejemplo, al detectar un deep link ?qr=xx antes de
 // que el usuario haya iniciado sesión).
-export const navigationRef = createNavigationContainerRef<RootStackParamList>();
-
 function MyProfileTab() {
   return <UserProfileScreen showBack={false} />;
 }
+
+function InicioRoot() {
+  return <FeedReelsSwiper initialPage={0} />;
+}
+
+function ReelsRoot() {
+  return <FeedReelsSwiper initialPage={1} />;
+}
+
+const InicioStack = createTabProfileStack(InicioRoot);
+const ReelsStack = createTabProfileStack(ReelsRoot);
+const AlertasStack = createTabProfileStack(AlertsScreen);
+const MercadoStack = createTabProfileStack(MarketScreen);
+const ActividadStack = createTabProfileStack(ActivityScreen);
+const PerfilStack = createTabProfileStack(MyProfileTab);
 
 function UserProfileRoute() {
   const route = useRoute<RouteProp<RootStackParamList, 'UserProfile'>>();
@@ -109,7 +130,7 @@ function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
         return (
           <Pressable
             key={name}
-            onPress={() => navigation.navigate(name)}
+            onPress={() => navigateMainTab(navigation, name)}
             style={styles.tabItem}
             accessibilityRole="button"
             accessibilityLabel={name === 'Crear' ? 'Crear' : name}
@@ -160,13 +181,13 @@ function Tabs() {
           sceneStyle: { paddingLeft: sidebarWidth, backgroundColor: colors.bg },
         }}
       >
-        <Tab.Screen name="Inicio">{() => <FeedReelsSwiper initialPage={0} />}</Tab.Screen>
-        <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
-        <Tab.Screen name="Alertas" component={AlertsScreen} />
-        <Tab.Screen name="Mercado" component={MarketScreen} />
+        <Tab.Screen name="Inicio" component={InicioStack} />
+        <Tab.Screen name="Reels" component={ReelsStack} />
+        <Tab.Screen name="Alertas" component={AlertasStack} />
+        <Tab.Screen name="Mercado" component={MercadoStack} />
         <Tab.Screen name="Crear" component={CreatePostScreen} />
-        <Tab.Screen name="Actividad" component={ActivityScreen} />
-        <Tab.Screen name="Perfil" component={MyProfileTab} />
+        <Tab.Screen name="Actividad" component={ActividadStack} />
+        <Tab.Screen name="Perfil" component={PerfilStack} />
       </Tab.Navigator>
     );
   }
@@ -174,30 +195,32 @@ function Tabs() {
   // ---------- Móvil / tablet ----------
   // Barra visible: Inicio | Reels | Alertas | + | Mercado | Perfil
   // Actividad sigue registrada (misma pantalla) pero NO se muestra abajo.
+  // Perfiles (mascota / público / usuario) viven DENTRO de cada pila de tab
+  // para no tapar la barra. El Root Stack conserva las mismas pantallas
+  // para deep links y App Links (/pet/:handle, /:username).
   return (
     <Tab.Navigator
       tabBar={(props) => <MobileTabBar state={props.state} navigation={props.navigation} />}
       screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen name="Inicio">{() => <FeedReelsSwiper initialPage={0} />}</Tab.Screen>
-      <Tab.Screen name="Reels">{() => <FeedReelsSwiper initialPage={1} />}</Tab.Screen>
-      <Tab.Screen name="Alertas" component={AlertsScreen} />
+      <Tab.Screen name="Inicio" component={InicioStack} />
+      <Tab.Screen name="Reels" component={ReelsStack} />
+      <Tab.Screen name="Alertas" component={AlertasStack} />
       <Tab.Screen name="Crear" component={CreatePostScreen} />
-      <Tab.Screen name="Mercado" component={MarketScreen} />
-      <Tab.Screen name="Perfil" component={MyProfileTab} />
-      <Tab.Screen name="Actividad" component={ActivityScreen} />
+      <Tab.Screen name="Mercado" component={MercadoStack} />
+      <Tab.Screen name="Perfil" component={PerfilStack} />
+      <Tab.Screen name="Actividad" component={ActividadStack} />
     </Tab.Navigator>
   );
 }
 
 const linking: LinkingOptions<RootStackParamList> = {
-  // `animaldex://` (esquema propio, no se toca) + el dominio HTTPS público.
-  // El prefijo HTTPS permite que un Android App Link verificado
-  // (https://animaldex-web.pages.dev/p/<id>) abra la app y resuelva la
-  // misma configuración de rutas de abajo (p/:postId, pet/:petId, etc.).
+  // `animaldex://` (esquema propio, no se toca) + dominios HTTPS públicos.
+  // El prefijo HTTPS permite que un Android App Link verificado abra la app
+  // y resuelva p/:postId, pet/:petId, a/:alertId, m/:listingId, /:username.
   // UserProfile NO tiene path público: los perfiles humanos/páginas
   // se abren siempre como PublicProfile `/:username`.
-  prefixes: ['animaldex://', 'https://animaldex-web.pages.dev'],
+  prefixes: [...APP_LINK_PREFIXES],
   config: {
     screens: {
       Tabs: {
@@ -230,6 +253,25 @@ const linking: LinkingOptions<RootStackParamList> = {
       MarketFavorites: 'mercado-favoritos',
       Auth: 'entrar',
     },
+  },
+  async getInitialURL() {
+    const url = await Linking.getInitialURL();
+    // En nativo el Root Stack no existe hasta authReady. Devolver la URL
+    // aquí hace que React Navigation navegue contra un spinner y se pierda.
+    // La cola de lib/appLinks.ts la aplica AppLinkHandler después.
+    if (Platform.OS !== 'web') {
+      rememberIncomingAppLink(url);
+      return null;
+    }
+    return url;
+  },
+  subscribe(listener) {
+    const onUrl = ({ url }: { url: string }) => {
+      rememberIncomingAppLink(url);
+      listener(url);
+    };
+    const sub = Linking.addEventListener('url', onUrl);
+    return () => sub.remove();
   },
 };
 
@@ -277,6 +319,55 @@ function TagDeepLinkHandler() {
   return null;
 }
 
+function AppLinkHandler() {
+  const { user, authReady } = useStore();
+
+  useEffect(() => {
+    const flush = () => {
+      if (!authReady) return;
+      applyAppLinkIfReady({
+        authReady,
+        navReady: true,
+        hasUser: !!user,
+        isReady: () => navigationRef.isReady(),
+        navigate: (name, params) => {
+          navigationRef.navigate(name as never, params as never);
+        },
+      });
+    };
+    flush();
+    if (!authReady) return;
+    const t = setTimeout(flush, 120);
+    return () => clearTimeout(t);
+  }, [authReady, user]);
+
+  return null;
+}
+
+function PushBootstrap() {
+  const { user, authReady } = useStore();
+
+  useEffect(() => {
+    ensurePushHandler().catch(() => {});
+    let off = () => {};
+    attachPushResponseListeners().then((fn) => {
+      off = fn;
+    }).catch(() => {});
+    return () => off();
+  }, []);
+
+  useEffect(() => {
+    setPushNavGate({ authReady, hasUser: !!user });
+  }, [authReady, user]);
+
+  useEffect(() => {
+    if (!authReady || !user) return;
+    registerPushTokenIfGranted().catch(() => {});
+  }, [authReady, user]);
+
+  return null;
+}
+
 const screenHeaderOptions = {
   headerBackTitle: 'Atrás',
   headerTintColor: colors.text,
@@ -287,7 +378,7 @@ const screenHeaderOptions = {
 
 // Navegador para visitantes SIN sesión. Permite ver recursos públicos
 // abiertos desde un enlace compartido sin cuenta: /p/:id, /:username,
-// /pet/:handle y /a/:id. Cualquier otra ruta cae en Auth.
+// /pet/:handle, /a/:id y /m/:id. Cualquier otra ruta cae en Auth.
 // UserProfile sigue existiendo como pantalla INTERNA (p. ej. QR por user_id),
 // sin URL pública /user/:id.
 function PublicNavigator() {
@@ -303,6 +394,7 @@ function PublicNavigator() {
         component={AlertDetailScreen}
         options={{ title: 'Alerta', ...screenHeaderOptions }}
       />
+      <Stack.Screen name="ListingDetail" component={ListingDetailScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -403,6 +495,11 @@ function RootNavigator() {
         component={MarketFavoritesScreen}
         options={{ title: 'Favoritos', ...screenHeaderOptions }}
       />
+      <Stack.Screen
+        name="AdoptionDiscovery"
+        component={AdoptionDiscoveryScreen}
+        options={{ headerShown: false, contentStyle: { backgroundColor: '#000' } }}
+      />
     </Stack.Navigator>
   );
 }
@@ -459,12 +556,17 @@ export default function App() {
                 ref={navigationRef}
                 theme={navTheme}
                 linking={linking}
+                onReady={() => {
+                  setPushNavGate({ navReady: true });
+                }}
                 documentTitle={{
                   formatter: () => 'Animaldex · La red social de tus mascotas 🐾',
                 }}
               >
                 <StatusBar style="dark" />
                 <TagDeepLinkHandler />
+                <AppLinkHandler />
+                <PushBootstrap />
                 <RootNavigator />
               </NavigationContainer>
             </NotificationsProvider>

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "203941815149",
+    "project_id": "animaldexexpo",
+    "storage_bucket": "animaldexexpo.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:203941815149:android:848ac13fbe02415f2a3064",
+        "android_client_info": {
+          "package_name": "com.lucasap123.animaldex"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFOEcVLzha431Z6cT2DHVM2_8ckY99JOU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
