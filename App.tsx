@@ -39,6 +39,7 @@ import CreateListingScreen from './screens/CreateListingScreen';
 import ListingDetailScreen from './screens/ListingDetailScreen';
 import SellerShopScreen from './screens/SellerShopScreen';
 import MarketFavoritesScreen from './screens/MarketFavoritesScreen';
+import AdoptionDiscoveryScreen from './screens/AdoptionDiscoveryScreen';
 
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
@@ -50,7 +51,12 @@ import { Sidebar } from './components/Sidebar';
 import { extractTagCode } from './lib/tags';
 import { createTabProfileStack, navigateMainTab } from './lib/tabProfileStack';
 import { navigationRef } from './lib/navigationRef';
-import { attachPushResponseListeners, ensurePushHandler, registerPushTokenIfGranted } from './lib/push';
+import { attachPushResponseListeners, ensurePushHandler, registerPushTokenIfGranted, setPushNavGate } from './lib/push';
+import {
+  APP_LINK_PREFIXES,
+  applyAppLinkIfReady,
+  rememberIncomingAppLink,
+} from './lib/appLinks';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -209,13 +215,12 @@ function Tabs() {
 }
 
 const linking: LinkingOptions<RootStackParamList> = {
-  // `animaldex://` (esquema propio, no se toca) + el dominio HTTPS público.
-  // El prefijo HTTPS permite que un Android App Link verificado
-  // (https://animaldex-web.pages.dev/p/<id>) abra la app y resuelva la
-  // misma configuración de rutas de abajo (p/:postId, pet/:petId, etc.).
+  // `animaldex://` (esquema propio, no se toca) + dominios HTTPS públicos.
+  // El prefijo HTTPS permite que un Android App Link verificado abra la app
+  // y resuelva p/:postId, pet/:petId, a/:alertId, m/:listingId, /:username.
   // UserProfile NO tiene path público: los perfiles humanos/páginas
   // se abren siempre como PublicProfile `/:username`.
-  prefixes: ['animaldex://', 'https://animaldex-web.pages.dev'],
+  prefixes: [...APP_LINK_PREFIXES],
   config: {
     screens: {
       Tabs: {
@@ -248,6 +253,25 @@ const linking: LinkingOptions<RootStackParamList> = {
       MarketFavorites: 'mercado-favoritos',
       Auth: 'entrar',
     },
+  },
+  async getInitialURL() {
+    const url = await Linking.getInitialURL();
+    // En nativo el Root Stack no existe hasta authReady. Devolver la URL
+    // aquí hace que React Navigation navegue contra un spinner y se pierda.
+    // La cola de lib/appLinks.ts la aplica AppLinkHandler después.
+    if (Platform.OS !== 'web') {
+      rememberIncomingAppLink(url);
+      return null;
+    }
+    return url;
+  },
+  subscribe(listener) {
+    const onUrl = ({ url }: { url: string }) => {
+      rememberIncomingAppLink(url);
+      listener(url);
+    };
+    const sub = Linking.addEventListener('url', onUrl);
+    return () => sub.remove();
   },
 };
 
@@ -295,6 +319,31 @@ function TagDeepLinkHandler() {
   return null;
 }
 
+function AppLinkHandler() {
+  const { user, authReady } = useStore();
+
+  useEffect(() => {
+    const flush = () => {
+      if (!authReady) return;
+      applyAppLinkIfReady({
+        authReady,
+        navReady: true,
+        hasUser: !!user,
+        isReady: () => navigationRef.isReady(),
+        navigate: (name, params) => {
+          navigationRef.navigate(name as never, params as never);
+        },
+      });
+    };
+    flush();
+    if (!authReady) return;
+    const t = setTimeout(flush, 120);
+    return () => clearTimeout(t);
+  }, [authReady, user]);
+
+  return null;
+}
+
 function PushBootstrap() {
   const { user, authReady } = useStore();
 
@@ -306,6 +355,10 @@ function PushBootstrap() {
     }).catch(() => {});
     return () => off();
   }, []);
+
+  useEffect(() => {
+    setPushNavGate({ authReady, hasUser: !!user });
+  }, [authReady, user]);
 
   useEffect(() => {
     if (!authReady || !user) return;
@@ -325,7 +378,7 @@ const screenHeaderOptions = {
 
 // Navegador para visitantes SIN sesión. Permite ver recursos públicos
 // abiertos desde un enlace compartido sin cuenta: /p/:id, /:username,
-// /pet/:handle y /a/:id. Cualquier otra ruta cae en Auth.
+// /pet/:handle, /a/:id y /m/:id. Cualquier otra ruta cae en Auth.
 // UserProfile sigue existiendo como pantalla INTERNA (p. ej. QR por user_id),
 // sin URL pública /user/:id.
 function PublicNavigator() {
@@ -341,6 +394,7 @@ function PublicNavigator() {
         component={AlertDetailScreen}
         options={{ title: 'Alerta', ...screenHeaderOptions }}
       />
+      <Stack.Screen name="ListingDetail" component={ListingDetailScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -441,6 +495,11 @@ function RootNavigator() {
         component={MarketFavoritesScreen}
         options={{ title: 'Favoritos', ...screenHeaderOptions }}
       />
+      <Stack.Screen
+        name="AdoptionDiscovery"
+        component={AdoptionDiscoveryScreen}
+        options={{ headerShown: false, contentStyle: { backgroundColor: '#000' } }}
+      />
     </Stack.Navigator>
   );
 }
@@ -497,12 +556,16 @@ export default function App() {
                 ref={navigationRef}
                 theme={navTheme}
                 linking={linking}
+                onReady={() => {
+                  setPushNavGate({ navReady: true });
+                }}
                 documentTitle={{
                   formatter: () => 'Animaldex · La red social de tus mascotas 🐾',
                 }}
               >
                 <StatusBar style="dark" />
                 <TagDeepLinkHandler />
+                <AppLinkHandler />
                 <PushBootstrap />
                 <RootNavigator />
               </NavigationContainer>

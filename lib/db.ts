@@ -283,6 +283,25 @@ export const db = {
     call('/db', { action: 'search', q }),
   featuredPets: (): Promise<{ pets: ApiPet[] }> =>
     call('/db', { action: 'featuredPets' }),
+  adoptionFeed: (params: {
+    locality?: string;
+    species?: string;
+    size?: string;
+    sex?: string;
+    before?: number;
+    limit?: number;
+  }): Promise<{
+    items: Array<
+      ApiPet & {
+        source?: 'protector_pet';
+        shelterId?: string | null;
+        shelterName?: string | null;
+        shelterUsername?: string | null;
+        shelterLocation?: string | null;
+      }
+    >;
+    hasMore: boolean;
+  }> => call('/db', { action: 'adoptionFeed', ...params }),
   comments: (postId: string): Promise<{ comments: ApiComment[] }> =>
     call('/db', { action: 'comments', postId }),
   myState: (): Promise<{ state: { likedPosts: string[]; savedPosts: string[]; followedPets: string[]; followedUsers: string[]; myPets: ApiPet[] } }> =>
@@ -342,6 +361,7 @@ export const db = {
     username: string;
     bio?: string;
     location?: string;
+    locality?: string | null;
     phone?: string;
     avatar?: string | null;
   }): Promise<{ profile: import('../features/profiles/profileTypes').PublicProfile }> =>
@@ -362,6 +382,7 @@ export const db = {
     careStatus?: ApiPet['careStatus'];
     birthDate?: string | null;
     size?: ApiPet['size'];
+    sex?: 'macho' | 'hembra' | null;
     neutered?: boolean | null;
   }): Promise<{ pet: ApiPet }> => call('/db', { action: 'createPet', ...pet }),
   checkPetUsername: (username: string, excludePetId?: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>

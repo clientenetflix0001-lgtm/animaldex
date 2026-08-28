@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { db } from './db';
-import { EXPO_PROJECT_ID, PUSH_CHANNEL_PETS, PUSH_CHANNEL_PETS_URGENT, PUSH_CHANNEL_REMINDERS, isExpoPushToken, parsePushNav } from './pushPolicy';
+import { EXPO_PROJECT_ID, PUSH_CHANNEL_PETS, PUSH_CHANNEL_PETS_URGENT, PUSH_CHANNEL_REMINDERS, isExpoPushToken, pushNavDestination, pushTapFlushDecision } from './pushPolicy';
 import { interpretNotificationPermission, PUSH_PROMPT_DISMISSED_KEY } from './pushPrompt';
 import { navigationRef } from './navigationRef';
 
@@ -157,15 +157,71 @@ export async function unregisterThen<T>(next: () => Promise<T>): Promise<T> {
   return next();
 }
 
-export function openFromPushData(data: { type?: string; petId?: string; petUsername?: string; url?: string } | null | undefined) {
-  if (!navigationRef.isReady()) return;
-  const nav = parsePushNav(data);
-  if (nav.kind === 'pet' && nav.petId) {
-    navigationRef.navigate('PetProfile', { petId: nav.petId });
-    return;
+type PushNavGate = {
+  navReady: boolean;
+  authReady: boolean;
+  hasUser: boolean;
+};
+
+let pendingPushData: unknown = null;
+let pushNavGate: PushNavGate = { navReady: false, authReady: false, hasUser: false };
+let pushFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function setPushNavGate(partial: Partial<PushNavGate>): void {
+  pushNavGate = { ...pushNavGate, ...partial };
+  flushPendingPushNav();
+}
+
+function navigatePushDestination(dest: NonNullable<ReturnType<typeof pushNavDestination>>): boolean {
+  if (!navigationRef.isReady()) return false;
+  if (dest.name === 'PetProfile') {
+    navigationRef.navigate('PetProfile', dest.params);
+    return true;
   }
-  if (nav.kind === 'activity') {
-    navigationRef.navigate('Tabs', { screen: 'Actividad' } as never);
+  navigationRef.navigate('Tabs', dest.params as never);
+  return true;
+}
+
+export function flushPendingPushNav(): 'idle' | 'wait' | 'apply' | 'none' {
+  const decision = pushTapFlushDecision({
+    hasPending: pendingPushData != null,
+    navReady: pushNavGate.navReady,
+    authReady: pushNavGate.authReady,
+    hasUser: pushNavGate.hasUser,
+    navIsReady: navigationRef.isReady(),
+  });
+  if (decision !== 'apply') return decision;
+  const dest = pushNavDestination(pendingPushData);
+  if (!dest) {
+    pendingPushData = null;
+    return 'none';
+  }
+  try {
+    if (!navigatePushDestination(dest)) return 'wait';
+    pendingPushData = null;
+    return 'apply';
+  } catch {
+    return 'wait';
+  }
+}
+
+export function openFromPushData(data: unknown) {
+  if (data == null) return;
+  const dest = pushNavDestination(data);
+  if (!dest) return;
+  pendingPushData = data;
+  const result = flushPendingPushNav();
+  if (result === 'wait') {
+    if (pushFlushTimer) clearTimeout(pushFlushTimer);
+    let attempts = 0;
+    const retry = () => {
+      attempts += 1;
+      const next = flushPendingPushNav();
+      if (next === 'wait' && attempts < 40) {
+        pushFlushTimer = setTimeout(retry, 100);
+      }
+    };
+    pushFlushTimer = setTimeout(retry, 100);
   }
 }
 
@@ -175,9 +231,15 @@ export async function attachPushResponseListeners(): Promise<() => void> {
   if (!native) return () => {};
   await ensurePushHandler();
   const sub = native.Notifications.addNotificationResponseReceivedListener((response) => {
-    openFromPushData(response.notification.request.content.data as never);
+    openFromPushData(response.notification.request.content.data);
   });
   const last = await native.Notifications.getLastNotificationResponseAsync();
-  if (last) openFromPushData(last.notification.request.content.data as never);
-  return () => sub.remove();
+  if (last) openFromPushData(last.notification.request.content.data);
+  return () => {
+    sub.remove();
+    if (pushFlushTimer) {
+      clearTimeout(pushFlushTimer);
+      pushFlushTimer = null;
+    }
+  };
 }

@@ -5,6 +5,7 @@ export type TabProfileStackParamList = {
   PetProfile: { petId: string };
   PublicProfile: { profileId?: string; username?: string };
   UserProfile: { userId: string };
+  AdoptionDiscovery: undefined;
 };
 
 export type TabParamList = {
@@ -38,4 +39,5 @@ export type RootStackParamList = {
   SellerShop: { userId: string };
   MarketFavorites: undefined;
   PublicProfile: { profileId?: string; username?: string };
+  AdoptionDiscovery: undefined;
 };

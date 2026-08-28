@@ -21,6 +21,8 @@ import {
   payloadHasSensitiveLocation,
   parsePushNav,
   prefAllows,
+  pushNavDestination,
+  pushTapFlushDecision,
   tokensToDisableFromReceipts,
   tokensToDisableFromTickets,
 } from '../lib/pushPolicy.ts';
@@ -247,5 +249,91 @@ describe('client cannot push to another user + web safe', () => {
     assert.match(appJson, /googleServicesFile/);
     assert.match(appJson, /pathPrefix": "\/p\//);
     assert.match(appJson, /pathAdvancedPattern/);
+  });
+});
+
+describe('tap de push de ubicación', () => {
+  const locationData = locationPushMessage({
+    token: TOKEN_A,
+    petName: 'Luna',
+    petId: 'pet-luna',
+    shareId: 'loc-share-1',
+    actorName: 'Lucas Fuentes',
+  }).data;
+
+  it('el payload ya trae type, petId, shareId y url /actividad', () => {
+    assert.deepEqual(locationData, {
+      type: 'location',
+      petId: 'pet-luna',
+      shareId: 'loc-share-1',
+      url: '/actividad',
+    });
+    assert.deepEqual(parsePushNav(locationData), {
+      kind: 'activity',
+      petId: 'pet-luna',
+      shareId: 'loc-share-1',
+    });
+    assert.deepEqual(pushNavDestination(locationData), {
+      name: 'Tabs',
+      params: { screen: 'Actividad' },
+    });
+    assert.equal(payloadHasSensitiveLocation({ data: locationData } as never), false);
+  });
+
+  it('cold start espera nav+auth; background/foreground aplican al toque', () => {
+    assert.equal(
+      pushTapFlushDecision({
+        hasPending: true,
+        navReady: false,
+        authReady: false,
+        hasUser: false,
+        navIsReady: false,
+      }),
+      'wait'
+    );
+    assert.equal(
+      pushTapFlushDecision({
+        hasPending: true,
+        navReady: true,
+        authReady: false,
+        hasUser: false,
+        navIsReady: true,
+      }),
+      'wait'
+    );
+    assert.equal(
+      pushTapFlushDecision({
+        hasPending: true,
+        navReady: true,
+        authReady: true,
+        hasUser: true,
+        navIsReady: true,
+      }),
+      'apply'
+    );
+    assert.equal(
+      pushTapFlushDecision({
+        hasPending: false,
+        navReady: true,
+        authReady: true,
+        hasUser: true,
+        navIsReady: true,
+      }),
+      'idle'
+    );
+  });
+
+  it('el cliente encola el tap hasta que NavigationContainer y la sesión estén listos', () => {
+    const push = readFileSync(join(root, 'lib/push.ts'), 'utf8');
+    const app = readFileSync(join(root, 'App.tsx'), 'utf8');
+    assert.match(push, /getLastNotificationResponseAsync/);
+    assert.match(push, /addNotificationResponseReceivedListener/);
+    assert.match(push, /flushPendingPushNav/);
+    assert.match(push, /setPushNavGate/);
+    assert.match(app, /setPushNavGate\(\{ authReady, hasUser: !!user \}\)/);
+    assert.match(app, /onReady=\{\(\) => \{/);
+    assert.match(app, /setPushNavGate\(\{ navReady: true \}\)/);
+    assert.match(push, /pendingPushData = data/);
+    assert.match(push, /if \(result === 'wait'\)/);
   });
 });
