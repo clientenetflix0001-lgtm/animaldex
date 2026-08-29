@@ -14,6 +14,10 @@ import {
   resolvePostBackground,
 } from '../lib/postBackgrounds';
 import { colors, radius } from '../lib/theme';
+import { CONTENT } from '../lib/responsive';
+import { feedBoxHeightForWidth } from '../lib/feedMediaLayout';
+
+const FEED_SEE_MORE_WIDTH = CONTENT.feed;
 
 const PAW_MARKS = [
   { top: '8%', left: '10%', rotate: '-18deg', size: 34 },
@@ -86,18 +90,28 @@ interface CardProps {
   /** Si se pasa y el texto no entra, muestra "Ver más" dentro de la altura fija. */
   onSeeMore?: () => void;
   placeholder?: boolean;
+  /** Solo Feed: caja 4:5. Detalle/composer siguen con altura 350. */
+  aspectRatio?: number;
 }
 
-function PostBackgroundCardInner({ backgroundId, text, onSeeMore, placeholder }: CardProps) {
+function PostBackgroundCardInner({
+  backgroundId,
+  text,
+  onSeeMore,
+  placeholder,
+  aspectRatio,
+}: CardProps) {
   const bg = resolvePostBackground(backgroundId);
+  const cardHeight = aspectRatio
+    ? feedBoxHeightForWidth(FEED_SEE_MORE_WIDTH, aspectRatio)
+    : POST_BACKGROUND_CARD_HEIGHT;
   const display = text.trim();
-  const needsSeeMore = !!onSeeMore && backgroundTextNeedsSeeMore(display);
+  const needsSeeMore = !!onSeeMore && backgroundTextNeedsSeeMore(display, cardHeight);
   const fontSize = backgroundCardFontSize(display.length);
-  const maxLines = backgroundCardMaxLines(display.length, needsSeeMore);
+  const maxLines = backgroundCardMaxLines(display.length, needsSeeMore, cardHeight);
   const lineHeight = Math.round(fontSize * 1.32);
-
   return (
-    <View style={styles.card}>
+    <View style={aspectRatio ? [styles.cardFlex, { aspectRatio }] : styles.card}>
       <BackgroundFill bg={bg} />
       {bg.pattern === 'paws' ? <PawPattern color={bg.textColor} /> : null}
       <View style={styles.textWrap} pointerEvents="none">
@@ -208,6 +222,11 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     height: POST_BACKGROUND_CARD_HEIGHT,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  cardFlex: {
+    width: '100%',
     overflow: 'hidden',
     position: 'relative',
   },
