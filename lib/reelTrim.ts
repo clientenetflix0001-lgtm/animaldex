@@ -4,6 +4,7 @@
  * Requiere código nativo: el próximo AAB / EAS Build. No Expo Go.
  */
 import { REEL_MAX_DURATION_MS, galleryNeedsTrim, reelUploadSource } from './reels.ts';
+import { normalizeLocalFileUri } from './reelUri.ts';
 
 export const REEL_TRIM_MAX_DURATION_MS = REEL_MAX_DURATION_MS;
 
@@ -58,7 +59,7 @@ export function trimSelectionRejects(startTime: number, endTime: number): boolea
 }
 
 export function applyTrimFinish(event: ReelTrimFinish): ReelTrimOutcome {
-  const uri = String(event.outputPath || '').trim();
+  const uri = normalizeLocalFileUri(event.outputPath);
   if (!uri) return { status: 'error', message: 'El recorte no devolvió archivo.' };
   const fromRange =
     event.startTime != null && event.endTime != null

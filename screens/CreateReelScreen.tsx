@@ -26,6 +26,8 @@ import {
   REEL_DURATION_REJECT_MESSAGE,
   clientReelValidationError,
   createReelIsDirty,
+  reelPublishErrorMessage,
+  shouldCancelReelAfterPublishError,
 } from '../lib/reels';
 import {
   canAddReelOverlay,
@@ -291,6 +293,7 @@ export default function CreateReelScreen() {
     setPhase('preparing');
     setError('');
     reelDevT0();
+    let uploadCompleted = false;
     try {
       const created = await db.createReelUpload({
         mime,
@@ -314,10 +317,10 @@ export default function CreateReelScreen() {
       });
       reelDevMark(created.reelId, 'T2', { ok: put.ok, status: put.status });
       if (!put.ok) {
-        await db.cancelReelUpload(created.reelId).catch(() => {});
         throw new Error('No se pudo subir el video a Mux');
       }
       await db.completeReelUpload(created.reelId);
+      uploadCompleted = true;
       rememberLocalReel({
         id: created.reelId,
         status: 'processing',
@@ -358,9 +361,21 @@ export default function CreateReelScreen() {
         }]
       );
     } catch (e: any) {
+      const failedId = createdIdRef.current;
+      if (failedId && shouldCancelReelAfterPublishError(uploadCompleted)) {
+        await db.cancelReelUpload(failedId).catch(() => {});
+        rememberLocalReel({
+          id: failedId,
+          status: 'upload_failed',
+          caption: caption.trim(),
+          thumbnailUri: source,
+          createdAt: Date.now(),
+        });
+      }
+      const message = reelPublishErrorMessage(e);
       setPhase('error');
-      setError(e?.message || 'No se pudo publicar el Reel');
-      Alert.alert('Error', e?.message || 'No se pudo publicar el Reel');
+      setError(message);
+      Alert.alert('Error', message);
     } finally {
       busyRef.current = false;
     }

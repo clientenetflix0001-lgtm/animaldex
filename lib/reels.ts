@@ -22,6 +22,8 @@
  * ensureReelsSchema no aplica SQL salvo REELS_SCHEMA_APPLY=1.
  */
 
+import { normalizeLocalFileUri } from './reelUri.ts';
+
 export const REEL_MAX_DURATION_SEC = 30;
 export const REEL_MAX_DURATION_MS = REEL_MAX_DURATION_SEC * 1000;
 /** Holgura solo para data.duration de Mux. No es límite de producto. */
@@ -101,10 +103,9 @@ export function muxDurationRejects(durationSec: number | null | undefined): bool
 
 /** Archivo que se sube a Mux: trimmed gana siempre sobre el original. */
 export function reelUploadSource(input: { originalUri?: string | null; trimmedUri?: string | null }): string | null {
-  const trimmed = String(input.trimmedUri || '').trim();
+  const trimmed = normalizeLocalFileUri(input.trimmedUri);
   if (trimmed) return trimmed;
-  const original = String(input.originalUri || '').trim();
-  return original || null;
+  return normalizeLocalFileUri(input.originalUri);
 }
 
 export function durationSecToMs(durationSec: number): number {
@@ -544,9 +545,32 @@ export function removeReelFromList<T extends { id: string }>(list: T[], id: stri
 
 export function ownerReelSurface(status: string): 'ready' | 'processing' | 'failed' | 'hidden' {
   if (status === 'ready') return 'ready';
-  if (status === 'uploading' || status === 'processing') return 'processing';
-  if (status === 'upload_failed' || status === 'processing_failed' || status === 'rejected') return 'failed';
+  if (status === 'processing') return 'processing';
+  if (status === 'uploading' || status === 'upload_failed' || status === 'processing_failed' || status === 'rejected') {
+    return 'failed';
+  }
   return 'hidden';
+}
+
+export function ownerReelFailedCopy(status: string): string {
+  if (status === 'uploading' || status === 'upload_failed') return 'No se pudo subir este Reel';
+  return 'No pudimos procesar este Reel.';
+}
+
+export const REEL_RATE_LIMIT_MESSAGE =
+  'Alcanzaste temporalmente el límite de publicaciones de Reels. Podrás volver a intentarlo más tarde.';
+
+export function reelPublishErrorMessage(err: unknown): string {
+  const status = err && typeof err === 'object' && 'status' in err ? Number((err as { status?: number }).status) : 0;
+  const raw = err instanceof Error ? err.message : String((err as { message?: string })?.message || err || '');
+  if (status === 429 || /límite de subidas/i.test(raw)) return REEL_RATE_LIMIT_MESSAGE;
+  if (raw && raw !== 'No se pudo publicar el Reel') return raw;
+  return 'No se pudo publicar el Reel';
+}
+
+/** Solo cancelar si el PUT a Mux / completeReelUpload no terminó. */
+export function shouldCancelReelAfterPublishError(uploadCompleted: boolean): boolean {
+  return !uploadCompleted;
 }
 
 export function canDeleteReel(viewerId: string | null | undefined, ownerId: string | null | undefined): boolean {

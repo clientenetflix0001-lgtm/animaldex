@@ -333,7 +333,7 @@ describe('aislamiento Animaldex', () => {
     assert.match(reelsScreen, /shouldPlayReel/);
     assert.match(reelsScreen, /viewabilityConfig/);
     assert.match(swiper, /ReelsPageVisibleProvider/);
-    assert.match(swiper, /page === 1/);
+    assert.match(swiper, /shouldPlayFeedReels/);
     const plugins = JSON.stringify(appJson.expo.plugins);
     assert.match(plugins, /expo-video/);
     assert.match(plugins, /supportsBackgroundPlayback/);
@@ -564,6 +564,7 @@ describe('estados feed, processing, delete, overlays UX', () => {
 
   it('processing / failed no público; delete propio vs ajeno', () => {
     assert.equal(ownerReelSurface('processing'), 'processing');
+    assert.equal(ownerReelSurface('uploading'), 'failed');
     assert.equal(ownerReelSurface('upload_failed'), 'failed');
     assert.equal(isPublicReel({ status: 'processing_failed' }), false);
     assert.equal(isPublicReel({ status: 'rejected' }), false);
@@ -574,7 +575,7 @@ describe('estados feed, processing, delete, overlays UX', () => {
     assert.match(reelsMux, /deleteReel/);
     assert.match(reelsMux, /cleanup_disabled|MUX_CLEANUP_ENABLED/);
     assert.match(card, /Procesando Reel/);
-    assert.match(card, /No pudimos procesar este Reel/);
+    assert.match(card, /ownerReelFailedCopy/);
     const merged = mergeOwnerReels([{ id: 'a' }], [{ id: 'p' }, { id: 'a' }]);
     assert.equal(merged[0].id, 'p');
     assert.equal(merged.length, 2);

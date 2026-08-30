@@ -9,6 +9,7 @@ import {
   bufferSecondsForRole,
   displayedLikeCount,
   formatReelCount,
+  ownerReelFailedCopy,
   ownerReelSurface,
   reelCaptionDisplay,
   resolveReelVideoTap,
@@ -210,7 +211,7 @@ function ReelCardInner({
 
       {surface === 'failed' && isOwner ? (
         <View style={styles.ownerState}>
-          <Text style={styles.ownerStateT}>No pudimos procesar este Reel.</Text>
+          <Text style={styles.ownerStateT}>{ownerReelFailedCopy(reel.status)}</Text>
           <Pressable onPress={confirmDelete} style={styles.retry} accessibilityLabel="Eliminar Reel">
             <Text style={styles.retryText}>Eliminar</Text>
           </Pressable>
