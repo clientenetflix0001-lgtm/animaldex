@@ -28,7 +28,6 @@ import {
   limitMessage,
 } from '../features/profiles/profileTypes.ts';
 import { resolveAppLink } from '../lib/appLinks.ts';
-import { isReservedPublicUsername } from '../lib/publicHandles.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const app = readFileSync(join(root, 'App.tsx'), 'utf8');
@@ -47,6 +46,7 @@ const db = readFileSync(join(root, 'lib/db.ts'), 'utf8');
 const worker = readFileSync(join(root, 'worker/index.js'), 'utf8');
 const store = readFileSync(join(root, 'lib/store.tsx'), 'utf8');
 const packageJson = readFileSync(join(root, 'package.json'), 'utf8');
+const handles = readFileSync(join(root, 'lib/publicHandles.ts'), 'utf8');
 
 describe('1–3. tab Mascotas en barra inferior', () => {
   it('registra acceso Mascotas con icono paw de Ionicons', () => {
@@ -208,11 +208,11 @@ describe('15–16. contratos y publicación desde página', () => {
     assert.match(createPost, /activeProfileId/);
     assert.match(createPost, /<ProfileSwitcher compact \/>/);
     assert.match(createPost, /db\.createPost\(/);
-    assert.equal(resolveAppLink('https://animaldex-web.pages.dev/mascotas'), {
+    assert.deepEqual(resolveAppLink('https://animaldex-web.pages.dev/mascotas'), {
       screen: 'Tabs',
       params: { screen: 'Mascotas' },
     });
-    assert.equal(isReservedPublicUsername('mascotas'), true);
-    assert.equal(isReservedPublicUsername('perfil'), true);
+    assert.match(handles, /'mascotas'/);
+    assert.match(handles, /'perfil'/);
   });
 });

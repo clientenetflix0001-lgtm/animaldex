@@ -1,10 +1,6 @@
-import type { ComponentProps } from 'react';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import type { TabParamList } from './types.ts';
 
-type IonName = ComponentProps<typeof Ionicons>['name'];
-
-export const TAB_ICONS: Record<keyof TabParamList, { on: IonName; off: IonName }> = {
+export const TAB_ICONS: Record<keyof TabParamList, { on: string; off: string }> = {
   Inicio: { on: 'home', off: 'home-outline' },
   Reels: { on: 'film', off: 'film-outline' },
   Alertas: { on: 'warning', off: 'warning-outline' },
