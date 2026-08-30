@@ -116,6 +116,38 @@ export interface ApiPost {
   authorProfileAvatar?: string | null;
 }
 
+export interface ApiReel {
+  id: string;
+  userId: string;
+  petId: string | null;
+  caption: string;
+  status: string;
+  moderation?: string;
+  durationMs: number | null;
+  width: number | null;
+  height: number | null;
+  createdAt: number;
+  readyAt: number | null;
+  likeCount: number;
+  commentCount: number;
+  isLiked?: boolean;
+  petName: string | null;
+  petEmoji: string | null;
+  petAvatar: string | null;
+  petSpecies: string | null;
+  petUsername?: string | null;
+  username: string | null;
+  userName: string | null;
+  authorProfileId?: string | null;
+  authorProfileType?: 'personal' | 'business' | 'protector' | null;
+  authorProfileName?: string | null;
+  authorProfileUsername?: string | null;
+  authorProfileAvatar?: string | null;
+  playbackId: string | null;
+  hlsUrl: string | null;
+  thumbnailUrl: string | null;
+}
+
 export interface ApiComment {
   id: string;
   userId: string;
@@ -510,6 +542,34 @@ export const db = {
     call('/db', { action: 'sellerReviews', targetUserId }),
   sellerReview: (targetUserId: string, rating: number, text?: string): Promise<{ ok: boolean }> =>
     call('/db', { action: 'sellerReview', targetUserId, rating, text }),
+
+  reelsFeed: (before?: number, limit = 10): Promise<{ reels: ApiReel[]; hasMore: boolean }> =>
+    call('/db', { action: 'reelsFeed', before, limit }),
+  reelDetail: (reelId: string): Promise<{ reel: ApiReel; comments: ApiComment[] }> =>
+    call('/db', { action: 'reelDetail', reelId }),
+  reelComments: (reelId: string): Promise<{ comments: ApiComment[] }> =>
+    call('/db', { action: 'reelComments', reelId }),
+  createReelUpload: (input: {
+    mime: string;
+    byteSize?: number | null;
+    durationMs?: number | null;
+    caption?: string;
+    petId?: string | null;
+    authorProfileId?: string | null;
+  }): Promise<{ reelId: string; uploadUrl: string; timeoutSec: number }> =>
+    call('/db', { action: 'createReelUpload', ...input }),
+  completeReelUpload: (reelId: string): Promise<{ status: string }> =>
+    call('/db', { action: 'completeReelUpload', reelId }),
+  cancelReelUpload: (reelId: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'cancelReelUpload', reelId }),
+  myReel: (reelId: string): Promise<{ reel: ApiReel }> => call('/db', { action: 'myReel', reelId }),
+  myReelState: (): Promise<{ state: { likedReels: string[] } }> => call('/db', { action: 'myReelState' }),
+  reelLike: (reelId: string, value: boolean): Promise<{ likeCount: number }> =>
+    call('/db', { action: 'reelLike', reelId, value }),
+  reelComment: (reelId: string, text: string): Promise<{ id: string; createdAt: number }> =>
+    call('/db', { action: 'reelComment', reelId, text }),
+  deleteReel: (reelId: string): Promise<{ ok: boolean; muxDeleted?: boolean }> =>
+    call('/db', { action: 'deleteReel', reelId }),
 };
 
 // ---------- Helpers ----------

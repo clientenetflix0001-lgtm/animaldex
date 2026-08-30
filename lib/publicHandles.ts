@@ -15,6 +15,7 @@ export const RESERVED_PUBLIC_USERNAMES: readonly string[] = [
   'pet',
   'a',
   'm',
+  'r',
   'login',
   'register',
   'auth',

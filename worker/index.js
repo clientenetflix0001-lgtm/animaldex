@@ -17,6 +17,13 @@ import {
   evaluatePersonalPetBirthday,
 } from '../lib/petBirthday.ts';
 import {
+  ensureReelsSchema,
+  handleAuthReelAction,
+  handleMuxWebhook,
+  handlePublicReelAction,
+  runReelCleanup,
+} from './reelsMux.js';
+import {
   EXPO_PUSH_BATCH_MAX,
   EXPO_PUSH_RECEIPTS_URL,
   EXPO_PUSH_SEND_URL,
@@ -205,7 +212,7 @@ async function ensureProfilesSchema(env) {
 
 // Keep in sync with lib/publicHandles.ts and cf-pages-worker.src.js
 const RESERVED_PUBLIC_USERNAMES = new Set([
-  'p', 'pet', 'a', 'm', 'login', 'register', 'auth', 'feed', 'reels', 'alerts', 'alertas',
+  'p', 'pet', 'a', 'm', 'r', 'login', 'register', 'auth', 'feed', 'reels', 'alerts', 'alertas',
   'marketplace', 'mercado', 'admin', 'api', 'crear', 'actividad', 'perfil', 'explorar',
   'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
   'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
@@ -1264,6 +1271,10 @@ async function handleDb(request, env) {
     await ensureActivityEventsSchema(env);
     await ensurePushSchema(env);
     await ensureLocationActorColumn(env);
+    await ensureReelsSchema(env);
+
+    const publicReel = await handlePublicReelAction(env, body, json, clean, request, authUser);
+    if (publicReel) return publicReel;
 
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
@@ -1903,6 +1914,9 @@ async function handleDb(request, env) {
 
     const userId = await authUser(request, env, body);
     if (!userId) return json({ error: 'Inicia sesión para continuar' }, 401);
+
+    const authReel = await handleAuthReelAction(env, body, json, clean, userId);
+    if (authReel) return authReel;
 
     if (action === 'registerPushToken') {
       const expoPushToken = clean(body.expoPushToken, 200);
@@ -2788,6 +2802,7 @@ export default {
       if (url.pathname === '/auth') return await handleAuth(request, env);
       if (url.pathname === '/db') return await handleDb(request, env);
       if (url.pathname === '/upload') return await handleUpload(request, env);
+      if (url.pathname === '/mux/webhook') return await handleMuxWebhook(request, env, json);
       if (url.pathname === '/sms') return await handleSms(request, env);
       if (url.pathname === '/' || url.pathname === '/health') {
         return json({ ok: true, service: 'animaldex-api', time: Date.now() });
@@ -2809,6 +2824,11 @@ export default {
       await processPushReceipts(env, nowMs);
     } catch (e) {
       console.log('push-receipts', e && e.message);
+    }
+    try {
+      await runReelCleanup(env, nowMs);
+    } catch (e) {
+      console.log('reel-cleanup', e && e.message);
     }
   },
 };
