@@ -322,7 +322,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
       )}
 
       <Text style={styles.sectionTitle}>
-        {isMe ? 'Mis perfiles' : 'Perfiles'}
+        {isMe ? 'Mis páginas' : 'Páginas'}
       </Text>
       <FlatList
         horizontal
@@ -336,7 +336,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
               <View style={styles.addCircle}>
                 <Ionicons name="add" size={28} color={colors.primary} />
               </View>
-              <Text style={styles.petName}>Crear perfil</Text>
+              <Text style={styles.petName}>Crear página</Text>
               <Text style={styles.petBreed}>Tienda o refugio</Text>
             </Pressable>
           ) : null

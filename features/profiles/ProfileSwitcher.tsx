@@ -31,7 +31,7 @@ export default function ProfileSwitcher({ compact }: Props) {
         onPress={() => setOpen(true)}
         style={compact ? styles.compact : styles.trigger}
         hitSlop={6}
-        accessibilityLabel="Cambiar perfil"
+        accessibilityLabel="Seleccionar perfil o página"
       >
         <Image source={{ uri: thumb(avatar, 80) }} style={compact ? styles.avatarSm : styles.avatar} />
         <Text style={compact ? styles.compactName : styles.triggerName} numberOfLines={1}>
@@ -44,7 +44,7 @@ export default function ProfileSwitcher({ compact }: Props) {
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={styles.title}>Cambiar perfil</Text>
+          <Text style={styles.title}>Seleccionar perfil o página</Text>
           <ScrollView style={{ maxHeight: 360 }}>
             {profiles.map((p) => {
               const selected = p.id === activeProfileId;
@@ -80,7 +80,7 @@ export default function ProfileSwitcher({ compact }: Props) {
               }}
             >
               <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-              <Text style={styles.createText}>Crear perfil</Text>
+              <Text style={styles.createText}>Crear página</Text>
             </Pressable>
           </ScrollView>
         </View>

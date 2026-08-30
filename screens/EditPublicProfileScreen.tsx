@@ -56,7 +56,7 @@ export default function EditPublicProfileScreen() {
         setPhone(profile.phone || '');
         setAvatarUrl(profile.avatar);
       })
-      .catch((e) => Alert.alert('Error', e?.message || 'No se pudo cargar el perfil'))
+      .catch((e) => Alert.alert('Error', e?.message || 'No se pudo cargar la página'))
       .finally(() => setLoading(false));
   }, [profileId]);
 
@@ -97,7 +97,7 @@ export default function EditPublicProfileScreen() {
   const save = useCallback(async () => {
     const handle = normalizePublicUsername(username);
     if (name.trim().length < 2) {
-      Alert.alert('Falta el nombre', 'Escribe el nombre del perfil.');
+      Alert.alert('Falta el nombre', 'Escribe el nombre de la página.');
       return;
     }
     if (!isValidPublicUsername(handle)) {
@@ -153,7 +153,7 @@ export default function EditPublicProfileScreen() {
                 <Ionicons name="camera" size={16} color="#fff" />
               )}
             </View>
-            <Text style={styles.avatarHint}>Cambiar foto de perfil</Text>
+            <Text style={styles.avatarHint}>Cambiar foto de la página</Text>
           </Pressable>
 
           <Text style={styles.label}>Nombre</Text>
@@ -162,7 +162,7 @@ export default function EditPublicProfileScreen() {
             value={name}
             onChangeText={setName}
             maxLength={60}
-            placeholder="Nombre del perfil"
+            placeholder="Nombre de la página"
             placeholderTextColor={colors.textMuted}
           />
 
@@ -185,7 +185,7 @@ export default function EditPublicProfileScreen() {
             onChangeText={setBio}
             maxLength={200}
             multiline
-            placeholder="Contá de qué se trata este perfil..."
+            placeholder="Contá de qué se trata esta página..."
             placeholderTextColor={colors.textMuted}
           />
 

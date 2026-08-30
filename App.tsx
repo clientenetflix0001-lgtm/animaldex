@@ -40,6 +40,7 @@ import ListingDetailScreen from './screens/ListingDetailScreen';
 import SellerShopScreen from './screens/SellerShopScreen';
 import MarketFavoritesScreen from './screens/MarketFavoritesScreen';
 import AdoptionDiscoveryScreen from './screens/AdoptionDiscoveryScreen';
+import MyPetsScreen from './screens/MyPetsScreen';
 
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
@@ -50,6 +51,7 @@ import { useBreakpoint } from './lib/responsive';
 import { Sidebar } from './components/Sidebar';
 import { extractTagCode } from './lib/tags';
 import { createTabProfileStack, navigateMainTab } from './lib/tabProfileStack';
+import { MOBILE_TAB_ORDER, TAB_ICONS, TAB_LABELS } from './lib/mainTabs';
 import { navigationRef } from './lib/navigationRef';
 import { attachPushResponseListeners, ensurePushHandler, registerPushTokenIfGranted, setPushNavGate } from './lib/push';
 import {
@@ -82,30 +84,12 @@ const AlertasStack = createTabProfileStack(AlertsScreen);
 const MercadoStack = createTabProfileStack(MarketScreen);
 const ActividadStack = createTabProfileStack(ActivityScreen);
 const PerfilStack = createTabProfileStack(MyProfileTab);
+const MascotasStack = createTabProfileStack(MyPetsScreen);
 
 function UserProfileRoute() {
   const route = useRoute<RouteProp<RootStackParamList, 'UserProfile'>>();
   return <UserProfileScreen userId={route.params.userId} showBack />;
 }
-
-const TAB_ICONS: Record<keyof TabParamList, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap }> = {
-  Inicio: { on: 'home', off: 'home-outline' },
-  Reels: { on: 'film', off: 'film-outline' },
-  Alertas: { on: 'warning', off: 'warning-outline' },
-  Mercado: { on: 'storefront', off: 'storefront-outline' },
-  Crear: { on: 'add-circle', off: 'add-circle-outline' },
-  Actividad: { on: 'heart', off: 'heart-outline' },
-  Perfil: { on: 'person', off: 'person-outline' },
-};
-
-const MOBILE_TAB_ORDER: (keyof TabParamList)[] = [
-  'Inicio',
-  'Reels',
-  'Alertas',
-  'Crear',
-  'Mercado',
-  'Perfil',
-];
 
 function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
   const insets = useSafeAreaInsets();
@@ -133,7 +117,8 @@ function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
             onPress={() => navigateMainTab(navigation, name)}
             style={styles.tabItem}
             accessibilityRole="button"
-            accessibilityLabel={name === 'Crear' ? 'Crear' : name}
+            accessibilityLabel={TAB_LABELS[name]}
+            accessibilityState={{ selected: focused }}
           >
             <Ionicons
               name={focused ? icons.on : icons.off}
@@ -142,7 +127,7 @@ function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
             />
             {name !== 'Crear' && (
               <Text style={[styles.tabLabel, { color: focused ? colors.primary : colors.textMuted }]}>
-                {name}
+                {TAB_LABELS[name]}
               </Text>
             )}
           </Pressable>
@@ -186,6 +171,7 @@ function Tabs() {
         <Tab.Screen name="Alertas" component={AlertasStack} />
         <Tab.Screen name="Mercado" component={MercadoStack} />
         <Tab.Screen name="Crear" component={CreatePostScreen} />
+        <Tab.Screen name="Mascotas" component={MascotasStack} />
         <Tab.Screen name="Actividad" component={ActividadStack} />
         <Tab.Screen name="Perfil" component={PerfilStack} />
       </Tab.Navigator>
@@ -193,7 +179,7 @@ function Tabs() {
   }
 
   // ---------- Móvil / tablet ----------
-  // Barra visible: Inicio | Reels | Alertas | + | Mercado | Perfil
+  // Barra visible: Inicio | Reels | Alertas | + | Mascotas | Mercado | Perfil
   // Actividad sigue registrada (misma pantalla) pero NO se muestra abajo.
   // Perfiles (mascota / público / usuario) viven DENTRO de cada pila de tab
   // para no tapar la barra. El Root Stack conserva las mismas pantallas
@@ -207,6 +193,7 @@ function Tabs() {
       <Tab.Screen name="Reels" component={ReelsStack} />
       <Tab.Screen name="Alertas" component={AlertasStack} />
       <Tab.Screen name="Crear" component={CreatePostScreen} />
+      <Tab.Screen name="Mascotas" component={MascotasStack} />
       <Tab.Screen name="Mercado" component={MercadoStack} />
       <Tab.Screen name="Perfil" component={PerfilStack} />
       <Tab.Screen name="Actividad" component={ActividadStack} />
@@ -231,6 +218,7 @@ const linking: LinkingOptions<RootStackParamList> = {
           Alertas: 'alertas',
           Mercado: 'mercado',
           Crear: 'crear',
+          Mascotas: 'mascotas',
           Actividad: 'actividad',
           Perfil: 'perfil',
         },
@@ -448,7 +436,7 @@ function RootNavigator() {
       <Stack.Screen
         name="EditPublicProfile"
         component={EditPublicProfileScreen}
-        options={{ title: 'Editar perfil', ...screenHeaderOptions }}
+        options={{ title: 'Editar página', ...screenHeaderOptions }}
       />
       <Stack.Screen
         name="QRScanner"
