@@ -70,6 +70,12 @@ import {
 } from '../lib/reelTrim.ts';
 import { REELS_SCHEMA_STATEMENTS, normalizeSql, reelsSchemaApplyEnabled } from '../lib/reelsSchema.ts';
 import { verifyMuxSignature } from '../lib/reelsWebhook.ts';
+import {
+  reelTimingPayloadLooksSafe,
+  reelTimingSafeUrl,
+  reelTimingShouldLog,
+  reelTimingShortId,
+} from '../lib/reelDevTiming.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const worker = readFileSync(join(root, 'worker/index.js'), 'utf8');
@@ -595,5 +601,31 @@ describe('estados feed, processing, delete, overlays UX', () => {
     assert.match(createReel, /createReelIsDirty|beforeRemove/);
     assert.match(card, /Me gusta/);
     assert.match(card, /accessibilityLabel/);
+  });
+});
+
+describe('logs DEV T0-T5', () => {
+  it('solo DEV; no loguea URL/token/secret', () => {
+    assert.equal(reelTimingShouldLog(true), true);
+    assert.equal(reelTimingShouldLog(false), false);
+    assert.equal(reelTimingShouldLog(undefined), false);
+    assert.equal(reelTimingSafeUrl('https://storage.googleapis.com/mux-uploads/abc123secretpath'), 'mux-host');
+    assert.equal(reelTimingSafeUrl('file:///data/user/0/app/files/trim.mp4'), 'local-file');
+    assert.equal(reelTimingShortId('reel-1788056200947-7b4ftc').includes('…'), true);
+    assert.equal(
+      reelTimingPayloadLooksSafe({
+        url: 'https://storage.googleapis.com/mux-uploads/verylongtokenpath',
+      }),
+      false
+    );
+    assert.equal(reelTimingPayloadLooksSafe({ reelId: 'pending', dtMs: 0, source: 'trimmed' }), true);
+    assert.match(createReel, /reelDevT0/);
+    assert.match(createReel, /reelDevMark\(created\.reelId, 'T1'/);
+    assert.match(createReel, /reelDevMark\(created\.reelId, 'T2'/);
+    assert.match(createReel, /reelDevMark\(created\.reelId, 'T3'/);
+    assert.match(createReel, /reelDevMark\(created\.reelId, 'T4'/);
+    assert.match(card, /reelDevMark\(reel\.id, 'T5'\)/);
+    assert.doesNotMatch(createReel, /reelDevMark\([^)]*uploadUrl/);
+    assert.doesNotMatch(createReel, /console\.log\([^)]*uploadUrl/);
   });
 });

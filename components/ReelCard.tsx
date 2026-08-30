@@ -18,6 +18,7 @@ import { parseReelOverlays } from '../lib/reelOverlays';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { colors } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
+import { reelDevMark } from '../lib/reelDevTiming';
 import { ReelOverlayLayer } from './ReelOverlayLayer';
 
 interface Props {
@@ -191,7 +192,10 @@ function ReelCardInner({
           contentFit="cover"
           nativeControls={false}
           useExoShutter={false}
-          onFirstFrameRender={() => setFirstFrame(true)}
+          onFirstFrameRender={() => {
+            setFirstFrame(true);
+            reelDevMark(reel.id, 'T5');
+          }}
         />
       ) : null}
 

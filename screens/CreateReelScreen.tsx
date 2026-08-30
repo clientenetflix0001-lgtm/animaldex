@@ -39,6 +39,7 @@ import {
   shouldOpenReelTrim,
 } from '../lib/reelTrim';
 import { rememberLocalReel } from '../lib/reelSession';
+import { reelDevAttach, reelDevMark, reelDevT0 } from '../lib/reelDevTiming';
 import { ReelOverlayLayer } from '../components/ReelOverlayLayer';
 import { ReelTextEditor } from '../components/ReelTextEditor';
 
@@ -289,6 +290,7 @@ export default function CreateReelScreen() {
     busyRef.current = true;
     setPhase('preparing');
     setError('');
+    reelDevT0();
     try {
       const created = await db.createReelUpload({
         mime,
@@ -300,7 +302,9 @@ export default function CreateReelScreen() {
         overlays: cleanOverlays,
       });
       createdIdRef.current = created.reelId;
+      reelDevAttach(created.reelId);
       setPhase('uploading');
+      reelDevMark(created.reelId, 'T1', { source: trimmedUri ? 'trimmed' : 'original', mime, bytes });
       const fileRes = await fetch(source);
       const blob = await fileRes.blob();
       const put = await fetch(created.uploadUrl, {
@@ -308,6 +312,7 @@ export default function CreateReelScreen() {
         body: blob,
         headers: { 'content-type': mime },
       });
+      reelDevMark(created.reelId, 'T2', { ok: put.ok, status: put.status });
       if (!put.ok) {
         await db.cancelReelUpload(created.reelId).catch(() => {});
         throw new Error('No se pudo subir el video a Mux');
@@ -321,12 +326,14 @@ export default function CreateReelScreen() {
         createdAt: Date.now(),
       });
       setPhase('processing');
+      reelDevMark(created.reelId, 'T3');
       let ready = false;
       for (let i = 0; i < 12; i++) {
         await new Promise((r) => setTimeout(r, 2000));
         const { reel } = await db.myReel(created.reelId);
         if (reel.status === 'ready') {
           ready = true;
+          reelDevMark(created.reelId, 'T4');
           break;
         }
         if (reel.status === 'rejected') {
