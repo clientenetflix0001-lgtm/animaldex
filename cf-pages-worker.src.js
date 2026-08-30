@@ -269,11 +269,12 @@ async function buildOgMeta(request, env, url) {
   const petMatch = pathname.match(/^\/pet\/([^/]+)\/?$/);
   const alertMatch = pathname.match(/^\/a\/([^/]+)\/?$/);
   const listingMatch = pathname.match(/^\/m\/([^/]+)\/?$/);
+  const reelMatch = pathname.match(/^\/r\/([^/]+)\/?$/);
   const postMatch = pathname.match(/^\/p\/([^/]+)\/?$/);
   const handleMatch = pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i);
   // Keep in sync with lib/publicHandles.ts and worker/index.js
   const reserved = new Set([
-    'p', 'pet', 'a', 'm', 'login', 'register', 'auth', 'feed', 'reels', 'alerts', 'alertas',
+    'p', 'pet', 'a', 'm', 'r', 'login', 'register', 'auth', 'feed', 'reels', 'alerts', 'alertas',
     'marketplace', 'mercado', 'admin', 'api', 'crear', 'actividad', 'perfil', 'explorar',
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
@@ -333,6 +334,30 @@ async function buildOgMeta(request, env, url) {
         description: `${kindLabel} · 🐾 ${Number(l.price_patitas || 0).toLocaleString('es-AR')} Patitas · 📍 ${l.locality}`,
         image: images[0] || petImage('perro', 11, 600),
         url: `${origin}/m/${l.id}`,
+      };
+    }
+  } else if (reelMatch) {
+    const id = decodeURIComponent(reelMatch[1]);
+    const rows = await d1Query(
+      env,
+      `SELECT r.caption, r.mux_playback_id, u.name AS user_name, pet.name AS pet_name
+       FROM reels r
+       LEFT JOIN users u ON u.id = r.user_id
+       LEFT JOIN pets pet ON pet.id = r.pet_id
+       WHERE r.id = ? AND r.status = 'ready' AND r.deleted_at IS NULL AND r.moderation = 'none'`,
+      [id]
+    );
+    if (rows[0]) {
+      const r = rows[0];
+      const who = r.pet_name || r.user_name || 'Animaldex';
+      const thumb = r.mux_playback_id
+        ? `https://image.mux.com/${encodeURIComponent(r.mux_playback_id)}/thumbnail.webp?time=0.1&width=720&height=1280&fit_mode=smartcrop`
+        : ANIMALDEX_OG_IMAGE;
+      meta = {
+        title: `${who} · Reel en Animaldex`,
+        description: r.caption || `Un Reel de ${who} en Animaldex 🐾`,
+        image: thumb,
+        url: `${origin}/r/${id}`,
       };
     }
   } else if (postMatch) {
@@ -421,7 +446,7 @@ async function buildOgMeta(request, env, url) {
   return meta;
 }
 
-const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/)|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
+const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/|\/r\/)|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
 
 export default {
   async fetch(request, env, ctx) {
@@ -477,7 +502,7 @@ export default {
 
     const spaHandle = (url.pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i) || [])[1];
     const spaReserved = new Set([
-      'p','pet','a','m','reels','alertas','mercado','crear','actividad','perfil',
+      'p','pet','a','m','r','reels','alertas','mercado','crear','actividad','perfil',
       'explorar','verificar','escanear','entrar','tienda','admin','vender',
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
     ]);

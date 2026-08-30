@@ -1,16 +1,8 @@
-// ============================================================
-// Animaldex — Navegación horizontal Feed ↔ Reels
-// ============================================================
-// Envuelve Feed (página 0) y Reels (página 1) en un carrusel
-// horizontal con "paging": deslizar el dedo de derecha a izquierda
-// pasa de Feed a Reels, y de izquierda a derecha vuelve a Feed.
-// Cada instancia recibe `initialPage` según desde qué pestaña de la
-// barra inferior se accedió (Inicio → 0, Reels → 1), para que el
-// tab activo y la página visible siempre coincidan al entrar.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ScrollView, StyleSheet, LayoutChangeEvent } from 'react-native';
+import { View, ScrollView, StyleSheet, LayoutChangeEvent, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import FeedScreen from './FeedScreen';
 import ReelsScreen from './ReelsScreen';
+import { ReelsPageVisibleProvider } from '../lib/reelsFocus';
 
 interface Props {
   initialPage: 0 | 1;
@@ -19,14 +11,13 @@ interface Props {
 export default function FeedReelsSwiper({ initialPage }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const [page, setPage] = useState<0 | 1>(initialPage);
   const appliedInitialRef = useRef(false);
 
   useEffect(() => {
     if (size.width > 0 && !appliedInitialRef.current) {
       appliedInitialRef.current = true;
       if (initialPage === 1) {
-        // Sin animación: al entrar por la pestaña "Reels" debe verse
-        // directamente esa página, no un salto visible desde Feed.
         requestAnimationFrame(() => {
           scrollRef.current?.scrollTo({ x: size.width, animated: false });
         });
@@ -41,6 +32,13 @@ export default function FeedReelsSwiper({ initialPage }: Props) {
     }
   }, [size.width, size.height]);
 
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!size.width) return;
+    const next = Math.round(e.nativeEvent.contentOffset.x / size.width);
+    const clamped = next <= 0 ? 0 : 1;
+    setPage((prev) => (prev === clamped ? prev : clamped));
+  }, [size.width]);
+
   return (
     <View style={styles.root} onLayout={onLayout}>
       {size.width > 0 && (
@@ -50,13 +48,17 @@ export default function FeedReelsSwiper({ initialPage }: Props) {
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           scrollEventThrottle={16}
+          onScroll={onScroll}
+          onMomentumScrollEnd={onScroll}
           style={{ width: size.width, height: size.height }}
         >
           <View style={{ width: size.width, height: size.height }}>
             <FeedScreen />
           </View>
           <View style={{ width: size.width, height: size.height }}>
-            <ReelsScreen />
+            <ReelsPageVisibleProvider visible={page === 1}>
+              <ReelsScreen />
+            </ReelsPageVisibleProvider>
           </View>
         </ScrollView>
       )}

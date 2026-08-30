@@ -34,6 +34,8 @@ import AlertsScreen from './screens/AlertsScreen';
 import CreateAlertScreen from './screens/CreateAlertScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
 import FeedReelsSwiper from './screens/FeedReelsSwiper';
+import CreateReelScreen from './screens/CreateReelScreen';
+import ReelViewerScreen from './screens/ReelViewerScreen';
 import MarketScreen from './screens/MarketScreen';
 import CreateListingScreen from './screens/CreateListingScreen';
 import ListingDetailScreen from './screens/ListingDetailScreen';
@@ -249,6 +251,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       AlertDetail: 'a/:alertId',
       CreateListing: 'vender',
       ListingDetail: 'm/:listingId',
+      ReelViewer: 'r/:reelId',
       SellerShop: 'tienda/:userId',
       MarketFavorites: 'mercado-favoritos',
       Auth: 'entrar',
@@ -395,6 +398,7 @@ function PublicNavigator() {
         options={{ title: 'Alerta', ...screenHeaderOptions }}
       />
       <Stack.Screen name="ListingDetail" component={ListingDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ReelViewer" component={ReelViewerScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -483,6 +487,16 @@ function RootNavigator() {
       <Stack.Screen
         name="ListingDetail"
         component={ListingDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreateReel"
+        component={CreateReelScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ReelViewer"
+        component={ReelViewerScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

@@ -40,4 +40,6 @@ export type RootStackParamList = {
   MarketFavorites: undefined;
   PublicProfile: { profileId?: string; username?: string };
   AdoptionDiscovery: undefined;
+  CreateReel: undefined;
+  ReelViewer: { reelId: string };
 };

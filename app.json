@@ -40,7 +40,8 @@
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/p/" },
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/pet/" },
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/a/" },
-            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/m/" }
+            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/m/" },
+            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/r/" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         },
@@ -84,6 +85,13 @@
         "expo-camera",
         {
           "cameraPermission": "Animaldex usa la cámara para escanear códigos QR de mascotas y perfiles."
+        }
+      ],
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": false
         }
       ],
       [
