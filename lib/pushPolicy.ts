@@ -251,12 +251,14 @@ export type PushData = {
   petUsername?: string;
   shareId?: string;
   url?: string;
+  reelId?: string;
 };
 
 export type PushNavTarget = {
-  kind: 'pet' | 'activity' | 'none';
+  kind: 'pet' | 'activity' | 'reel' | 'none';
   petId?: string;
   shareId?: string;
+  reelId?: string;
 };
 
 function asPushField(value: unknown): string | undefined {
@@ -287,11 +289,27 @@ export function normalizePushData(raw: unknown): PushData {
     petUsername: asPushField(inner.petUsername),
     shareId: asPushField(inner.shareId),
     url: asPushField(inner.url),
+    reelId: asPushField(inner.reelId),
   };
+}
+
+function reelIdFromPushUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const m = String(url).match(/\/r\/([^/?#]+)/);
+  if (!m) return undefined;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
 }
 
 export function parsePushNav(data: unknown): PushNavTarget {
   const d = normalizePushData(data);
+  const reelId = d.reelId || reelIdFromPushUrl(d.url);
+  if (d.type === 'reel_like' || d.type === 'reel_comment' || reelId) {
+    if (reelId) return { kind: 'reel', reelId };
+  }
   if (d.type === 'birthday' || (d.url && d.url.startsWith('/pet/'))) {
     const fromUrl = d.url ? d.url.replace(/^\/pet\//, '') : '';
     return { kind: 'pet', petId: d.petUsername || fromUrl || d.petId };
@@ -320,13 +338,20 @@ export function pushTapFlushDecision(input: {
 /** Destino existente: cumpleaños → PetProfile; ubicación → tab Actividad. */
 export function pushNavDestination(
   data: unknown
-): { name: 'PetProfile'; params: { petId: string } } | { name: 'Tabs'; params: { screen: 'Actividad' } } | null {
+):
+  | { name: 'PetProfile'; params: { petId: string } }
+  | { name: 'Tabs'; params: { screen: 'Actividad' } }
+  | { name: 'ReelViewer'; params: { reelId: string } }
+  | null {
   const nav = parsePushNav(data);
   if (nav.kind === 'pet' && nav.petId) {
     return { name: 'PetProfile', params: { petId: nav.petId } };
   }
   if (nav.kind === 'activity') {
     return { name: 'Tabs', params: { screen: 'Actividad' } };
+  }
+  if (nav.kind === 'reel' && nav.reelId) {
+    return { name: 'ReelViewer', params: { reelId: nav.reelId } };
   }
   return null;
 }

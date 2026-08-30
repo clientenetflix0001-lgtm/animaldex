@@ -17,6 +17,7 @@ import { useRoute } from '@react-navigation/native';
 
 import ExploreScreen from './screens/ExploreScreen';
 import CreatePostScreen from './screens/CreatePostScreen';
+import CreateChooserScreen from './screens/CreateChooserScreen';
 import ActivityScreen from './screens/ActivityScreen';
 import UserProfileScreen from './screens/UserProfileScreen';
 import PublicProfileScreen from './screens/PublicProfileScreen';
@@ -187,7 +188,7 @@ function Tabs() {
         <Tab.Screen name="Reels" component={ReelsStack} />
         <Tab.Screen name="Alertas" component={AlertasStack} />
         <Tab.Screen name="Mercado" component={MercadoStack} />
-        <Tab.Screen name="Crear" component={CreatePostScreen} />
+        <Tab.Screen name="Crear" component={CreateChooserScreen} />
         <Tab.Screen name="Actividad" component={ActividadStack} />
         <Tab.Screen name="Perfil" component={PerfilStack} />
       </Tab.Navigator>
@@ -208,7 +209,7 @@ function Tabs() {
       <Tab.Screen name="Inicio" component={InicioStack} />
       <Tab.Screen name="Reels" component={ReelsStack} />
       <Tab.Screen name="Alertas" component={AlertasStack} />
-      <Tab.Screen name="Crear" component={CreatePostScreen} />
+      <Tab.Screen name="Crear" component={CreateChooserScreen} />
       <Tab.Screen name="Mercado" component={MercadoStack} />
       <Tab.Screen name="Perfil" component={PerfilStack} />
       <Tab.Screen name="Actividad" component={ActividadStack} />
@@ -487,6 +488,11 @@ function RootNavigator() {
       <Stack.Screen
         name="ListingDetail"
         component={ListingDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreatePost"
+        component={CreatePostScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

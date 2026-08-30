@@ -23,6 +23,7 @@ import {
   handlePublicReelAction,
   runReelCleanup,
 } from './reelsMux.js';
+import { getMuxThumbnail } from '../lib/reels.ts';
 import {
   EXPO_PUSH_BATCH_MAX,
   EXPO_PUSH_RECEIPTS_URL,
@@ -2516,13 +2517,19 @@ async function handleDb(request, env) {
     }
 
     if (action === 'notifications') {
-      const [likes, comments, followsUser, followsPet, locations, birthdays] = await Promise.all([
+      const [likes, comments, reelLikes, reelComments, followsUser, followsPet, locations, birthdays] = await Promise.all([
         d1(env, `SELECT l.created_at, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url, p.id AS post_id, p.image AS post_image
            FROM likes l JOIN posts p ON p.id = l.post_id JOIN users u ON u.id = l.user_id
            WHERE p.user_id = ? AND l.user_id != ? ORDER BY l.created_at DESC LIMIT 20`, [userId, userId]),
         d1(env, `SELECT c.created_at, c.text, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url, p.id AS post_id, p.image AS post_image
            FROM comments c JOIN posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
            WHERE p.user_id = ? AND c.user_id != ? ORDER BY c.created_at DESC LIMIT 20`, [userId, userId]),
+        d1(env, `SELECT rl.created_at, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url, r.id AS reel_id, r.mux_playback_id
+           FROM reel_likes rl JOIN reels r ON r.id = rl.reel_id JOIN users u ON u.id = rl.user_id
+           WHERE r.user_id = ? AND rl.user_id != ? AND r.deleted_at IS NULL ORDER BY rl.created_at DESC LIMIT 20`, [userId, userId]),
+        d1(env, `SELECT rc.created_at, rc.text, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url, r.id AS reel_id, r.mux_playback_id
+           FROM reel_comments rc JOIN reels r ON r.id = rc.reel_id JOIN users u ON u.id = rc.user_id
+           WHERE r.user_id = ? AND rc.user_id != ? AND r.deleted_at IS NULL ORDER BY rc.created_at DESC LIMIT 20`, [userId, userId]),
         d1(env, `SELECT f.created_at, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url
            FROM follows f JOIN users u ON u.id = f.user_id
            WHERE f.target_type = 'user' AND f.target_id = ? AND f.user_id != ? ORDER BY f.created_at DESC LIMIT 20`, [userId, userId]),
@@ -2545,6 +2552,8 @@ async function handleDb(request, env) {
       const items = [
         ...likes.map((r) => ({ id: `like-${r.actor_id}-${r.post_id}-${r.created_at}`, type: 'like', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, postId: r.post_id, postImage: r.post_image || null, createdAt: r.created_at })),
         ...comments.map((r) => ({ id: `comment-${r.actor_id}-${r.post_id}-${r.created_at}`, type: 'comment', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, postId: r.post_id, postImage: r.post_image || null, text: (r.text || '').slice(0, 80), createdAt: r.created_at })),
+        ...reelLikes.map((r) => ({ id: `rlike-${r.actor_id}-${r.reel_id}-${r.created_at}`, type: 'reel_like', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, reelId: r.reel_id, postImage: getMuxThumbnail(r.mux_playback_id, { width: 160, height: 284 }), createdAt: r.created_at })),
+        ...reelComments.map((r) => ({ id: `rcomment-${r.actor_id}-${r.reel_id}-${r.created_at}`, type: 'reel_comment', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, reelId: r.reel_id, postImage: getMuxThumbnail(r.mux_playback_id, { width: 160, height: 284 }), text: (r.text || '').slice(0, 80), createdAt: r.created_at })),
         ...followsUser.map((r) => ({ id: `fu-${r.actor_id}-${r.created_at}`, type: 'follow_user', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, createdAt: r.created_at })),
         ...followsPet.map((r) => ({ id: `fp-${r.actor_id}-${r.pet_id}-${r.created_at}`, type: 'follow_pet', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, petId: r.pet_id, petName: r.pet_name, createdAt: r.created_at })),
         ...locations.map((r) => {

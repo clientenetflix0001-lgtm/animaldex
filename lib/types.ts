@@ -40,6 +40,13 @@ export type RootStackParamList = {
   MarketFavorites: undefined;
   PublicProfile: { profileId?: string; username?: string };
   AdoptionDiscovery: undefined;
+  CreatePost: undefined;
   CreateReel: undefined;
-  ReelViewer: { reelId: string };
+  ReelViewer: {
+    reelId: string;
+    scope?: 'profile' | 'pet' | 'user' | 'feed';
+    scopeId?: string;
+    initialReels?: import('./db').ApiReel[];
+    initialIndex?: number;
+  };
 };

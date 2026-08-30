@@ -25,6 +25,8 @@ import {
   galleryNeedsTrim,
   mergeOwnerReels,
   muxDurationRejects,
+  getMuxThumbnail,
+  muxGridThumbnailUrl,
   muxHlsUrl,
   muxThumbnailUrl,
   ownerReelSurface,
@@ -242,12 +244,17 @@ describe('paginación, like, comments, URLs', () => {
     assert.match(reelsMux, /reel_likes/);
     assert.match(reelsMux, /reel_comments/);
     assert.match(reelsScreen, /setReels\(\(prev\) =>/);
-    assert.match(reelsScreen, /\[\.\.\.prev, \.\.\.page/);
+    assert.match(reelsScreen, /appendUniqueReels/);
     assert.match(reelsScreen, /extraData/);
     assert.match(card, /onToggleLike/);
     assert.match(reelsScreen, /reelComment/);
     assert.equal(muxHlsUrl('abc'), 'https://stream.mux.com/abc.m3u8');
     assert.match(muxThumbnailUrl('abc'), /image\.mux\.com\/abc\/thumbnail\.webp/);
+    assert.match(muxThumbnailUrl('abc'), /width=720/);
+    assert.equal(getMuxThumbnail(null), null);
+    assert.match(getMuxThumbnail('abc', { width: 240, height: 426 }) || '', /width=240/);
+    assert.doesNotMatch(muxGridThumbnailUrl('abc') || '', /width=720/);
+    assert.doesNotMatch(muxGridThumbnailUrl('abc') || '', /stream\.mux\.com/);
     assert.equal(reelShareUrl('reel-9'), 'https://animaldex-web.pages.dev/r/reel-9');
     assert.doesNotMatch(reelShareUrl('x'), /animaldex\.com/);
   });

@@ -337,3 +337,23 @@ describe('tap de push de ubicación', () => {
     assert.match(push, /if \(result === 'wait'\)/);
   });
 });
+
+describe('push preparado para Reels (sin envío real)', () => {
+  it('reel_like y /r/:id abren ReelViewer en pages.dev', () => {
+    const data = {
+      type: 'reel_like',
+      reelId: 'reel-1',
+      url: '/r/reel-1',
+    };
+    assert.deepEqual(parsePushNav(data), { kind: 'reel', reelId: 'reel-1' });
+    assert.deepEqual(pushNavDestination(data), {
+      name: 'ReelViewer',
+      params: { reelId: 'reel-1' },
+    });
+    assert.deepEqual(
+      parsePushNav({ type: 'reel_comment', url: 'https://animaldex-web.pages.dev/r/reel-9' }),
+      { kind: 'reel', reelId: 'reel-9' }
+    );
+    assert.equal(pushNavDestination({ type: 'location', url: '/actividad' })?.name, 'Tabs');
+  });
+});

@@ -257,12 +257,13 @@ export interface ApiTag {
 
 export interface ApiNotification {
   id: string;
-  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday';
+  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday' | 'reel_like' | 'reel_comment';
   actorId: string | null;
   actorName: string;
   actorUsername: string;
   actorAvatar: string | null;
   postId?: string;
+  reelId?: string;
   postImage?: string | null;
   petId?: string;
   petUsername?: string | null;
@@ -546,6 +547,12 @@ export const db = {
 
   reelsFeed: (before?: number, limit = 10): Promise<{ reels: ApiReel[]; hasMore: boolean }> =>
     call('/db', { action: 'reelsFeed', before, limit }),
+  profileReels: (profileId: string, before?: number, limit = 12): Promise<{ reels: ApiReel[]; hasMore: boolean }> =>
+    call('/db', { action: 'profileReels', profileId, before, limit }),
+  petReels: (petId: string, before?: number, limit = 12): Promise<{ reels: ApiReel[]; hasMore: boolean }> =>
+    call('/db', { action: 'petReels', petId, before, limit }),
+  userReels: (userId: string, before?: number, limit = 12): Promise<{ reels: ApiReel[]; hasMore: boolean }> =>
+    call('/db', { action: 'userReels', userId, before, limit }),
   reelDetail: (reelId: string): Promise<{ reel: ApiReel; comments: ApiComment[] }> =>
     call('/db', { action: 'reelDetail', reelId }),
   reelComments: (reelId: string): Promise<{ comments: ApiComment[] }> =>

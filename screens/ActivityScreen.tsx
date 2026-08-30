@@ -21,6 +21,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const ICONS: Record<string, { name: keyof typeof Ionicons.glyphMap; bg: string }> = {
   like: { name: 'heart', bg: colors.heart },
+  reel_like: { name: 'heart', bg: colors.heart },
+  reel_comment: { name: 'chatbubble', bg: colors.primary },
   follow: { name: 'person-add', bg: colors.secondary },
   follow_user: { name: 'person-add', bg: colors.secondary },
   follow_pet: { name: 'paw', bg: colors.secondary },
@@ -73,8 +75,12 @@ export default function ActivityScreen() {
     switch (n.type) {
       case 'like':
         return 'le dio me gusta a tu publicación';
+      case 'reel_like':
+        return 'le dio me gusta a tu Reel';
       case 'comment':
         return `comentó: "${n.text ?? ''}"`;
+      case 'reel_comment':
+        return n.text ? `comentó tu Reel: "${n.text}"` : 'comentó tu Reel';
       case 'follow_user':
         return 'empezó a seguirte';
       case 'follow_pet':
@@ -117,6 +123,8 @@ export default function ActivityScreen() {
               navigation.navigate('PetProfile', { petId: n.petUsername || n.petId });
             } else if (n.type === 'follow_pet' && n.petId) {
               navigation.navigate('PetProfile', { petId: n.petId });
+            } else if (n.reelId) {
+              navigation.navigate('ReelViewer', { reelId: n.reelId });
             } else if (n.postId) {
               navigation.navigate('PostDetail', { postId: n.postId });
             } else if (n.actorUsername) {

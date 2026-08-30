@@ -115,9 +115,33 @@ export function muxHlsUrl(playbackId: string): string {
   return `https://stream.mux.com/${encodeURIComponent(playbackId)}.m3u8`;
 }
 
-export function muxThumbnailUrl(playbackId: string): string {
+export type MuxThumbnailOptions = {
+  width?: number;
+  height?: number;
+  time?: number;
+  fitMode?: string;
+};
+
+/** Thumbnail Mux. Grilla: 240×426. Viewer/share: 720×1280 vía muxThumbnailUrl. */
+export function getMuxThumbnail(
+  playbackId: string | null | undefined,
+  options: MuxThumbnailOptions = {}
+): string | null {
+  if (!playbackId) return null;
+  const width = options.width ?? 240;
+  const height = options.height ?? 426;
+  const time = options.time ?? 0.1;
+  const fitMode = options.fitMode ?? 'smartcrop';
   const id = encodeURIComponent(playbackId);
-  return `https://image.mux.com/${id}/thumbnail.webp?time=0.1&width=720&height=1280&fit_mode=smartcrop`;
+  return `https://image.mux.com/${id}/thumbnail.webp?time=${time}&width=${width}&height=${height}&fit_mode=${fitMode}`;
+}
+
+export function muxThumbnailUrl(playbackId: string): string {
+  return getMuxThumbnail(playbackId, { width: 720, height: 1280 }) as string;
+}
+
+export function muxGridThumbnailUrl(playbackId: string | null | undefined): string | null {
+  return getMuxThumbnail(playbackId, { width: 240, height: 426 });
 }
 
 export function reelShareUrl(reelId: string): string {

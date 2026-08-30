@@ -25,6 +25,8 @@ import {
 import { REELS_SCHEMA_STATEMENTS, reelsSchemaApplyEnabled } from '../lib/reelsSchema.ts';
 import { verifyMuxSignature } from '../lib/reelsWebhook.ts';
 import { parseReelOverlays, serializeReelOverlays } from '../lib/reelOverlays.ts';
+import { authorizeOwnedPetId, authorizeOwnedProfileId } from '../lib/reelAuth.ts';
+import { clampReelGridLimit, profileReelsOwnerStatuses } from '../lib/reelGrid.ts';
 
 async function d1(env, sql, params = []) {
   const res = await env.DB.prepare(sql).bind(...params).all();
@@ -312,6 +314,57 @@ export async function handlePublicReelAction(env, body, json, clean, request, au
     });
   }
 
+  if (action === 'profileReels' || action === 'petReels' || action === 'userReels') {
+    const before = Number(body.before) || now + 1000;
+    const limit = clampReelGridLimit(body.limit);
+    const viewerId = await authUser(request, env, body);
+
+    if (action === 'profileReels') {
+      const profileId = clean(body.profileId, 80);
+      const profiles = await d1(env, 'SELECT id, account_id FROM profiles WHERE id = ?', [profileId]);
+      if (!profiles[0]) return json({ error: 'Perfil no encontrado' }, 404);
+      const isOwner = !!(viewerId && profiles[0].account_id === viewerId);
+      const statuses = profileReelsOwnerStatuses(isOwner);
+      const ph = statuses.map(() => '?').join(',');
+      const extra = isOwner ? '' : " AND r.moderation = 'none'";
+      const rows = await d1(
+        env,
+        `${REEL_SELECT} WHERE r.author_profile_id = ? AND r.deleted_at IS NULL AND r.status IN (${ph})${extra} AND r.created_at < ? ORDER BY r.created_at DESC LIMIT ?`,
+        [profileId, ...statuses, before, limit]
+      );
+      return json({ ok: true, reels: await attachReelLikes(env, rows, viewerId), hasMore: rows.length === limit });
+    }
+
+    if (action === 'petReels') {
+      const petId = clean(body.petId, 80);
+      const pets = await d1(env, 'SELECT id FROM pets WHERE id = ?', [petId]);
+      if (!pets[0]) return json({ error: 'Mascota no encontrada' }, 404);
+      const rows = await d1(
+        env,
+        `${REEL_SELECT} WHERE r.pet_id = ? AND r.status = 'ready' AND r.deleted_at IS NULL AND r.moderation = 'none' AND r.created_at < ? ORDER BY r.created_at DESC LIMIT ?`,
+        [petId, before, limit]
+      );
+      return json({ ok: true, reels: await attachReelLikes(env, rows, viewerId), hasMore: rows.length === limit });
+    }
+
+    const targetUserId = clean(body.userId, 80);
+    if (!targetUserId) return json({ error: 'Usuario requerido' }, 400);
+    const isOwner = !!(viewerId && viewerId === targetUserId);
+    const statuses = profileReelsOwnerStatuses(isOwner);
+    const ph = statuses.map(() => '?').join(',');
+    const extra = isOwner ? '' : " AND r.moderation = 'none'";
+    const rows = await d1(
+      env,
+      `${REEL_SELECT} WHERE r.user_id = ? AND r.deleted_at IS NULL AND r.status IN (${ph})${extra}
+        AND (r.author_profile_id IS NULL OR EXISTS (
+          SELECT 1 FROM profiles p WHERE p.id = r.author_profile_id AND p.account_id = r.user_id AND p.type = 'personal'
+        ))
+        AND r.created_at < ? ORDER BY r.created_at DESC LIMIT ?`,
+      [targetUserId, ...statuses, before, limit]
+    );
+    return json({ ok: true, reels: await attachReelLikes(env, rows, viewerId), hasMore: rows.length === limit });
+  }
+
   if (action === 'reelComments') {
     const reelId = clean(body.reelId, 80);
     const rows = await d1(
@@ -363,15 +416,19 @@ export async function handleAuthReelAction(env, body, json, clean, userId) {
     }
 
     let authorProfileId = clean(body.authorProfileId, 80) || null;
-    if (authorProfileId) {
-      const owned = await d1(env, 'SELECT id FROM profiles WHERE id = ? AND account_id = ?', [authorProfileId, userId]);
-      if (!owned[0]) return json({ error: 'Ese perfil no es tuyo' }, 403);
-    }
-    const petId = clean(body.petId, 80) || null;
-    if (petId) {
-      const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
-      if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
-    }
+    const ownedProfiles = await d1(env, 'SELECT id, type FROM profiles WHERE account_id = ?', [userId]);
+    const personalId = (ownedProfiles.find((p) => p.type === 'personal') || {}).id || null;
+    const profileAuth = authorizeOwnedProfileId(authorProfileId, ownedProfiles.map((p) => p.id), personalId);
+    if (!profileAuth.ok) return json({ error: profileAuth.error }, profileAuth.status);
+    authorProfileId = profileAuth.profileId;
+
+    const petRequested = clean(body.petId, 80) || null;
+    const ownedPets = petRequested
+      ? await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petRequested, userId])
+      : [];
+    const petAuth = authorizeOwnedPetId(petRequested, ownedPets.map((p) => p.id));
+    if (!petAuth.ok) return json({ error: petAuth.error }, petAuth.status);
+    const petId = petAuth.petId;
 
     const attemptId = `rua-${now}-${Math.random().toString(36).slice(2, 8)}`;
     await d1(env, 'INSERT INTO reel_upload_attempts (id, user_id, created_at) VALUES (?, ?, ?)', [attemptId, userId, now]);
@@ -473,6 +530,8 @@ export async function handleAuthReelAction(env, body, json, clean, userId) {
     });
   }
 
+  // Like/comment: user_id de la CUENTA autenticada (igual que posts).
+  // No se usa el perfil empresa/protector activo.
   if (action === 'reelLike') {
     const reelId = clean(body.reelId, 80);
     const pub = await d1(env, 'SELECT id, status, deleted_at, moderation FROM reels WHERE id = ?', [reelId]);

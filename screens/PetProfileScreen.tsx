@@ -41,6 +41,8 @@ import { careStatusLabel, waitingLabel, sizeLabel, speciesLabel as speciesLabelF
 import type { PublicProfile } from '../features/profiles/profileTypes';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 import { openHumanProfile } from '../lib/publicHandles';
+import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
+import type { ApiReel } from '../lib/db';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'PetProfile'>;
@@ -65,6 +67,7 @@ export default function PetProfileScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [sharingLocation, setSharingLocation] = useState(false);
   const [locationDone, setLocationDone] = useState(false);
+  const [galleryTab, setGalleryTab] = useState<'posts' | 'reels'>('posts');
 
   useEffect(() => {
     (async () => {
@@ -216,6 +219,8 @@ export default function PetProfileScreen() {
   const shownPosts = posts
     .filter((p) => !deletedSet.has(p.id))
     .map((p) => (editedCaptions[p.id] != null ? { ...p, caption: editedCaptions[p.id] } : p));
+  const reelScope = !demoPet && (realPet?.id || petId) ? { type: 'pet' as const, id: realPet?.id || petId } : null;
+  const reelsGrid = useReelGrid(reelScope, galleryTab === 'reels' && !!reelScope);
 
   const header = (
     <View>
@@ -470,11 +475,34 @@ export default function PetProfileScreen() {
         </Pressable>
       )}
 
-      <Text style={styles.galleryTitle}>Galería 📸</Text>
-      {loading && <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />}
-      {!loading && posts.length === 0 && (
+      <View style={styles.galleryTabs}>
+        <Pressable
+          style={[styles.galleryTab, galleryTab === 'posts' && styles.galleryTabOn]}
+          onPress={() => setGalleryTab('posts')}
+          accessibilityLabel="Publicaciones"
+        >
+          <Text style={[styles.galleryTabT, galleryTab === 'posts' && styles.galleryTabTOn]}>Publicaciones</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.galleryTab, galleryTab === 'reels' && styles.galleryTabOn]}
+          onPress={() => setGalleryTab('reels')}
+          accessibilityLabel="Reels"
+        >
+          <Text style={[styles.galleryTabT, galleryTab === 'reels' && styles.galleryTabTOn]}>Reels</Text>
+        </Pressable>
+      </View>
+      {loading && galleryTab === 'posts' && <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />}
+      {galleryTab === 'reels' && reelsGrid.loading && (
+        <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
+      )}
+      {!loading && galleryTab === 'posts' && posts.length === 0 && (
         <View style={styles.emptyGallery}>
           <Text style={styles.emptyText}>Aún no hay publicaciones de {name} 🐾</Text>
+        </View>
+      )}
+      {galleryTab === 'reels' && !reelsGrid.loading && reelsGrid.items.length === 0 && (
+        <View style={styles.emptyGallery}>
+          <Text style={styles.emptyText}>Aún no hay Reels de {name} 🐾</Text>
         </View>
       )}
     </View>
@@ -484,18 +512,36 @@ export default function PetProfileScreen() {
     <View style={styles.safe}>
       <FlatList
         style={desktopWeb ? styles.desktopList : undefined}
-        data={shownPosts}
-        key="pet-grid"
+        data={galleryTab === 'reels' ? reelsGrid.items : shownPosts}
+        key={galleryTab === 'reels' ? 'pet-reels' : 'pet-grid'}
         numColumns={3}
-        keyExtractor={(p) => p.id}
+        keyExtractor={(item) => item.id}
         ListHeaderComponent={header}
         columnWrapperStyle={{ gap: 2, paddingHorizontal: spacing.lg }}
         contentContainerStyle={{ gap: 2, paddingBottom: guest ? 260 : spacing.xxl }}
-        renderItem={({ item }) => (
-          <Pressable onPress={() => openPost(item)}>
-            <PostGridMedia post={item} size={tile} />
-          </Pressable>
-        )}
+        onEndReached={galleryTab === 'reels' ? reelsGrid.loadMore : undefined}
+        onEndReachedThreshold={0.4}
+        renderItem={({ item, index }) =>
+          galleryTab === 'reels' ? (
+            <ReelGridTile
+              reel={item as ApiReel}
+              size={tile}
+              onPress={() =>
+                reelScope &&
+                openReelFromGrid(navigation, {
+                  reel: item as ApiReel,
+                  items: reelsGrid.items,
+                  index,
+                  scope: reelScope,
+                })
+              }
+            />
+          ) : (
+            <Pressable onPress={() => openPost(item as Post)}>
+              <PostGridMedia post={item as Post} size={tile} />
+            </Pressable>
+          )
+        }
         showsVerticalScrollIndicator={false}
       />
       {inviteBar}
@@ -668,6 +714,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     marginBottom: spacing.md,
   },
+  galleryTabs: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.sm,
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  galleryTab: { flex: 1, alignItems: 'center', paddingVertical: 8 },
+  galleryTabOn: { borderBottomWidth: 2, borderBottomColor: colors.primary },
+  galleryTabT: { fontSize: 13, fontWeight: '700', color: colors.textMuted },
+  galleryTabTOn: { color: colors.primary },
   emptyGallery: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
   emptyText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
 });

@@ -37,28 +37,43 @@ import {
   shouldStartStream,
   toggleLikedSet,
 } from '../lib/reels';
+import { appendUniqueReels, type ReelGridScope } from '../lib/reelGrid';
 import { forgetLocalReel, listLocalReels } from '../lib/reelSession';
 import { colors } from '../lib/theme';
 import { Image } from 'expo-image';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { formatTime } from '../lib/data';
 
-export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | null } = {}) {
+export default function ReelsScreen({
+  initialReel,
+  initialReels,
+  initialIndex = 0,
+  scope,
+}: {
+  initialReel?: ApiReel | null;
+  initialReels?: ApiReel[] | null;
+  initialIndex?: number;
+  scope?: ReelGridScope;
+} = {}) {
   const navigation = useNavigation<any>();
   const { user } = useStore();
   const tabFocused = useIsFocused();
   const reelsPageVisible = useReelsPageVisible();
   const insets = useSafeAreaInsets();
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
-  const [reels, setReels] = useState<ApiReel[]>(initialReel ? [initialReel] : []);
+  const seeded = initialReels && initialReels.length ? initialReels : initialReel ? [initialReel] : [];
+  const startIndex = Math.max(0, Math.min(initialIndex, Math.max(0, seeded.length - 1)));
+  const [reels, setReels] = useState<ApiReel[]>(seeded);
   const [liked, setLiked] = useState<Set<string>>(new Set());
   const [myComments, setMyComments] = useState<Record<string, number>>({});
   const [muted, setMuted] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [stableIndex, setStableIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(startIndex);
+  const [stableIndex, setStableIndex] = useState(startIndex);
   const [viewportH, setViewportH] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [boot, setBoot] = useState(!initialReel);
+  const [boot, setBoot] = useState(!seeded.length);
+  const scoped = !!(scope && scope.type !== 'feed');
+  const listRef = useRef<FlatList<ApiReel>>(null);
   const [bootError, setBootError] = useState(false);
   const [pageError, setPageError] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -77,21 +92,33 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
     return () => sub.remove();
   }, []);
 
+  const loadScopedPage = useCallback(
+    async (before?: number) => {
+      if (scope?.type === 'profile') return db.profileReels(scope.id, before, REEL_FEED_PAGE);
+      if (scope?.type === 'pet') return db.petReels(scope.id, before, REEL_FEED_PAGE);
+      if (scope?.type === 'user') return db.userReels(scope.id, before, REEL_FEED_PAGE);
+      return db.reelsFeed(before, REEL_FEED_PAGE);
+    },
+    [scope]
+  );
+
   const loadPage = useCallback(async (reset: boolean) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     if (!reset) setLoadingMore(true);
     try {
       const before = reset ? undefined : oldestRef.current;
-      const { reels: page, hasMore: more } = await db.reelsFeed(before, REEL_FEED_PAGE);
+      const { reels: page, hasMore: more } = await loadScopedPage(before);
       if (page.length) oldestRef.current = page[page.length - 1].createdAt;
       setHasMore(more);
       setPageError(false);
       setBootError(false);
       setReels((prev) => {
-        if (reset) return initialReel && !page.some((r) => r.id === initialReel.id) ? [initialReel, ...page] : page;
-        const seen = new Set(prev.map((r) => r.id));
-        return [...prev, ...page.filter((r) => !seen.has(r.id))];
+        if (reset) {
+          if (seeded.length) return appendUniqueReels(seeded, page);
+          return initialReel && !page.some((r) => r.id === initialReel.id) ? [initialReel, ...page] : page;
+        }
+        return appendUniqueReels(prev, page);
       });
     } catch {
       if (reset) {
@@ -106,13 +133,19 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
       setLoadingMore(false);
       setBoot(false);
     }
-  }, [initialReel]);
+  }, [initialReel, loadScopedPage, seeded.length]);
 
   useEffect(() => {
-    loadPage(true);
+    if (seeded.length) {
+      oldestRef.current = seeded[seeded.length - 1].createdAt;
+      setBoot(false);
+    } else {
+      loadPage(true);
+    }
     db.myReelState()
       .then(({ state }) => {
         setLiked(new Set(state.likedReels));
+        if (scoped) return;
         const mine = [...(state.pendingReels || []), ...(state.failedReels || [])];
         if (mine.length) setReels((prev) => mergeOwnerReels(prev, mine));
       })
@@ -138,7 +171,7 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
       try {
         const { state } = await db.myReelState();
         const mine = [...(state.pendingReels || []), ...(state.failedReels || [])];
-        if (mine.length && !cancelled) setReels((prev) => mergeOwnerReels(prev, mine));
+        if (mine.length && !cancelled && !scoped) setReels((prev) => mergeOwnerReels(prev, mine));
       } catch {}
       if (!cancelled && ticks < 12 && listLocalReels().length) {
         timer = setTimeout(poll, REEL_OWNER_POLL_MS);
@@ -326,6 +359,7 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
     >
       {viewportH > 0 && view === 'list' ? (
         <FlatList
+          ref={listRef}
           data={reels}
           extraData={extraData}
           keyExtractor={keyExtractor}
@@ -336,6 +370,12 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
           disableIntervalMomentum
           showsVerticalScrollIndicator={false}
           getItemLayout={getItemLayout}
+          initialScrollIndex={startIndex > 0 ? startIndex : undefined}
+          onScrollToIndexFailed={({ index }) => {
+            requestAnimationFrame(() => {
+              listRef.current?.scrollToIndex({ index, animated: false });
+            });
+          }}
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
           onEndReached={() => {
@@ -379,6 +419,7 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
         </View>
       )}
 
+      {!scoped && (
       <Pressable
         style={[styles.fab, { top: insets.top + 10 }]}
         onPress={goCreate}
@@ -386,6 +427,7 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
       >
         <Ionicons name="add" size={26} color="#fff" />
       </Pressable>
+      )}
 
       {sheet ? (
         <KeyboardAvoidingView
