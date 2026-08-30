@@ -1,14 +1,14 @@
 /**
  * Política de Reels + Mux (cliente, Worker y tests).
  *
- * Duración (límite de producto, sin holgura):
- *   30.00 s inclusive = válido
- *   cualquier durationSec > 30.00 = rechazado
- * Mux puede reportar un contenedor ligeramente por encima de 30.00
- * (p. ej. 30.01) aunque el recorte visual sea “30 s”. Eso se rechaza:
- * no se sube el límite de producto para absorber el redondeo.
- * Cliente (UX): si mide duración, > 30000 ms se rechaza. 30000 es válido.
- * Autoridad final: duration de Mux en el webhook.
+ * Duración de producto (UI / trim / archivo a subir):
+ *   el usuario NUNCA puede seleccionar más de 30.00 s
+ *   30.00 s inclusive = válido en el editor
+ * Mux metadata (autoridad del webhook): holgura TÉCNICA de 0.15 s
+ *   porque un clip real de 5.000 s llegó como 5.067 s (+67 ms).
+ *   Se acepta durationSec <= 30.15; > 30.15 se rechaza.
+ *   No se sube el tope de la UI a 30.2 / 30.5.
+ * Galería: un video >30 s NO se rechaza si puede pasar por el trim.
  *
  * Tamaño 50 MB: el archivo NO atraviesa el Worker. Cliente valida
  * fileSize del picker. Worker solo puede rechazar el byteSize DECLARADO
@@ -24,6 +24,9 @@
 
 export const REEL_MAX_DURATION_SEC = 30;
 export const REEL_MAX_DURATION_MS = REEL_MAX_DURATION_SEC * 1000;
+/** Holgura solo para data.duration de Mux. No es límite de producto. */
+export const REEL_MUX_DURATION_SLACK_SEC = 0.15;
+export const REEL_MUX_MAX_DURATION_SEC = REEL_MAX_DURATION_SEC + REEL_MUX_DURATION_SLACK_SEC;
 export const REEL_MAX_BYTES = 50 * 1024 * 1024;
 export const REEL_ALLOWED_MIMES = ['video/mp4', 'video/quicktime'] as const;
 export const REEL_DURATION_REJECT_MESSAGE = 'Los Reels pueden durar hasta 30 segundos.';
@@ -69,7 +72,7 @@ export function isReelFileTooLarge(bytes: number | null | undefined): boolean {
   return Number(bytes) > REEL_MAX_BYTES;
 }
 
-/** Cliente: si puede medir duración, >30000 ms se rechaza. 30000 es válido. */
+/** Cliente / trim: si puede medir duración, >30000 ms se rechaza. 30000 es válido. */
 export function clientDurationRejects(durationMs: number | null | undefined): boolean {
   if (durationMs == null || !Number.isFinite(Number(durationMs)) || Number(durationMs) <= 0) {
     return false;
@@ -77,15 +80,31 @@ export function clientDurationRejects(durationMs: number | null | undefined): bo
   return Number(durationMs) > REEL_MAX_DURATION_MS;
 }
 
+/** Galería: >30 s requiere trim; no se rechaza el pick. */
+export function galleryNeedsTrim(durationMs: number | null | undefined): boolean {
+  if (durationMs == null || !Number.isFinite(Number(durationMs)) || Number(durationMs) <= 0) {
+    return false;
+  }
+  return Number(durationMs) > REEL_MAX_DURATION_MS;
+}
+
 /**
- * Autoridad Mux/backend: segundos (float de Mux).
- * 29.99 y 30.00 → válido; 30.01, 30.25, 31.00 → rechazado.
+ * Autoridad Mux/backend: segundos (float de Mux) + holgura 0.15 s.
+ * 29.99, 30.00 y 30.15 → válido; 30.16, 30.25, 31.00 → rechazado.
  */
 export function muxDurationRejects(durationSec: number | null | undefined): boolean {
   if (durationSec == null || !Number.isFinite(Number(durationSec)) || Number(durationSec) < 0) {
     return true;
   }
-  return Number(durationSec) > REEL_MAX_DURATION_SEC;
+  return Number(durationSec) > REEL_MUX_MAX_DURATION_SEC;
+}
+
+/** Archivo que se sube a Mux: trimmed gana siempre sobre el original. */
+export function reelUploadSource(input: { originalUri?: string | null; trimmedUri?: string | null }): string | null {
+  const trimmed = String(input.trimmedUri || '').trim();
+  if (trimmed) return trimmed;
+  const original = String(input.originalUri || '').trim();
+  return original || null;
 }
 
 export function durationSecToMs(durationSec: number): number {
@@ -118,6 +137,29 @@ export function isPublicReel(input: {
 
 export function reelUploadLimited(hourCount: number, dayCount: number): boolean {
   return hourCount >= REEL_UPLOADS_PER_HOUR || dayCount >= REEL_UPLOADS_PER_DAY;
+}
+
+export function reelPlayerSourceKey(role: ReelPlayerRole, hlsUrl: string | null | undefined): string {
+  return role === 'idle' || !hlsUrl ? 'idle' : `hls:${hlsUrl}`;
+}
+
+export function displayedLikeCount(likeCount: number, liked: boolean, serverLiked?: boolean): number {
+  return Math.max(0, (likeCount || 0) + (liked ? 1 : 0) - (serverLiked ? 1 : 0));
+}
+
+export function toggleLikedSet(prev: Iterable<string>, id: string): { next: Set<string>; value: boolean } {
+  const next = new Set(prev);
+  const value = !next.has(id);
+  if (value) next.add(id);
+  else next.delete(id);
+  return { next, value };
+}
+
+export function rollbackLikedSet(current: Iterable<string>, id: string, attemptedValue: boolean): Set<string> {
+  const roll = new Set(current);
+  if (attemptedValue) roll.delete(id);
+  else roll.add(id);
+  return roll;
 }
 
 export function shouldPlayReel(input: {
@@ -370,9 +412,12 @@ export function clientReelValidationError(input: {
   mime?: string | null;
   bytes?: number | null;
   durationMs?: number | null;
+  /** Galería: no rechaza >30 s (el trim recorta). Publicar: sí. */
+  stage?: 'gallery' | 'publish';
 }): string | null {
   if (!isAllowedReelMime(input.mime)) return 'Formato no soportado. Usá MP4 o MOV.';
   if (isReelFileTooLarge(input.bytes)) return 'El video puede pesar hasta 50 MB.';
+  if (input.stage === 'gallery') return null;
   if (clientDurationRejects(input.durationMs)) return REEL_DURATION_REJECT_MESSAGE;
   return null;
 }

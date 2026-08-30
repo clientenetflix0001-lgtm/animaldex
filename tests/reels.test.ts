@@ -16,16 +16,39 @@ import {
   isPublicReel,
   isReelFileTooLarge,
   muxCleanupEnabled,
+  displayedLikeCount,
+  galleryNeedsTrim,
   muxDurationRejects,
   muxHlsUrl,
   muxThumbnailUrl,
   planReelCleanup,
   playerRoleForIndex,
+  reelPlayerSourceKey,
   reelShareUrl,
   reelUploadLimited,
+  rollbackLikedSet,
   shouldPlayReel,
   shouldStartStream,
+  toggleLikedSet,
 } from '../lib/reels.ts';
+import {
+  canAddReelOverlay,
+  createDraftOverlay,
+  normalizeOverlay,
+  parseReelOverlays,
+  REEL_OVERLAY_MAX,
+  sanitizeOverlayText,
+  serializeReelOverlays,
+} from '../lib/reelOverlays.ts';
+import {
+  applyTrimFinish,
+  fileToUpload,
+  openReelTrimEditor,
+  reelTrimEditorConfig,
+  shouldOpenReelTrim,
+  trimSelectionRejects,
+  wouldUploadOriginalDespiteTrim,
+} from '../lib/reelTrim.ts';
 import { REELS_SCHEMA_STATEMENTS, normalizeSql, reelsSchemaApplyEnabled } from '../lib/reelsSchema.ts';
 import { verifyMuxSignature } from '../lib/reelsWebhook.ts';
 
@@ -40,6 +63,7 @@ const card = readFileSync(join(root, 'components/ReelCard.tsx'), 'utf8');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const appJson = JSON.parse(readFileSync(join(root, 'app.json'), 'utf8'));
 const migration = readFileSync(join(root, 'migrations/001_reels.sql'), 'utf8');
+const migration2 = readFileSync(join(root, 'migrations/002_reel_overlays.sql'), 'utf8');
 const handles = readFileSync(join(root, 'lib/publicHandles.ts'), 'utf8');
 
 function sign(body: string, secret: string, t = Math.floor(Date.now() / 1000)) {
@@ -66,21 +90,31 @@ const uploading = {
 };
 
 describe('duración 30 segundos', () => {
-  it('29.99 y 30.00 son válidos; 30.01, 30.25 y 31.00 se rechazan', () => {
-    assert.equal(muxDurationRejects(29.99), false);
-    assert.equal(muxDurationRejects(30), false);
-    assert.equal(muxDurationRejects(30.0), false);
-    assert.equal(muxDurationRejects(30.01), true);
-    assert.equal(muxDurationRejects(30.25), true);
-    assert.equal(muxDurationRejects(31), true);
-    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(29.99)).patch.status, 'ready');
-    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(30.0)).patch.status, 'ready');
-    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(30.01)).patch.status, 'rejected');
-    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(30.25)).patch.status, 'rejected');
-    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(31)).patch.status, 'rejected');
+  it('UI/trim: 10s y 30.00s válidos; galería 60s requiere trim y no se rechaza', () => {
+    assert.equal(clientDurationRejects(10000), false);
+    assert.equal(clientDurationRejects(30000), false);
+    assert.equal(galleryNeedsTrim(10000), false);
+    assert.equal(galleryNeedsTrim(30000), false);
+    assert.equal(galleryNeedsTrim(60000), true);
+    assert.equal(shouldOpenReelTrim(60000), true);
+    assert.equal(clientReelValidationError({ mime: 'video/mp4', durationMs: 60000, stage: 'gallery' }), null);
+    assert.equal(clientReelValidationError({ mime: 'video/mp4', durationMs: 60000, stage: 'publish' }), REEL_DURATION_REJECT_MESSAGE);
   });
 
-  it('cliente: 30000 ms válido, cualquier ms por encima se rechaza', () => {
+  it('Mux: 30.00 y 30.15 válidos; 30.16, 30.25 y 31.00 se rechazan', () => {
+    assert.equal(muxDurationRejects(29.99), false);
+    assert.equal(muxDurationRejects(30), false);
+    assert.equal(muxDurationRejects(30.15), false);
+    assert.equal(muxDurationRejects(30.16), true);
+    assert.equal(muxDurationRejects(30.25), true);
+    assert.equal(muxDurationRejects(31), true);
+    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(30.0)).patch.status, 'ready');
+    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(30.15)).patch.status, 'ready');
+    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(30.16)).patch.status, 'rejected');
+    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(30.25)).patch.status, 'rejected');
+  });
+
+  it('cliente: 30000 ms válido, cualquier ms por encima se rechaza al publicar', () => {
     assert.equal(clientDurationRejects(29990), false);
     assert.equal(clientDurationRejects(30000), false);
     assert.equal(clientDurationRejects(30001), true);
@@ -273,5 +307,139 @@ describe('aislamiento Animaldex', () => {
     const plugins = JSON.stringify(appJson.expo.plugins);
     assert.match(plugins, /expo-video/);
     assert.match(plugins, /supportsBackgroundPlayback/);
+  });
+});
+
+describe('galería y trim', () => {
+  it('10 s y 30 s no abren trim; 60 s sí', () => {
+    assert.equal(shouldOpenReelTrim(10000), false);
+    assert.equal(shouldOpenReelTrim(30000), false);
+    assert.equal(shouldOpenReelTrim(60000), true);
+  });
+
+  it('trim 60 s → segmento 30 s o 15 s; más de 30 se rechaza', () => {
+    const thirty = applyTrimFinish({ outputPath: 'file://trim-30.mp4', startTime: 42000, endTime: 72000, duration: 30000 });
+    assert.equal(thirty.status, 'finished');
+    if (thirty.status === 'finished') {
+      assert.equal(thirty.uri, 'file://trim-30.mp4');
+      assert.equal(thirty.durationMs, 30000);
+    }
+    const fifteen = applyTrimFinish({ outputPath: 'file://trim-15.mp4', startTime: 0, endTime: 15000, duration: 15000 });
+    assert.equal(fifteen.status, 'finished');
+    assert.equal(trimSelectionRejects(0, 30000), false);
+    assert.equal(trimSelectionRejects(0, 30001), true);
+    const tooLong = applyTrimFinish({ outputPath: 'file://bad.mp4', startTime: 0, endTime: 31000, duration: 31000 });
+    assert.equal(tooLong.status, 'error');
+  });
+
+  it('cancelar y error de trim', async () => {
+    const cancelled = await openReelTrimEditor('file://orig.mp4', {
+      showEditor: () => {},
+      onCancel: (cb) => {
+        cb();
+        return { remove() {} };
+      },
+    });
+    assert.equal(cancelled.status, 'cancelled');
+    const errored = await openReelTrimEditor('file://orig.mp4', {
+      showEditor: () => {},
+      onError: (cb) => {
+        cb({ message: 'fail' });
+        return { remove() {} };
+      },
+    });
+    assert.equal(errored.status, 'error');
+    assert.equal(reelTrimEditorConfig().maxDuration, 30000);
+  });
+
+  it('nunca sube el original si existe trimmedUri', () => {
+    assert.equal(fileToUpload('file://orig.mp4', null), 'file://orig.mp4');
+    assert.equal(fileToUpload('file://orig.mp4', 'file://trim.mp4'), 'file://trim.mp4');
+    assert.equal(wouldUploadOriginalDespiteTrim('file://orig.mp4', 'file://trim.mp4'), false);
+    assert.match(createReel, /fileToUpload/);
+    assert.match(createReel, /trimmedUri/);
+    assert.doesNotMatch(createReel, /videoMaxDuration: 30/);
+    assert.ok(pkg.dependencies['react-native-video-trim']);
+  });
+});
+
+describe('overlays de texto', () => {
+  it('texto vacío no se guarda; máximo 100 chars y 3 overlays', () => {
+    assert.equal(normalizeOverlay({ text: '   ' }), null);
+    assert.equal(sanitizeOverlayText('<b>hola</b>'), 'hola');
+    assert.equal(sanitizeOverlayText('x'.repeat(140)).length, 100);
+    const items = [
+      { text: 'uno', x: 0.5, y: 0.3 },
+      { text: 'dos', x: 0.5, y: 0.4 },
+      { text: 'tres', x: 0.5, y: 0.5 },
+      { text: 'cuatro', x: 0.5, y: 0.6 },
+    ];
+    const parsed = parseReelOverlays(items);
+    assert.equal(parsed.length, REEL_OVERLAY_MAX);
+    assert.equal(canAddReelOverlay(parsed), false);
+    const valid = normalizeOverlay({ text: 'hola', x: 2, y: -1, textColor: 'red' });
+    assert.ok(valid);
+    assert.ok(valid!.x <= 0.92 && valid!.x >= 0.08);
+    assert.ok(valid!.y <= 0.72 && valid!.y >= 0.16);
+    assert.equal(valid!.textColor, '#FFFFFF');
+    assert.match(serializeReelOverlays(parsed), /"text":"uno"/);
+    const draft = createDraftOverlay({ x: 0.5, y: 0.3 });
+    assert.equal(draft.text, '');
+    assert.equal(normalizeOverlay(draft), null);
+    assert.match(createReel, /createDraftOverlay/);
+  });
+
+  it('overlay no altera HLS y se persiste como JSON', () => {
+    const hls = muxHlsUrl('abc');
+    assert.equal(hls, 'https://stream.mux.com/abc.m3u8');
+    assert.match(card, /ReelOverlayLayer/);
+    assert.match(card, /contentType: 'hls'/);
+    assert.doesNotMatch(card, /ffmpeg|burn|renderMp4/);
+    assert.match(reelsMux, /overlays_json/);
+    assert.match(migration2, /ALTER TABLE reels ADD COLUMN overlays_json/);
+    assert.doesNotMatch(migration2, /ALTER TABLE posts/);
+    assert.match(createReel, /overlays: cleanOverlays/);
+  });
+});
+
+describe('like, comentarios, share, perfiles', () => {
+  it('like / unlike y rollback no cambian la key del player', () => {
+    const first = toggleLikedSet([], 'r1');
+    assert.equal(first.value, true);
+    assert.equal(first.next.has('r1'), true);
+    const unlike = toggleLikedSet(first.next, 'r1');
+    assert.equal(unlike.value, false);
+    const rolled = rollbackLikedSet(new Set(), 'r1', true);
+    assert.equal(rolled.has('r1'), false);
+    assert.equal(displayedLikeCount(10, true, false), 11);
+    assert.equal(displayedLikeCount(10, false, true), 9);
+    const keyBefore = reelPlayerSourceKey('active', 'https://stream.mux.com/x.m3u8');
+    const keyAfterLike = reelPlayerSourceKey('active', 'https://stream.mux.com/x.m3u8');
+    assert.equal(keyBefore, keyAfterLike);
+    assert.match(reelsScreen, /rollback|roll\.delete/);
+    assert.match(card, /sameReelCard|memo\(ReelCardInner/);
+  });
+
+  it('comentarios pausan el Reel activo y conservan el feed', () => {
+    assert.equal(
+      shouldPlayReel({ tabFocused: true, reelsPageVisible: true, reelIsActive: true && false, appIsForeground: true }),
+      false
+    );
+    assert.match(reelsScreen, /role === 'active' && !sheet/);
+    assert.match(reelsScreen, /reelComments/);
+    assert.match(reelsScreen, /reelComment/);
+    assert.match(reelsScreen, /commentAvatar/);
+    assert.match(reelsScreen, /formatTime/);
+  });
+
+  it('share /r/:id, perfil correcto y mascota protagonista', () => {
+    assert.equal(reelShareUrl('reel-9'), 'https://animaldex-web.pages.dev/r/reel-9');
+    assert.match(reelsScreen, /shareReel/);
+    assert.match(reelsScreen, /openHumanProfile/);
+    assert.match(reelsScreen, /PetProfile/);
+    assert.match(card, /onOpenPet/);
+    assert.match(card, /Compartir/);
+    assert.match(createReel, /ProfileSwitcher/);
+    assert.match(createReel, /¿Quién protagoniza/);
   });
 });

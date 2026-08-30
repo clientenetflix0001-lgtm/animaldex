@@ -10,13 +10,12 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ReelCard } from '../components/ReelCard';
-import { db, type ApiComment, type ApiReel } from '../lib/db';
+import { db, timeAgoMinutes, type ApiComment, type ApiReel } from '../lib/db';
 import { useStore } from '../lib/store';
 import { shareReel } from '../lib/share';
 import { openHumanProfile } from '../lib/publicHandles';
@@ -25,10 +24,15 @@ import {
   REEL_FEED_PAGE,
   REEL_SCROLL_DEBOUNCE_MS,
   playerRoleForIndex,
+  rollbackLikedSet,
   shouldPlayReel,
   shouldStartStream,
+  toggleLikedSet,
 } from '../lib/reels';
 import { colors } from '../lib/theme';
+import { Image } from 'expo-image';
+import { thumb, userFallbackAvatar } from '../lib/images';
+import { formatTime } from '../lib/data';
 
 export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | null } = {}) {
   const navigation = useNavigation<any>();
@@ -112,11 +116,10 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
 
   const toggleLike = useCallback((id: string) => {
     setLiked((prev) => {
-      const next = new Set(prev);
-      const value = !next.has(id);
-      if (value) next.add(id);
-      else next.delete(id);
-      db.reelLike(id, value).catch(() => {});
+      const { next, value } = toggleLikedSet(prev, id);
+      db.reelLike(id, value).catch(() => {
+        setLiked((cur) => rollbackLikedSet(cur, id, value));
+      });
       return next;
     });
   }, []);
@@ -154,7 +157,33 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
     } catch {}
   }, [draft, sheet, user]);
 
-  const extraData = useMemo(() => ({ liked, myComments, muted, stableIndex }), [liked, myComments, muted, stableIndex]);
+  const extraData = useMemo(
+    () => ({ liked, myComments, muted, stableIndex, commentsOpen: !!sheet }),
+    [liked, myComments, muted, stableIndex, sheet]
+  );
+
+  const onShare = useCallback((r: ApiReel) => {
+    shareReel(r);
+  }, []);
+
+  const onOpenProfile = useCallback(
+    (r: ApiReel) => {
+      openHumanProfile(navigation, {
+        username: r.authorProfileUsername || r.username || undefined,
+        userId: r.userId,
+      });
+    },
+    [navigation]
+  );
+
+  const onOpenPet = useCallback(
+    (r: ApiReel) => {
+      if (r.petId) navigation.navigate('PetProfile', { petId: r.petUsername || r.petId });
+    },
+    [navigation]
+  );
+
+  const onToggleMute = useCallback(() => setMuted((m) => !m), []);
 
   const renderItem = useCallback(
     ({ item, index }: { item: ApiReel; index: number }) => {
@@ -162,7 +191,7 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
       const play = shouldPlayReel({
         tabFocused,
         reelsPageVisible,
-        reelIsActive: role === 'active',
+        reelIsActive: role === 'active' && !sheet,
         appIsForeground: foreground,
       });
       return (
@@ -176,22 +205,15 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
             extraComments={myComments[item.id] || 0}
             onToggleLike={toggleLike}
             onOpenComments={openComments}
-            onShare={(r) => shareReel(r)}
-            onOpenProfile={(r) =>
-              openHumanProfile(navigation, {
-                username: r.authorProfileUsername || r.username || undefined,
-                userId: r.userId,
-              })
-            }
-            onOpenPet={(r) => {
-              if (r.petId) navigation.navigate('PetProfile', { petId: r.petUsername || r.petId });
-            }}
-            onToggleMute={() => setMuted((m) => !m)}
+            onShare={onShare}
+            onOpenProfile={onOpenProfile}
+            onOpenPet={onOpenPet}
+            onToggleMute={onToggleMute}
           />
         </View>
       );
     },
-    [stableIndex, tabFocused, reelsPageVisible, foreground, muted, liked, myComments, toggleLike, openComments, navigation, viewportH]
+    [stableIndex, tabFocused, reelsPageVisible, foreground, muted, liked, myComments, toggleLike, openComments, onShare, onOpenProfile, onOpenPet, onToggleMute, navigation, viewportH, sheet]
   );
 
   const keyExtractor = useCallback((item: ApiReel) => item.id, []);
@@ -263,9 +285,20 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
             keyExtractor={(c) => c.id}
             style={{ maxHeight: 240 }}
             renderItem={({ item }) => (
-              <Text style={styles.comment}>
-                <Text style={{ fontWeight: '800' }}>@{item.username}</Text> {item.text}
-              </Text>
+              <View style={styles.commentRow}>
+                <Image
+                  source={{ uri: thumb(item.avatarUrl || userFallbackAvatar(item.username), 64) }}
+                  style={styles.commentAvatar}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.commentMeta}>
+                    <Text style={{ fontWeight: '800' }}>@{item.username}</Text>
+                    {'  '}
+                    <Text style={styles.commentTime}>{formatTime(timeAgoMinutes(item.createdAt))}</Text>
+                  </Text>
+                  <Text style={styles.comment}>{item.text}</Text>
+                </View>
+              </View>
             )}
             ListEmptyComponent={<Text style={styles.commentMuted}>Sé el primero en comentar.</Text>}
           />
@@ -278,7 +311,7 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
               style={styles.input}
             />
             <Pressable onPress={sendComment} disabled={!draft.trim()}>
-              {false ? <ActivityIndicator /> : <Ionicons name="send" size={20} color={colors.primary} />}
+              <Ionicons name="send" size={20} color={draft.trim() ? colors.primary : colors.textMuted} />
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -315,7 +348,11 @@ const styles = StyleSheet.create({
   },
   sheetHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   sheetTitle: { fontWeight: '800', color: colors.text },
-  comment: { color: colors.text, marginBottom: 8 },
+  commentRow: { flexDirection: 'row', gap: 8, marginBottom: 10, alignItems: 'flex-start' },
+  commentAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.border },
+  commentMeta: { color: colors.text, marginBottom: 2 },
+  commentTime: { color: colors.textMuted, fontWeight: '600', fontSize: 12 },
+  comment: { color: colors.text },
   commentMuted: { color: colors.textMuted },
   composer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   input: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, color: colors.text },

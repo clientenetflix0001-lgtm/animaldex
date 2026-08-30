@@ -8,12 +8,14 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useStore } from '../lib/store';
 import { db } from '../lib/db';
 import { thumb, petFallbackAvatar } from '../lib/images';
@@ -24,8 +26,46 @@ import {
   REEL_DURATION_REJECT_MESSAGE,
   clientReelValidationError,
 } from '../lib/reels';
+import {
+  canAddReelOverlay,
+  createDraftOverlay,
+  parseReelOverlays,
+  type ReelTextOverlay,
+} from '../lib/reelOverlays';
+import {
+  fileToUpload,
+  openReelTrimEditor,
+  shouldOpenReelTrim,
+} from '../lib/reelTrim';
+import { ReelOverlayLayer } from '../components/ReelOverlayLayer';
+import { ReelTextEditor } from '../components/ReelTextEditor';
 
 type Phase = 'pick' | 'preparing' | 'uploading' | 'processing' | 'ready' | 'error';
+
+async function loadTrimNative() {
+  try {
+    const mod: any = await import('react-native-video-trim');
+    const VideoTrim = mod.default || mod;
+    if (!mod.showEditor) return null;
+    return {
+      showEditor: mod.showEditor,
+      onFinishTrimming: VideoTrim.onFinishTrimming?.bind(VideoTrim),
+      onCancel: VideoTrim.onCancel?.bind(VideoTrim),
+      onError: VideoTrim.onError?.bind(VideoTrim),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function PreviewPlayer({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.staysActiveInBackground = false;
+  });
+  return <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} />;
+}
 
 export default function CreateReelScreen() {
   const navigation = useNavigation<any>();
@@ -36,15 +76,20 @@ export default function CreateReelScreen() {
 
   const [selectedPet, setSelectedPet] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
-  const [localUri, setLocalUri] = useState<string | null>(null);
+  const [originalUri, setOriginalUri] = useState<string | null>(null);
+  const [trimmedUri, setTrimmedUri] = useState<string | null>(null);
   const [mime, setMime] = useState<string | null>(null);
   const [bytes, setBytes] = useState<number | null>(null);
   const [durationMs, setDurationMs] = useState<number | null>(null);
   const [width, setWidth] = useState<number | null>(null);
   const [height, setHeight] = useState<number | null>(null);
+  const [overlays, setOverlays] = useState<ReelTextOverlay[]>([]);
+  const [activeOverlayId, setActiveOverlayId] = useState<string | null>(null);
+  const [previewBox, setPreviewBox] = useState({ w: 0, h: 0 });
   const [phase, setPhase] = useState<Phase>('pick');
   const [error, setError] = useState('');
 
+  const uploadUri = fileToUpload(originalUri, trimmedUri);
   const activePetId = isOrg ? null : selectedPet;
   const phaseLabel =
     phase === 'preparing'
@@ -59,6 +104,27 @@ export default function CreateReelScreen() {
               ? error || 'Error'
               : 'Nuevo Reel';
 
+  const applyTrim = useCallback(async (uri: string) => {
+    const native = await loadTrimNative();
+    if (!native) {
+      Alert.alert(
+        'Recorte no disponible',
+        'El recorte de videos largos se activa en el próximo build Android (react-native-video-trim). Elegí un video de hasta 30 s o esperá el AAB.'
+      );
+      return false;
+    }
+    const result = await openReelTrimEditor(uri, native);
+    if (result.status === 'cancelled') return false;
+    if (result.status === 'error') {
+      Alert.alert('No se pudo recortar', result.message);
+      return false;
+    }
+    setTrimmedUri(result.uri);
+    setDurationMs(result.durationMs);
+    setMime('video/mp4');
+    return true;
+  }, []);
+
   const pickVideo = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -68,7 +134,6 @@ export default function CreateReelScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['videos'],
       allowsEditing: false,
-      videoMaxDuration: 30,
       quality: 1,
     });
     if (result.canceled || !result.assets?.[0]) return;
@@ -76,12 +141,13 @@ export default function CreateReelScreen() {
     const nextMime = asset.mimeType || 'video/mp4';
     const nextBytes = asset.fileSize ?? null;
     const nextDuration = asset.duration == null ? null : Number(asset.duration);
-    const reject = clientReelValidationError({ mime: nextMime, bytes: nextBytes, durationMs: nextDuration });
+    const reject = clientReelValidationError({ mime: nextMime, bytes: nextBytes, durationMs: nextDuration, stage: 'gallery' });
     if (reject) {
-      Alert.alert(reject === REEL_DURATION_REJECT_MESSAGE ? 'Video muy largo' : 'Video no válido', reject);
+      Alert.alert('Video no válido', reject);
       return;
     }
-    setLocalUri(asset.uri);
+    setOriginalUri(asset.uri);
+    setTrimmedUri(null);
     setMime(nextMime);
     setBytes(nextBytes);
     setDurationMs(nextDuration);
@@ -89,19 +155,45 @@ export default function CreateReelScreen() {
     setHeight(asset.height || null);
     setError('');
     setPhase('pick');
-  }, []);
+    if (shouldOpenReelTrim(nextDuration)) {
+      const ok = await applyTrim(asset.uri);
+      if (!ok) {
+        setOriginalUri(null);
+        setDurationMs(null);
+      }
+    }
+  }, [applyTrim]);
+
+  const addText = useCallback(() => {
+    if (!canAddReelOverlay(overlays)) {
+      Alert.alert('Límite', 'Podés agregar hasta 3 textos.');
+      return;
+    }
+    const next = createDraftOverlay({
+      id: `ov-${Date.now()}`,
+      x: 0.5,
+      y: 0.3,
+      fontSize: 22,
+      textColor: '#FFFFFF',
+      background: 'none',
+    });
+    setOverlays((prev) => [...prev, next]);
+    setActiveOverlayId(next.id);
+  }, [overlays]);
 
   const publish = useCallback(async () => {
     if (busyRef.current) return;
-    if (!localUri || !mime) {
-      Alert.alert('Elegí un video', 'Seleccioná un video de hasta 30 segundos.');
+    const source = fileToUpload(originalUri, trimmedUri);
+    if (!source || !mime) {
+      Alert.alert('Elegí un video', 'Seleccioná un video. Si dura más de 30 s, recortalo.');
       return;
     }
-    const reject = clientReelValidationError({ mime, bytes, durationMs });
+    const reject = clientReelValidationError({ mime, bytes, durationMs, stage: 'publish' });
     if (reject) {
       Alert.alert('Video no válido', reject);
       return;
     }
+    const cleanOverlays = parseReelOverlays(overlays);
     busyRef.current = true;
     setPhase('preparing');
     setError('');
@@ -113,9 +205,10 @@ export default function CreateReelScreen() {
         caption: caption.trim(),
         petId: activePetId,
         authorProfileId: activeProfileId,
+        overlays: cleanOverlays,
       });
       setPhase('uploading');
-      const fileRes = await fetch(localUri);
+      const fileRes = await fetch(source);
       const blob = await fileRes.blob();
       const put = await fetch(created.uploadUrl, {
         method: 'PUT',
@@ -158,9 +251,10 @@ export default function CreateReelScreen() {
     } finally {
       busyRef.current = false;
     }
-  }, [localUri, mime, bytes, durationMs, caption, activePetId, activeProfileId, navigation]);
+  }, [originalUri, trimmedUri, mime, bytes, durationMs, caption, overlays, activePetId, activeProfileId, navigation]);
 
   const busy = phase === 'preparing' || phase === 'uploading' || phase === 'processing';
+  const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -169,7 +263,7 @@ export default function CreateReelScreen() {
           <Ionicons name="close" size={26} color={colors.text} />
         </Pressable>
         <Text style={styles.title}>Nuevo Reel</Text>
-        <Pressable style={styles.publishBtn} onPress={publish} disabled={busy || !localUri}>
+        <Pressable style={styles.publishBtn} onPress={publish} disabled={busy || !uploadUri}>
           {busy ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.publishText}>Publicar</Text>}
         </Pressable>
       </View>
@@ -214,23 +308,69 @@ export default function CreateReelScreen() {
           </>
         )}
 
-        <Text style={styles.sectionLabel}>Video (máx. 30.00 s, MP4/MOV, hasta 50 MB en el dispositivo)</Text>
+        <Text style={styles.sectionLabel}>Video (MP4/MOV, hasta 50 MB). Máx. 30.00 s al publicar.</Text>
         <Pressable style={styles.pickBtn} onPress={pickVideo} disabled={busy}>
           <Ionicons name="videocam-outline" size={22} color={colors.primary} />
-          <Text style={styles.pickText}>{localUri ? 'Cambiar video' : 'Elegir de la galería'}</Text>
+          <Text style={styles.pickText}>{originalUri ? 'Cambiar video' : 'Elegir de la galería'}</Text>
         </Pressable>
-        {localUri ? (
-          <View style={styles.metaBox}>
-            <Text style={styles.meta}>
-              {durationMs != null ? `${Math.round(durationMs / 100) / 10} s` : 'Duración: la confirmará Mux'}
-              {width && height ? ` · ${width}×${height}` : ''}
-              {bytes != null ? ` · ${Math.round(bytes / 1024 / 1024 * 10) / 10} MB` : ''}
-            </Text>
-            <Text style={styles.metaMuted}>{mime} · preferencia 9:16</Text>
+        {originalUri && shouldOpenReelTrim(durationMs) === false && Platform.OS !== 'web' ? (
+          <Pressable style={styles.trimLink} onPress={() => applyTrim(originalUri)} disabled={busy}>
+            <Text style={styles.trimLinkT}>Recortar segmento</Text>
+          </Pressable>
+        ) : null}
+
+        {uploadUri ? (
+          <View
+            style={styles.preview}
+            onLayout={(e) => setPreviewBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+          >
+            <PreviewPlayer uri={uploadUri} />
+            <ReelOverlayLayer overlays={overlays.filter((o) => o.id !== activeOverlayId)} />
+            {overlays.map((ov) =>
+              ov.id === activeOverlayId || previewBox.w <= 0 ? null : (
+                <Pressable
+                  key={ov.id}
+                  onPress={() => setActiveOverlayId(ov.id)}
+                  style={{
+                    position: 'absolute',
+                    left: ov.x * previewBox.w - 80,
+                    top: ov.y * previewBox.h - 18,
+                    width: 160,
+                    height: 36,
+                  }}
+                />
+              )
+            )}
+            {activeOverlay && previewBox.w > 0 ? (
+              <ReelTextEditor
+                overlay={activeOverlay}
+                boxW={previewBox.w}
+                boxH={previewBox.h}
+                onChange={(next) => setOverlays((prev) => prev.map((o) => (o.id === next.id ? next : o)))}
+                onRemove={() => {
+                  setOverlays((prev) => prev.filter((o) => o.id !== activeOverlay.id));
+                  setActiveOverlayId(null);
+                }}
+              />
+            ) : null}
+            <Pressable style={styles.aa} onPress={addText} hitSlop={8}>
+              <Text style={styles.aaT}>Aa</Text>
+            </Pressable>
           </View>
         ) : null}
 
-        <Text style={styles.sectionLabel}>Texto</Text>
+        {uploadUri ? (
+          <View style={styles.metaBox}>
+            <Text style={styles.meta}>
+              {trimmedUri ? 'Se subirá el recorte · ' : 'Se subirá el archivo elegido · '}
+              {durationMs != null ? `${Math.round(durationMs / 100) / 10} s` : 'duración: la confirmará Mux'}
+              {width && height ? ` · ${width}×${height}` : ''}
+            </Text>
+            <Text style={styles.metaMuted}>{mime} · preview 9:16 · texto no se quema en el video</Text>
+          </View>
+        ) : null}
+
+        <Text style={styles.sectionLabel}>Caption</Text>
         <TextInput
           style={styles.input}
           value={caption}
@@ -291,6 +431,30 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   pickText: { color: colors.primary, fontWeight: '800' },
+  trimLink: { marginTop: 8 },
+  trimLinkT: { color: colors.textMuted, fontWeight: '700' },
+  preview: {
+    marginTop: spacing.md,
+    width: '100%',
+    aspectRatio: 9 / 16,
+    maxHeight: 420,
+    alignSelf: 'center',
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: '#111',
+  },
+  aa: {
+    position: 'absolute',
+    right: 10,
+    top: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aaT: { color: '#fff', fontWeight: '800', fontSize: 16 },
   metaBox: { marginTop: spacing.sm },
   meta: { color: colors.text, fontWeight: '700' },
   metaMuted: { color: colors.textMuted, marginTop: 2 },

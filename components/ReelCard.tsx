@@ -1,13 +1,15 @@
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import type { ApiReel } from '../lib/db';
-import { bufferSecondsForRole, type ReelPlayerRole } from '../lib/reels';
+import { bufferSecondsForRole, displayedLikeCount, type ReelPlayerRole } from '../lib/reels';
+import { parseReelOverlays } from '../lib/reelOverlays';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { colors } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
+import { ReelOverlayLayer } from './ReelOverlayLayer';
 
 interface Props {
   reel: ApiReel;
@@ -43,10 +45,12 @@ function ReelCardInner({
   const [userPaused, setUserPaused] = useState(false);
   const [showMore, setShowMore] = useState(false);
 
-  const source =
-    role !== 'idle' && reel.hlsUrl
-      ? { uri: reel.hlsUrl, contentType: 'hls' as const }
-      : null;
+  const source = useMemo(() => {
+    if (role === 'idle' || !reel.hlsUrl) return null;
+    return { uri: reel.hlsUrl, contentType: 'hls' as const };
+  }, [role, reel.hlsUrl]);
+
+  const overlays = useMemo(() => parseReelOverlays(reel.overlays), [reel.overlays]);
 
   const player = useVideoPlayer(source, (p) => {
     p.loop = true;
@@ -100,7 +104,7 @@ function ReelCardInner({
   const orgType = reel.authorProfileType === 'business' || reel.authorProfileType === 'protector';
   const avatar = reel.authorProfileAvatar || userFallbackAvatar(handle || 'usuario');
   const comments = (reel.commentCount || 0) + extraComments;
-  const likes = (reel.likeCount || 0) + (liked && !reel.isLiked ? 1 : 0);
+  const likes = displayedLikeCount(reel.likeCount || 0, liked, reel.isLiked);
 
   return (
     <View style={styles.root}>
@@ -126,6 +130,8 @@ function ReelCardInner({
         />
       ) : null}
 
+      <ReelOverlayLayer overlays={overlays} />
+
       {!firstFrame && role === 'active' && !failed ? (
         <View style={styles.prepare} pointerEvents="none">
           <ActivityIndicator color="#fff" />
@@ -150,7 +156,7 @@ function ReelCardInner({
       />
 
       <View style={styles.bottom} pointerEvents="box-none">
-        <Pressable style={styles.identity} onPress={() => onOpenProfile(reel)}>
+        <Pressable style={styles.identity} onPress={() => onOpenProfile(reel)} hitSlop={8}>
           <Image source={{ uri: thumb(avatar, 80) }} style={styles.avatar} />
           <View style={{ flex: 1 }}>
             <View style={styles.nameRow}>
@@ -158,7 +164,7 @@ function ReelCardInner({
               {orgType ? <ProfileBadge type={reel.authorProfileType} /> : null}
             </View>
             {reel.petName ? (
-              <Pressable onPress={() => onOpenPet(reel)}>
+              <Pressable onPress={() => onOpenPet(reel)} hitSlop={8}>
                 <Text style={styles.pet}>
                   {reel.petEmoji || '🐾'} {reel.petName}
                 </Text>
@@ -179,18 +185,19 @@ function ReelCardInner({
       </View>
 
       <View style={styles.actions} pointerEvents="box-none">
-        <Pressable onPress={() => onToggleLike(reel.id)} style={styles.action}>
-          <Ionicons name={liked ? 'heart' : 'heart-outline'} size={30} color={liked ? colors.heart : '#fff'} />
+        <Pressable onPress={() => onToggleLike(reel.id)} style={styles.action} hitSlop={10}>
+          <Ionicons name={liked ? 'heart' : 'heart-outline'} size={32} color={liked ? colors.heart : '#fff'} />
           <Text style={styles.actionN}>{likes}</Text>
         </Pressable>
-        <Pressable onPress={() => onOpenComments(reel)} style={styles.action}>
-          <Ionicons name="chatbubble-outline" size={26} color="#fff" />
+        <Pressable onPress={() => onOpenComments(reel)} style={styles.action} hitSlop={10}>
+          <Ionicons name="chatbubble-outline" size={28} color="#fff" />
           <Text style={styles.actionN}>{comments}</Text>
         </Pressable>
-        <Pressable onPress={() => onShare(reel)} style={styles.action}>
-          <Ionicons name="paper-plane-outline" size={26} color="#fff" />
+        <Pressable onPress={() => onShare(reel)} style={styles.action} hitSlop={10}>
+          <Ionicons name="paper-plane-outline" size={28} color="#fff" />
+          <Text style={styles.actionN}>Compartir</Text>
         </Pressable>
-        <Pressable onPress={onToggleMute} style={styles.action}>
+        <Pressable onPress={onToggleMute} style={styles.action} hitSlop={10}>
           <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={26} color="#fff" />
         </Pressable>
       </View>
@@ -198,7 +205,31 @@ function ReelCardInner({
   );
 }
 
-export const ReelCard = memo(ReelCardInner);
+function sameReelCard(a: Props, b: Props) {
+  return (
+    a.reel.id === b.reel.id &&
+    a.reel.hlsUrl === b.reel.hlsUrl &&
+    a.reel.caption === b.reel.caption &&
+    a.reel.likeCount === b.reel.likeCount &&
+    a.reel.commentCount === b.reel.commentCount &&
+    a.reel.overlays === b.reel.overlays &&
+    a.reel.petName === b.reel.petName &&
+    a.reel.authorProfileUsername === b.reel.authorProfileUsername &&
+    a.role === b.role &&
+    a.shouldPlay === b.shouldPlay &&
+    a.muted === b.muted &&
+    a.liked === b.liked &&
+    a.extraComments === b.extraComments &&
+    a.onToggleLike === b.onToggleLike &&
+    a.onOpenComments === b.onOpenComments &&
+    a.onShare === b.onShare &&
+    a.onOpenProfile === b.onOpenProfile &&
+    a.onOpenPet === b.onOpenPet &&
+    a.onToggleMute === b.onToggleMute
+  );
+}
+
+export const ReelCard = memo(ReelCardInner, sameReelCard);
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000', overflow: 'hidden' },
@@ -209,7 +240,7 @@ const styles = StyleSheet.create({
   failText: { color: '#fff', fontWeight: '700' },
   retry: { backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },
   retryText: { color: '#fff', fontWeight: '800' },
-  bottom: { position: 'absolute', left: 16, right: 76, bottom: 24 },
+  bottom: { position: 'absolute', left: 16, right: 84, bottom: 24 },
   identity: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   avatar: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: '#fff' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -217,7 +248,7 @@ const styles = StyleSheet.create({
   pet: { color: '#fff', fontWeight: '700', marginTop: 2 },
   caption: { color: '#fff', marginTop: 6, lineHeight: 18 },
   more: { color: '#ddd', fontWeight: '700' },
-  actions: { position: 'absolute', right: 12, bottom: 28, alignItems: 'center', gap: 16 },
-  action: { alignItems: 'center' },
-  actionN: { color: '#fff', fontWeight: '700', marginTop: 2, fontSize: 12 },
+  actions: { position: 'absolute', right: 10, bottom: 28, alignItems: 'center', gap: 14 },
+  action: { alignItems: 'center', minWidth: 48, minHeight: 48, justifyContent: 'center' },
+  actionN: { color: '#fff', fontWeight: '700', marginTop: 2, fontSize: 11 },
 });

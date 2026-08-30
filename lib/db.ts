@@ -146,6 +146,7 @@ export interface ApiReel {
   playbackId: string | null;
   hlsUrl: string | null;
   thumbnailUrl: string | null;
+  overlays?: import('./reelOverlays').ReelTextOverlay[];
 }
 
 export interface ApiComment {
@@ -556,6 +557,7 @@ export const db = {
     caption?: string;
     petId?: string | null;
     authorProfileId?: string | null;
+    overlays?: import('./reelOverlays').ReelTextOverlay[];
   }): Promise<{ reelId: string; uploadUrl: string; timeoutSec: number }> =>
     call('/db', { action: 'createReelUpload', ...input }),
   completeReelUpload: (reelId: string): Promise<{ status: string }> =>

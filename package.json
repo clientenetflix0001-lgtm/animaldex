@@ -33,6 +33,7 @@
     "react-native-reanimated": "^4.5.3",
     "react-native-safe-area-context": "^5.8.1",
     "react-native-screens": "^4.26.2",
+    "react-native-video-trim": "^8.2.2",
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {

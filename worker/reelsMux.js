@@ -24,6 +24,7 @@ import {
 } from '../lib/reels.ts';
 import { REELS_SCHEMA_STATEMENTS, reelsSchemaApplyEnabled } from '../lib/reelsSchema.ts';
 import { verifyMuxSignature } from '../lib/reelsWebhook.ts';
+import { parseReelOverlays, serializeReelOverlays } from '../lib/reelOverlays.ts';
 
 async function d1(env, sql, params = []) {
   const res = await env.DB.prepare(sql).bind(...params).all();
@@ -91,6 +92,7 @@ function reelRow(r, viewerLiked) {
     playbackId,
     hlsUrl: playbackId ? muxHlsUrl(playbackId) : null,
     thumbnailUrl: playbackId ? muxThumbnailUrl(playbackId) : null,
+    overlays: parseReelOverlays(r.overlays_json),
   };
 }
 
@@ -345,6 +347,7 @@ export async function handleAuthReelAction(env, body, json, clean, userId) {
     const bytes = Number(body.byteSize);
     const durationMs = body.durationMs == null ? null : Number(body.durationMs);
     const caption = clean(body.caption, REEL_CAPTION_MAX);
+    const overlaysJson = serializeReelOverlays(body.overlays);
     if (!mime) return json({ error: 'Formato no soportado. Usá MP4 o MOV.' }, 400);
     // byteSize es declarado por el cliente. El archivo va directo a Mux.
     if (Number.isFinite(bytes) && isReelFileTooLarge(bytes)) return json({ error: 'El video puede pesar hasta 50 MB.' }, 413);
@@ -374,12 +377,21 @@ export async function handleAuthReelAction(env, body, json, clean, userId) {
     await d1(env, 'INSERT INTO reel_upload_attempts (id, user_id, created_at) VALUES (?, ?, ?)', [attemptId, userId, now]);
 
     const id = `reel-${now}-${Math.random().toString(36).slice(2, 8)}`;
-    await d1(
-      env,
-      `INSERT INTO reels (id, user_id, author_profile_id, pet_id, caption, status, moderation, created_at)
-       VALUES (?, ?, ?, ?, ?, 'uploading', 'none', ?)`,
-      [id, userId, authorProfileId, petId, caption, now]
-    );
+    try {
+      await d1(
+        env,
+        `INSERT INTO reels (id, user_id, author_profile_id, pet_id, caption, overlays_json, status, moderation, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'uploading', 'none', ?)`,
+        [id, userId, authorProfileId, petId, caption, overlaysJson, now]
+      );
+    } catch {
+      await d1(
+        env,
+        `INSERT INTO reels (id, user_id, author_profile_id, pet_id, caption, status, moderation, created_at)
+         VALUES (?, ?, ?, ?, ?, 'uploading', 'none', ?)`,
+        [id, userId, authorProfileId, petId, caption, now]
+      );
+    }
 
     const mux = await muxApi(env, '/video/v1/uploads', 'POST', {
       cors_origin: '*',
