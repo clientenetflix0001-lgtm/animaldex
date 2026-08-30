@@ -55,7 +55,8 @@
     "test:adoption": "node --experimental-strip-types --test tests/adoptionDiscovery.test.ts",
     "test:feed-media": "node --experimental-strip-types --test tests/feedMediaLayout.test.ts",
     "test:reels": "node --experimental-strip-types --test tests/reels.test.ts",
-    "test:reels-integration": "node --experimental-strip-types --test tests/reelsIntegration.test.ts"
+    "test:reels-integration": "node --experimental-strip-types --test tests/reelsIntegration.test.ts",
+    "test:reel-push": "node --experimental-strip-types --test tests/reelPush.test.ts"
   },
   "private": true
 }

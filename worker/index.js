@@ -1916,7 +1916,7 @@ async function handleDb(request, env) {
     const userId = await authUser(request, env, body);
     if (!userId) return json({ error: 'Inicia sesión para continuar' }, 401);
 
-    const authReel = await handleAuthReelAction(env, body, json, clean, userId);
+    const authReel = await handleAuthReelAction(env, body, json, clean, userId, notifyUserPush);
     if (authReel) return authReel;
 
     if (action === 'registerPushToken') {

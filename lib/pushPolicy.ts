@@ -82,8 +82,18 @@ export function mergeNotificationPrefs(row: Partial<Record<NotificationPrefKey, 
   return out;
 }
 
-export function prefAllows(prefs: ReturnType<typeof mergeNotificationPrefs>, type: 'location' | 'birthday'): boolean {
-  return type === 'location' ? prefs.location : prefs.birthday;
+export type PushEventType = 'location' | 'birthday' | 'like' | 'comment' | 'reel_like' | 'reel_comment';
+
+/**
+ * Reels reutiliza las prefs existentes `like` / `comment` (opción A).
+ * Default: like=false, comment=true. No se agregan columnas nuevas.
+ */
+export function prefAllows(prefs: ReturnType<typeof mergeNotificationPrefs>, type: PushEventType): boolean {
+  if (type === 'location') return prefs.location;
+  if (type === 'birthday') return prefs.birthday;
+  if (type === 'like' || type === 'reel_like') return prefs.like;
+  if (type === 'comment' || type === 'reel_comment') return prefs.comment;
+  return false;
 }
 
 export function assignPushToken(
@@ -142,6 +152,25 @@ export function locationPushCopy(petName: string, actorName?: string | null): { 
   };
 }
 
+export function reelLikePushCopy(actorName: string): { title: string; body: string } {
+  const actor = String(actorName || '').trim() || 'Alguien';
+  return { title: 'Animaldex', body: `${actor} le dio me gusta a tu Reel` };
+}
+
+export function reelCommentPushCopy(actorName: string, preview?: string | null): { title: string; body: string } {
+  const actor = String(actorName || '').trim() || 'Alguien';
+  const t = String(preview || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  return {
+    title: 'Animaldex',
+    body: t ? `${actor} comentó tu Reel: "${t}"` : `${actor} comentó tu Reel`,
+  };
+}
+
 export function birthdayPushCopy(petName: string, years: number): { title: string; body: string } {
   const name = String(petName || '').trim() || 'tu mascota';
   const age = years === 1 ? '1 año' : `${years} años`;
@@ -171,6 +200,49 @@ export function locationPushMessage(input: {
       petId: input.petId,
       shareId: input.shareId,
       url: '/actividad',
+    },
+  };
+}
+
+export function reelLikePushMessage(input: {
+  token: string;
+  reelId: string;
+  actorName: string;
+}): Record<string, unknown> {
+  const copy = reelLikePushCopy(input.actorName);
+  return {
+    to: input.token,
+    title: copy.title,
+    body: copy.body,
+    sound: 'default',
+    priority: 'default',
+    channelId: PUSH_CHANNEL_PETS,
+    data: {
+      type: 'reel_like',
+      reelId: input.reelId,
+      url: `/r/${encodeURIComponent(input.reelId)}`,
+    },
+  };
+}
+
+export function reelCommentPushMessage(input: {
+  token: string;
+  reelId: string;
+  actorName: string;
+  commentPreview?: string | null;
+}): Record<string, unknown> {
+  const copy = reelCommentPushCopy(input.actorName, input.commentPreview);
+  return {
+    to: input.token,
+    title: copy.title,
+    body: copy.body,
+    sound: 'default',
+    priority: 'default',
+    channelId: PUSH_CHANNEL_PETS,
+    data: {
+      type: 'reel_comment',
+      reelId: input.reelId,
+      url: `/r/${encodeURIComponent(input.reelId)}`,
     },
   };
 }

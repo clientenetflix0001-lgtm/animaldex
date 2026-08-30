@@ -27,6 +27,15 @@ import { verifyMuxSignature } from '../lib/reelsWebhook.ts';
 import { parseReelOverlays, serializeReelOverlays } from '../lib/reelOverlays.ts';
 import { authorizeOwnedPetId, authorizeOwnedProfileId } from '../lib/reelAuth.ts';
 import { clampReelGridLimit, profileReelsOwnerStatuses } from '../lib/reelGrid.ts';
+import {
+  planReelCommentPush,
+  planReelLikePush,
+  reelCommentPushIdempotencyKey,
+  reelLikePushIdempotencyKey,
+  reelPushRecipient,
+  sanitizeReelCommentPreview,
+} from '../lib/reelActivity.ts';
+import { displayPersonName, reelCommentPushMessage, reelLikePushMessage } from '../lib/pushPolicy.ts';
 
 async function d1(env, sql, params = []) {
   const res = await env.DB.prepare(sql).bind(...params).all();
@@ -391,7 +400,7 @@ export async function handlePublicReelAction(env, body, json, clean, request, au
   return null;
 }
 
-export async function handleAuthReelAction(env, body, json, clean, userId) {
+export async function handleAuthReelAction(env, body, json, clean, userId, notifyUserPush) {
   const action = clean(body.action, 40);
   const now = Date.now();
 
@@ -534,13 +543,42 @@ export async function handleAuthReelAction(env, body, json, clean, userId) {
   // No se usa el perfil empresa/protector activo.
   if (action === 'reelLike') {
     const reelId = clean(body.reelId, 80);
-    const pub = await d1(env, 'SELECT id, status, deleted_at, moderation FROM reels WHERE id = ?', [reelId]);
-    if (!pub[0] || !isPublicReel({ status: pub[0].status, deletedAt: pub[0].deleted_at, moderation: pub[0].moderation })) {
-      return json({ error: 'Reel no encontrado' }, 404);
+    const pub = await d1(env, 'SELECT id, user_id, status, deleted_at, moderation FROM reels WHERE id = ?', [reelId]);
+    const reelPublic = !!(pub[0] && isPublicReel({ status: pub[0].status, deletedAt: pub[0].deleted_at, moderation: pub[0].moderation }));
+    if (!reelPublic) return json({ error: 'Reel no encontrado' }, 404);
+    let likeInserted = false;
+    if (body.value) {
+      const ins = await env.DB.prepare(
+        'INSERT OR IGNORE INTO reel_likes (user_id, reel_id, created_at) VALUES (?, ?, ?)'
+      )
+        .bind(userId, reelId, now)
+        .run();
+      likeInserted = !!(ins && ins.meta && ins.meta.changes > 0);
+    } else {
+      await d1(env, 'DELETE FROM reel_likes WHERE user_id = ? AND reel_id = ?', [userId, reelId]);
     }
-    if (body.value) await d1(env, 'INSERT OR IGNORE INTO reel_likes (user_id, reel_id, created_at) VALUES (?, ?, ?)', [userId, reelId, now]);
-    else await d1(env, 'DELETE FROM reel_likes WHERE user_id = ? AND reel_id = ?', [userId, reelId]);
     const count = await d1(env, 'SELECT COUNT(*) AS n FROM reel_likes WHERE reel_id = ?', [reelId]);
+    const plan = planReelLikePush({
+      ownerId: pub[0].user_id,
+      actorId: userId,
+      reelId,
+      reelPublic,
+      likeValue: !!body.value,
+      likeInserted,
+    });
+    if (plan.notify && typeof notifyUserPush === 'function') {
+      try {
+        const actors = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [userId]);
+        const actorName = displayPersonName(actors[0] || null) || 'Alguien';
+        await notifyUserPush(env, {
+          userId: reelPushRecipient(plan.ownerId, body),
+          type: 'reel_like',
+          idempotencyKey: reelLikePushIdempotencyKey(plan.reelId, plan.actorId),
+          nowMs: now,
+          buildMessage: (token) => reelLikePushMessage({ token, reelId: plan.reelId, actorName }),
+        });
+      } catch (_) {}
+    }
     return json({ ok: true, likeCount: count[0].n });
   }
 
@@ -548,12 +586,37 @@ export async function handleAuthReelAction(env, body, json, clean, userId) {
     const reelId = clean(body.reelId, 80);
     const text = clean(body.text, 500);
     if (!text) return json({ error: 'Comentario vacío' }, 400);
-    const pub = await d1(env, 'SELECT id, status, deleted_at, moderation FROM reels WHERE id = ?', [reelId]);
-    if (!pub[0] || !isPublicReel({ status: pub[0].status, deletedAt: pub[0].deleted_at, moderation: pub[0].moderation })) {
-      return json({ error: 'Reel no encontrado' }, 404);
-    }
+    const pub = await d1(env, 'SELECT id, user_id, status, deleted_at, moderation FROM reels WHERE id = ?', [reelId]);
+    const reelPublic = !!(pub[0] && isPublicReel({ status: pub[0].status, deletedAt: pub[0].deleted_at, moderation: pub[0].moderation }));
+    if (!reelPublic) return json({ error: 'Reel no encontrado' }, 404);
     const id = `rc-${now}-${Math.random().toString(36).slice(2, 8)}`;
     await d1(env, 'INSERT INTO reel_comments (id, reel_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, reelId, userId, text, now]);
+    const plan = planReelCommentPush({
+      ownerId: pub[0].user_id,
+      actorId: userId,
+      reelId,
+      reelPublic,
+      commentInserted: true,
+    });
+    if (plan.notify && typeof notifyUserPush === 'function') {
+      try {
+        const actors = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [userId]);
+        const actorName = displayPersonName(actors[0] || null) || 'Alguien';
+        await notifyUserPush(env, {
+          userId: reelPushRecipient(plan.ownerId, body),
+          type: 'reel_comment',
+          idempotencyKey: reelCommentPushIdempotencyKey(id),
+          nowMs: now,
+          buildMessage: (token) =>
+            reelCommentPushMessage({
+              token,
+              reelId: plan.reelId,
+              actorName,
+              commentPreview: sanitizeReelCommentPreview(text),
+            }),
+        });
+      } catch (_) {}
+    }
     return json({ ok: true, id, createdAt: now });
   }
 

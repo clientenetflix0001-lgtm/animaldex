@@ -94,6 +94,8 @@ describe('logout / prefs / no token', () => {
     assert.equal(prefAllows(off, 'birthday'), false);
     assert.equal(off.like, false);
     assert.equal(off.comment, true);
+    assert.equal(prefAllows(mergeNotificationPrefs(null), 'reel_like'), false);
+    assert.equal(prefAllows(mergeNotificationPrefs(null), 'reel_comment'), true);
   });
 });
 
