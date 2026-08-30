@@ -449,7 +449,28 @@ export async function handleAuthReelAction(env, body, json, clean, userId) {
 
   if (action === 'myReelState') {
     const likes = await d1(env, 'SELECT reel_id FROM reel_likes WHERE user_id = ?', [userId]);
-    return json({ ok: true, state: { likedReels: likes.map((r) => r.reel_id) } });
+    let pendingReels = [];
+    let failedReels = [];
+    try {
+      const pending = await d1(
+        env,
+        `${REEL_SELECT} WHERE r.user_id = ? AND r.status IN ('uploading', 'processing') AND r.deleted_at IS NULL ORDER BY r.created_at DESC LIMIT 5`,
+        [userId]
+      );
+      const failed = await d1(
+        env,
+        `${REEL_SELECT} WHERE r.user_id = ? AND r.status IN ('upload_failed', 'processing_failed', 'rejected') AND r.deleted_at IS NULL ORDER BY r.created_at DESC LIMIT 5`,
+        [userId]
+      );
+      pendingReels = pending.map((r) => reelRow(r, false));
+      failedReels = failed.map((r) => reelRow(r, false));
+    } catch {
+      // overlays_json u otras columnas nuevas pueden faltar hasta migration 002.
+    }
+    return json({
+      ok: true,
+      state: { likedReels: likes.map((r) => r.reel_id), pendingReels, failedReels },
+    });
   }
 
   if (action === 'reelLike') {

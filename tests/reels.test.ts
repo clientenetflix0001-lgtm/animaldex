@@ -16,17 +16,30 @@ import {
   isPublicReel,
   isReelFileTooLarge,
   muxCleanupEnabled,
+  canDeleteReel,
+  createReelIsDirty,
   displayedLikeCount,
+  ensureLikedSet,
+  failedReelIsPublic,
+  formatReelCount,
   galleryNeedsTrim,
+  mergeOwnerReels,
   muxDurationRejects,
   muxHlsUrl,
   muxThumbnailUrl,
+  ownerReelSurface,
+  paginationFailureKeeps,
   planReelCleanup,
   playerRoleForIndex,
+  reelCaptionDisplay,
   reelPlayerSourceKey,
+  reelSharePayload,
   reelShareUrl,
   reelUploadLimited,
+  reelsFeedView,
+  resolveReelVideoTap,
   rollbackLikedSet,
+  sessionMutePersists,
   shouldPlayReel,
   shouldStartStream,
   toggleLikedSet,
@@ -34,10 +47,14 @@ import {
 import {
   canAddReelOverlay,
   createDraftOverlay,
+  editOverlayText,
+  moveOverlayNormalized,
   normalizeOverlay,
   parseReelOverlays,
+  removeOverlay,
   REEL_OVERLAY_MAX,
   sanitizeOverlayText,
+  selectOverlay,
   serializeReelOverlays,
 } from '../lib/reelOverlays.ts';
 import {
@@ -441,5 +458,135 @@ describe('like, comentarios, share, perfiles', () => {
     assert.match(card, /Compartir/);
     assert.match(createReel, /ProfileSwitcher/);
     assert.match(createReel, /¿Quién protagoniza/);
+  });
+});
+
+describe('contadores compactos', () => {
+  it('999, 1K, 1.2K, 10K, 1M', () => {
+    assert.equal(formatReelCount(0), '0');
+    assert.equal(formatReelCount(12), '12');
+    assert.equal(formatReelCount(999), '999');
+    assert.equal(formatReelCount(1000), '1K');
+    assert.equal(formatReelCount(1200), '1.2K');
+    assert.equal(formatReelCount(10000), '10K');
+    assert.equal(formatReelCount(10500), '10.5K');
+    assert.equal(formatReelCount(1000000), '1M');
+  });
+});
+
+describe('tap / doble tap / mute / caption', () => {
+  it('tap simple pausa o reproduce; doble tap like no unlike', () => {
+    const first = resolveReelVideoTap({ now: 1000, lastTapAt: null, alreadyLiked: false });
+    assert.equal(first.kind, 'wait');
+    const single = resolveReelVideoTap({ now: 1400, lastTapAt: first.nextLastTapAt, alreadyLiked: false });
+    assert.equal(single.kind, 'wait');
+    const dbl = resolveReelVideoTap({ now: 1100, lastTapAt: 1000, alreadyLiked: false });
+    assert.equal(dbl.kind, 'double-like');
+    const ignore = resolveReelVideoTap({ now: 1100, lastTapAt: 1000, alreadyLiked: true });
+    assert.equal(ignore.kind, 'double-ignore');
+    const likeBtn = toggleLikedSet([], 'r1');
+    assert.equal(likeBtn.value, true);
+    const unlikeBtn = toggleLikedSet(likeBtn.next, 'r1');
+    assert.equal(unlikeBtn.value, false);
+    const only = ensureLikedSet(new Set(['r1']), 'r1');
+    assert.equal(only.changed, false);
+  });
+
+  it('mute persiste entre Reels en sesión', () => {
+    assert.equal(sessionMutePersists(true, 'b', 'a'), true);
+    assert.equal(sessionMutePersists(false, 'b', 'a'), false);
+    const key = reelPlayerSourceKey('active', 'https://stream.mux.com/x.m3u8');
+    assert.equal(reelPlayerSourceKey('active', 'https://stream.mux.com/x.m3u8'), key);
+    assert.match(card, /Activar sonido|Silenciar/);
+  });
+
+  it('caption ver más / ver menos', () => {
+    const short = reelCaptionDisplay('hola', false);
+    assert.equal(short.showToggle, false);
+    const long = 'x'.repeat(120);
+    const more = reelCaptionDisplay(long, false);
+    assert.equal(more.toggle, 'more');
+    assert.match(more.text, /\.\.\.$/);
+    const less = reelCaptionDisplay(long, true);
+    assert.equal(less.toggle, 'less');
+    assert.equal(less.text, long);
+    assert.match(card, /Ver más/);
+    assert.match(card, /Ver menos/);
+  });
+});
+
+describe('estados feed, processing, delete, overlays UX', () => {
+  it('abrir comentarios pausa; cerrar reanuda; background y tab pausan', () => {
+    assert.equal(
+      shouldPlayReel({ tabFocused: true, reelsPageVisible: true, reelIsActive: true && false, appIsForeground: true }),
+      false
+    );
+    assert.equal(
+      shouldPlayReel({ tabFocused: true, reelsPageVisible: true, reelIsActive: true, appIsForeground: true }),
+      true
+    );
+    assert.equal(
+      shouldPlayReel({ tabFocused: true, reelsPageVisible: true, reelIsActive: true, appIsForeground: false }),
+      false
+    );
+    assert.equal(
+      shouldPlayReel({ tabFocused: false, reelsPageVisible: true, reelIsActive: true, appIsForeground: true }),
+      false
+    );
+    assert.match(reelsScreen, /role === 'active' && !sheet/);
+    assert.match(reelsScreen, /KeyboardAvoidingView/);
+  });
+
+  it('loading, empty, retry y pagination error conservan lista', () => {
+    assert.equal(reelsFeedView({ loading: true, error: false, count: 0 }), 'loading');
+    assert.equal(reelsFeedView({ loading: false, error: true, count: 0 }), 'error');
+    assert.equal(reelsFeedView({ loading: false, error: false, count: 0 }), 'empty');
+    assert.equal(reelsFeedView({ loading: false, error: true, count: 3 }), 'list');
+    const kept = paginationFailureKeeps([{ id: 'a' }, { id: 'b' }]);
+    assert.equal(kept.length, 2);
+    assert.match(reelsScreen, /Aún no hay Reels/);
+    assert.match(reelsScreen, /No pudimos cargar los Reels/);
+    assert.match(reelsScreen, /Crear el primero/);
+  });
+
+  it('processing / failed no público; delete propio vs ajeno', () => {
+    assert.equal(ownerReelSurface('processing'), 'processing');
+    assert.equal(ownerReelSurface('upload_failed'), 'failed');
+    assert.equal(isPublicReel({ status: 'processing_failed' }), false);
+    assert.equal(isPublicReel({ status: 'rejected' }), false);
+    assert.equal(failedReelIsPublic(), false);
+    assert.equal(canDeleteReel('u1', 'u1'), true);
+    assert.equal(canDeleteReel('u1', 'u2'), false);
+    assert.match(reelsMux, /Ese Reel no es tuyo/);
+    assert.match(reelsMux, /deleteReel/);
+    assert.match(reelsMux, /cleanup_disabled|MUX_CLEANUP_ENABLED/);
+    assert.match(card, /Procesando Reel/);
+    assert.match(card, /No pudimos procesar este Reel/);
+    const merged = mergeOwnerReels([{ id: 'a' }], [{ id: 'p' }, { id: 'a' }]);
+    assert.equal(merged[0].id, 'p');
+    assert.equal(merged.length, 2);
+  });
+
+  it('overlay mover / editar / eliminar / máximo 3; acciones no cambian source key', () => {
+    const base = normalizeOverlay({ text: 'hola', x: 0.5, y: 0.3 })!;
+    const moved = moveOverlayNormalized(base, 0.99, 0.01);
+    assert.ok(moved.x <= 0.92 && moved.y >= 0.16);
+    const edited = editOverlayText(base, 'nuevo');
+    assert.equal(edited?.text, 'nuevo');
+    assert.equal(editOverlayText(base, '   '), null);
+    const list = [base, normalizeOverlay({ id: 'b', text: 'dos', x: 0.4, y: 0.4 })!];
+    assert.equal(selectOverlay(list, base.id)?.text, 'hola');
+    assert.equal(removeOverlay(list, base.id).length, 1);
+    assert.equal(canAddReelOverlay([base, base, base]), false);
+    const k = reelPlayerSourceKey('active', 'https://stream.mux.com/z.m3u8');
+    assert.equal(reelPlayerSourceKey('active', 'https://stream.mux.com/z.m3u8'), k);
+    assert.equal(createReelIsDirty({ originalUri: 'file://x', phase: 'edit' }), true);
+    assert.equal(createReelIsDirty({ phase: 'pick' }), false);
+    assert.equal(createReelIsDirty({ phase: 'processing', originalUri: 'x' }), false);
+    assert.equal(reelSharePayload('https://animaldex-web.pages.dev/r/1', 'android').message.includes('Mirate este Reel'), true);
+    assert.equal(reelSharePayload('https://animaldex-web.pages.dev/r/1', 'ios').url, 'https://animaldex-web.pages.dev/r/1');
+    assert.match(createReel, /createReelIsDirty|beforeRemove/);
+    assert.match(card, /Me gusta/);
+    assert.match(card, /accessibilityLabel/);
   });
 });

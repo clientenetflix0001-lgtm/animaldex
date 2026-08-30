@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import {
   REEL_CAPTION_MAX,
   REEL_DURATION_REJECT_MESSAGE,
   clientReelValidationError,
+  createReelIsDirty,
 } from '../lib/reels';
 import {
   canAddReelOverlay,
@@ -37,10 +38,11 @@ import {
   openReelTrimEditor,
   shouldOpenReelTrim,
 } from '../lib/reelTrim';
+import { rememberLocalReel } from '../lib/reelSession';
 import { ReelOverlayLayer } from '../components/ReelOverlayLayer';
 import { ReelTextEditor } from '../components/ReelTextEditor';
 
-type Phase = 'pick' | 'preparing' | 'uploading' | 'processing' | 'ready' | 'error';
+type Phase = 'pick' | 'trim' | 'edit' | 'preparing' | 'uploading' | 'processing' | 'ready' | 'error';
 
 async function loadTrimNative() {
   try {
@@ -58,13 +60,69 @@ async function loadTrimNative() {
   }
 }
 
-function PreviewPlayer({ uri }: { uri: string }) {
+function PreviewPlayer({ uri, muted }: { uri: string; muted: boolean }) {
+  const [paused, setPaused] = useState(false);
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
-    p.muted = true;
+    p.muted = muted;
     p.staysActiveInBackground = false;
   });
-  return <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} />;
+  useEffect(() => {
+    player.muted = muted;
+  }, [player, muted]);
+  useEffect(() => {
+    if (paused) {
+      try {
+        player.pause();
+      } catch {}
+    } else {
+      try {
+        player.play();
+      } catch {}
+    }
+  }, [player, paused]);
+  return (
+    <>
+      <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} />
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={() => setPaused((p) => !p)}
+        accessibilityLabel={paused ? 'Reproducir' : 'Pausar'}
+      />
+      {paused ? (
+        <View style={previewPause.badge} pointerEvents="none">
+          <Ionicons name="pause" size={22} color="#fff" />
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+const previewPause = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '42%',
+    width: 48,
+    height: 48,
+    marginLeft: -24,
+    left: '50%',
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
+function phaseLabelOf(phase: Phase, error: string): string {
+  if (phase === 'pick') return '1. Elegir video';
+  if (phase === 'trim') return '2. Recortar';
+  if (phase === 'edit') return '3. Editar';
+  if (phase === 'preparing') return '4. Preparando…';
+  if (phase === 'uploading') return '5. Subiendo…';
+  if (phase === 'processing') return '6. Procesando video…';
+  if (phase === 'ready') return '7. Listo';
+  return error || 'Error';
 }
 
 export default function CreateReelScreen() {
@@ -73,6 +131,8 @@ export default function CreateReelScreen() {
   const { activeProfileId, activeProfile } = useProfiles();
   const isOrg = activeProfile?.type === 'business' || activeProfile?.type === 'protector';
   const busyRef = useRef(false);
+  const createdIdRef = useRef<string | null>(null);
+  const leavingRef = useRef(false);
 
   const [selectedPet, setSelectedPet] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
@@ -86,23 +146,48 @@ export default function CreateReelScreen() {
   const [overlays, setOverlays] = useState<ReelTextOverlay[]>([]);
   const [activeOverlayId, setActiveOverlayId] = useState<string | null>(null);
   const [previewBox, setPreviewBox] = useState({ w: 0, h: 0 });
+  const [previewMuted, setPreviewMuted] = useState(false);
   const [phase, setPhase] = useState<Phase>('pick');
   const [error, setError] = useState('');
 
   const uploadUri = fileToUpload(originalUri, trimmedUri);
   const activePetId = isOrg ? null : selectedPet;
-  const phaseLabel =
-    phase === 'preparing'
-      ? 'Preparando...'
-      : phase === 'uploading'
-        ? 'Subiendo...'
-        : phase === 'processing'
-          ? 'Procesando...'
-          : phase === 'ready'
-            ? 'Listo'
-            : phase === 'error'
-              ? error || 'Error'
-              : 'Nuevo Reel';
+  const busy = phase === 'preparing' || phase === 'uploading';
+  const submitted = phase === 'processing' || phase === 'ready';
+  const dirty = createReelIsDirty({
+    originalUri,
+    caption,
+    overlayCount: overlays.length,
+    phase,
+  });
+
+  useEffect(() => {
+    const sub = navigation.addListener('beforeRemove', (e: any) => {
+      if (leavingRef.current || submitted || !dirty) return;
+      e.preventDefault();
+      const uploading = phase === 'preparing' || phase === 'uploading';
+      Alert.alert(
+        uploading ? 'Subida en curso' : '¿Descartar Reel?',
+        uploading
+          ? 'Si salís ahora se cancela la subida.'
+          : 'Vas a perder el video y los textos que agregaste.',
+        [
+          { text: 'Seguir', style: 'cancel' },
+          {
+            text: uploading ? 'Cancelar subida' : 'Salir',
+            style: 'destructive',
+            onPress: () => {
+              const id = createdIdRef.current;
+              if (id && uploading) db.cancelReelUpload(id).catch(() => {});
+              leavingRef.current = true;
+              navigation.dispatch(e.data.action);
+            },
+          },
+        ]
+      );
+    });
+    return sub;
+  }, [navigation, dirty, submitted, phase]);
 
   const applyTrim = useCallback(async (uri: string) => {
     const native = await loadTrimNative();
@@ -113,17 +198,23 @@ export default function CreateReelScreen() {
       );
       return false;
     }
+    setPhase('trim');
     const result = await openReelTrimEditor(uri, native);
-    if (result.status === 'cancelled') return false;
+    if (result.status === 'cancelled') {
+      setPhase(originalUri ? 'edit' : 'pick');
+      return false;
+    }
     if (result.status === 'error') {
       Alert.alert('No se pudo recortar', result.message);
+      setPhase(originalUri ? 'edit' : 'pick');
       return false;
     }
     setTrimmedUri(result.uri);
     setDurationMs(result.durationMs);
     setMime('video/mp4');
+    setPhase('edit');
     return true;
-  }, []);
+  }, [originalUri]);
 
   const pickVideo = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -154,12 +245,13 @@ export default function CreateReelScreen() {
     setWidth(asset.width || null);
     setHeight(asset.height || null);
     setError('');
-    setPhase('pick');
+    setPhase('edit');
     if (shouldOpenReelTrim(nextDuration)) {
       const ok = await applyTrim(asset.uri);
       if (!ok) {
         setOriginalUri(null);
         setDurationMs(null);
+        setPhase('pick');
       }
     }
   }, [applyTrim]);
@@ -207,6 +299,7 @@ export default function CreateReelScreen() {
         authorProfileId: activeProfileId,
         overlays: cleanOverlays,
       });
+      createdIdRef.current = created.reelId;
       setPhase('uploading');
       const fileRes = await fetch(source);
       const blob = await fileRes.blob();
@@ -220,10 +313,17 @@ export default function CreateReelScreen() {
         throw new Error('No se pudo subir el video a Mux');
       }
       await db.completeReelUpload(created.reelId);
+      rememberLocalReel({
+        id: created.reelId,
+        status: 'processing',
+        caption: caption.trim(),
+        thumbnailUri: source,
+        createdAt: Date.now(),
+      });
       setPhase('processing');
       let ready = false;
-      for (let i = 0; i < 20; i++) {
-        await new Promise((r) => setTimeout(r, 1500));
+      for (let i = 0; i < 12; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
         const { reel } = await db.myReel(created.reelId);
         if (reel.status === 'ready') {
           ready = true;
@@ -238,11 +338,17 @@ export default function CreateReelScreen() {
       }
       setPhase(ready ? 'ready' : 'processing');
       Alert.alert(
-        ready ? 'Reel publicado' : 'Reel en proceso',
+        ready ? 'Reel publicado' : 'Procesando video…',
         ready
           ? 'Ya está disponible en Reels.'
-          : 'Lo estamos procesando. Aparecerá cuando Mux lo tenga listo.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
+          : 'Lo estamos procesando. Podés seguir usando la app; aparecerá cuando esté listo.',
+        [{
+          text: 'OK',
+          onPress: () => {
+            leavingRef.current = true;
+            navigation.goBack();
+          },
+        }]
       );
     } catch (e: any) {
       setPhase('error');
@@ -253,23 +359,134 @@ export default function CreateReelScreen() {
     }
   }, [originalUri, trimmedUri, mime, bytes, durationMs, caption, overlays, activePetId, activeProfileId, navigation]);
 
-  const busy = phase === 'preparing' || phase === 'uploading' || phase === 'processing';
+  const askClose = () => {
+    if (!dirty || submitted) {
+      leavingRef.current = true;
+      navigation.goBack();
+      return;
+    }
+    navigation.goBack();
+  };
+
   const activeOverlay = overlays.find((o) => o.id === activeOverlayId) || null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={8}>
+        <Pressable onPress={askClose} hitSlop={8} accessibilityLabel="Cerrar">
           <Ionicons name="close" size={26} color={colors.text} />
         </Pressable>
         <Text style={styles.title}>Nuevo Reel</Text>
-        <Pressable style={styles.publishBtn} onPress={publish} disabled={busy || !uploadUri}>
+        <Pressable
+          style={styles.publishBtn}
+          onPress={publish}
+          disabled={busy || submitted || !uploadUri}
+          accessibilityLabel="Publicar"
+        >
           {busy ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.publishText}>Publicar</Text>}
         </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
-        <Text style={styles.phase}>{phaseLabel}</Text>
+        <Text style={styles.phase}>{phaseLabelOf(phase, error)}</Text>
+
+        <Text style={styles.sectionLabel}>Video (MP4/MOV, hasta 50 MB). Máx. 30.00 s al publicar.</Text>
+        <Pressable style={styles.pickBtn} onPress={pickVideo} disabled={busy || submitted} accessibilityLabel="Elegir de la galería">
+          <Ionicons name="videocam-outline" size={22} color={colors.primary} />
+          <Text style={styles.pickText}>{originalUri ? 'Cambiar video' : 'Elegir de la galería'}</Text>
+        </Pressable>
+
+        {uploadUri ? (
+          <View
+            style={styles.preview}
+            onLayout={(e) => setPreviewBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+          >
+            <PreviewPlayer uri={uploadUri} muted={previewMuted} />
+            <ReelOverlayLayer overlays={overlays.filter((o) => o.id !== activeOverlayId)} />
+            {overlays.map((ov) =>
+              ov.id === activeOverlayId || previewBox.w <= 0 ? null : (
+                <Pressable
+                  key={ov.id}
+                  onPress={() => setActiveOverlayId(ov.id)}
+                  accessibilityLabel="Seleccionar texto"
+                  style={{
+                    position: 'absolute',
+                    left: ov.x * previewBox.w - 80,
+                    top: ov.y * previewBox.h - 18,
+                    width: 160,
+                    height: 36,
+                  }}
+                />
+              )
+            )}
+            {activeOverlay && previewBox.w > 0 ? (
+              <ReelTextEditor
+                overlay={activeOverlay}
+                boxW={previewBox.w}
+                boxH={previewBox.h}
+                onChange={(next) => setOverlays((prev) => prev.map((o) => (o.id === next.id ? next : o)))}
+                onRemove={() => {
+                  setOverlays((prev) => prev.filter((o) => o.id !== activeOverlay.id));
+                  setActiveOverlayId(null);
+                }}
+              />
+            ) : null}
+            <Pressable style={styles.aa} onPress={addText} hitSlop={8} accessibilityLabel="Agregar texto">
+              <Text style={styles.aaT}>Aa</Text>
+            </Pressable>
+            <Pressable
+              style={styles.muteBtn}
+              onPress={() => setPreviewMuted((m) => !m)}
+              accessibilityLabel={previewMuted ? 'Activar sonido' : 'Silenciar'}
+            >
+              <Ionicons name={previewMuted ? 'volume-mute' : 'volume-high'} size={18} color="#fff" />
+            </Pressable>
+          </View>
+        ) : null}
+
+        {uploadUri ? (
+          <View style={styles.tools}>
+            <Pressable
+              style={styles.toolBtn}
+              onPress={() => originalUri && applyTrim(originalUri)}
+              disabled={busy || submitted || Platform.OS === 'web'}
+              accessibilityLabel="Recortar"
+            >
+              <Ionicons name="cut-outline" size={16} color={colors.primary} />
+              <Text style={styles.toolT}>{shouldOpenReelTrim(durationMs) ? 'Recortar (obligatorio)' : 'Recortar'}</Text>
+            </Pressable>
+            <Pressable style={styles.toolBtn} onPress={addText} disabled={busy || submitted} accessibilityLabel="Texto Aa">
+              <Text style={styles.toolT}>Aa Texto</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {overlays.length ? (
+          <View style={styles.chips}>
+            {overlays.map((ov, i) => (
+              <Pressable
+                key={ov.id}
+                style={[styles.chip, ov.id === activeOverlayId && styles.chipOn]}
+                onPress={() => setActiveOverlayId(ov.id)}
+                accessibilityLabel={`Seleccionar texto ${i + 1}`}
+              >
+                <Text style={styles.chipT}>{ov.text || `Texto ${i + 1}`}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        {uploadUri ? (
+          <View style={styles.metaBox}>
+            <Text style={styles.meta}>
+              {trimmedUri ? 'Se subirá el recorte · ' : 'Se subirá el archivo elegido · '}
+              {durationMs != null ? `${Math.round(durationMs / 100) / 10} s` : 'duración: la confirmará Mux'}
+              {width && height ? ` · ${width}×${height}` : ''}
+            </Text>
+            <Text style={styles.metaMuted}>{mime} · preview 9:16 · texto no se quema en el video</Text>
+          </View>
+        ) : null}
+
         <Text style={styles.sectionLabel}>Publicar como</Text>
         <ProfileSwitcher compact />
 
@@ -308,69 +525,7 @@ export default function CreateReelScreen() {
           </>
         )}
 
-        <Text style={styles.sectionLabel}>Video (MP4/MOV, hasta 50 MB). Máx. 30.00 s al publicar.</Text>
-        <Pressable style={styles.pickBtn} onPress={pickVideo} disabled={busy}>
-          <Ionicons name="videocam-outline" size={22} color={colors.primary} />
-          <Text style={styles.pickText}>{originalUri ? 'Cambiar video' : 'Elegir de la galería'}</Text>
-        </Pressable>
-        {originalUri && shouldOpenReelTrim(durationMs) === false && Platform.OS !== 'web' ? (
-          <Pressable style={styles.trimLink} onPress={() => applyTrim(originalUri)} disabled={busy}>
-            <Text style={styles.trimLinkT}>Recortar segmento</Text>
-          </Pressable>
-        ) : null}
-
-        {uploadUri ? (
-          <View
-            style={styles.preview}
-            onLayout={(e) => setPreviewBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
-          >
-            <PreviewPlayer uri={uploadUri} />
-            <ReelOverlayLayer overlays={overlays.filter((o) => o.id !== activeOverlayId)} />
-            {overlays.map((ov) =>
-              ov.id === activeOverlayId || previewBox.w <= 0 ? null : (
-                <Pressable
-                  key={ov.id}
-                  onPress={() => setActiveOverlayId(ov.id)}
-                  style={{
-                    position: 'absolute',
-                    left: ov.x * previewBox.w - 80,
-                    top: ov.y * previewBox.h - 18,
-                    width: 160,
-                    height: 36,
-                  }}
-                />
-              )
-            )}
-            {activeOverlay && previewBox.w > 0 ? (
-              <ReelTextEditor
-                overlay={activeOverlay}
-                boxW={previewBox.w}
-                boxH={previewBox.h}
-                onChange={(next) => setOverlays((prev) => prev.map((o) => (o.id === next.id ? next : o)))}
-                onRemove={() => {
-                  setOverlays((prev) => prev.filter((o) => o.id !== activeOverlay.id));
-                  setActiveOverlayId(null);
-                }}
-              />
-            ) : null}
-            <Pressable style={styles.aa} onPress={addText} hitSlop={8}>
-              <Text style={styles.aaT}>Aa</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {uploadUri ? (
-          <View style={styles.metaBox}>
-            <Text style={styles.meta}>
-              {trimmedUri ? 'Se subirá el recorte · ' : 'Se subirá el archivo elegido · '}
-              {durationMs != null ? `${Math.round(durationMs / 100) / 10} s` : 'duración: la confirmará Mux'}
-              {width && height ? ` · ${width}×${height}` : ''}
-            </Text>
-            <Text style={styles.metaMuted}>{mime} · preview 9:16 · texto no se quema en el video</Text>
-          </View>
-        ) : null}
-
-        <Text style={styles.sectionLabel}>Caption</Text>
+        <Text style={styles.sectionLabel}>Descripción</Text>
         <TextInput
           style={styles.input}
           value={caption}
@@ -381,6 +536,8 @@ export default function CreateReelScreen() {
           maxLength={REEL_CAPTION_MAX}
         />
         <Text style={styles.counter}>{caption.length}/{REEL_CAPTION_MAX}</Text>
+        {phase === 'processing' ? <Text style={styles.metaMuted}>Procesando video… podés volver a Reels.</Text> : null}
+        {phase === 'error' ? <Text style={styles.err}>{error}</Text> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -431,8 +588,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   pickText: { color: colors.primary, fontWeight: '800' },
-  trimLink: { marginTop: 8 },
-  trimLinkT: { color: colors.textMuted, fontWeight: '700' },
   preview: {
     marginTop: spacing.md,
     width: '100%',
@@ -455,9 +610,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   aaT: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  muteBtn: {
+    position: 'absolute',
+    left: 10,
+    top: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tools: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  toolBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  toolT: { color: colors.primary, fontWeight: '800' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  chipOn: { borderColor: colors.primary, backgroundColor: colors.primarysoft },
+  chipT: { color: colors.text, fontWeight: '700', fontSize: 12 },
   metaBox: { marginTop: spacing.sm },
   meta: { color: colors.text, fontWeight: '700' },
   metaMuted: { color: colors.textMuted, marginTop: 2 },
+  err: { color: colors.heart, fontWeight: '700', marginTop: 8 },
   input: {
     minHeight: 90,
     borderWidth: 1,

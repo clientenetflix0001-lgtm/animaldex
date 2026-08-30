@@ -565,7 +565,9 @@ export const db = {
   cancelReelUpload: (reelId: string): Promise<{ ok: boolean }> =>
     call('/db', { action: 'cancelReelUpload', reelId }),
   myReel: (reelId: string): Promise<{ reel: ApiReel }> => call('/db', { action: 'myReel', reelId }),
-  myReelState: (): Promise<{ state: { likedReels: string[] } }> => call('/db', { action: 'myReelState' }),
+  myReelState: (): Promise<{
+    state: { likedReels: string[]; pendingReels?: ApiReel[]; failedReels?: ApiReel[] };
+  }> => call('/db', { action: 'myReelState' }),
   reelLike: (reelId: string, value: boolean): Promise<{ likeCount: number }> =>
     call('/db', { action: 'reelLike', reelId, value }),
   reelComment: (reelId: string, text: string): Promise<{ id: string; createdAt: number }> =>

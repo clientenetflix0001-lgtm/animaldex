@@ -96,3 +96,29 @@ export function canAddReelOverlay(current: ReelTextOverlay[]): boolean {
 export function overlayHlsUnchanged(hlsUrl: string | null | undefined): string | null {
   return hlsUrl || null;
 }
+
+export function moveOverlayNormalized(
+  overlay: ReelTextOverlay,
+  x: number,
+  y: number
+): ReelTextOverlay {
+  return {
+    ...overlay,
+    x: clamp01(x, REEL_OVERLAY_SAFE.minX, REEL_OVERLAY_SAFE.maxX),
+    y: clamp01(y, REEL_OVERLAY_SAFE.minY, REEL_OVERLAY_SAFE.maxY),
+  };
+}
+
+export function editOverlayText(overlay: ReelTextOverlay, raw: string): ReelTextOverlay | null {
+  const text = sanitizeOverlayText(raw);
+  if (!text) return null;
+  return { ...overlay, text };
+}
+
+export function removeOverlay(list: ReelTextOverlay[], id: string): ReelTextOverlay[] {
+  return list.filter((o) => o.id !== id);
+}
+
+export function selectOverlay(list: ReelTextOverlay[], id: string): ReelTextOverlay | null {
+  return list.find((o) => o.id === id) || null;
+}

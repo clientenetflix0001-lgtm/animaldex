@@ -22,13 +22,22 @@ import { openHumanProfile } from '../lib/publicHandles';
 import { useReelsPageVisible } from '../lib/reelsFocus';
 import {
   REEL_FEED_PAGE,
+  REEL_OWNER_POLL_MS,
   REEL_SCROLL_DEBOUNCE_MS,
+  canDeleteReel,
+  ensureLikedSet,
+  mergeOwnerReels,
+  paginationFailureKeeps,
   playerRoleForIndex,
+  removeReelFromList,
+  replaceReelInList,
+  reelsFeedView,
   rollbackLikedSet,
   shouldPlayReel,
   shouldStartStream,
   toggleLikedSet,
 } from '../lib/reels';
+import { forgetLocalReel, listLocalReels } from '../lib/reelSession';
 import { colors } from '../lib/theme';
 import { Image } from 'expo-image';
 import { thumb, userFallbackAvatar } from '../lib/images';
@@ -49,6 +58,9 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
   const [stableIndex, setStableIndex] = useState(0);
   const [viewportH, setViewportH] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [boot, setBoot] = useState(!initialReel);
+  const [bootError, setBootError] = useState(false);
+  const [pageError, setPageError] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [sheet, setSheet] = useState<ApiReel | null>(null);
   const [comments, setComments] = useState<ApiComment[]>([]);
@@ -56,6 +68,7 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
   const oldestRef = useRef<number | undefined>(undefined);
   const stableAtRef = useRef(Date.now());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s: AppStateStatus) => {
@@ -65,32 +78,78 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
   }, []);
 
   const loadPage = useCallback(async (reset: boolean) => {
-    if (loadingMore) return;
-    setLoadingMore(true);
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    if (!reset) setLoadingMore(true);
     try {
       const before = reset ? undefined : oldestRef.current;
       const { reels: page, hasMore: more } = await db.reelsFeed(before, REEL_FEED_PAGE);
       if (page.length) oldestRef.current = page[page.length - 1].createdAt;
       setHasMore(more);
+      setPageError(false);
+      setBootError(false);
       setReels((prev) => {
         if (reset) return initialReel && !page.some((r) => r.id === initialReel.id) ? [initialReel, ...page] : page;
         const seen = new Set(prev.map((r) => r.id));
         return [...prev, ...page.filter((r) => !seen.has(r.id))];
       });
     } catch {
-      if (reset && !initialReel) setReels([]);
+      if (reset) {
+        setReels((prev) => paginationFailureKeeps(prev));
+        setBootError(true);
+      } else {
+        setPageError(true);
+        setReels((prev) => paginationFailureKeeps(prev));
+      }
     } finally {
+      loadingRef.current = false;
       setLoadingMore(false);
+      setBoot(false);
     }
-  }, [initialReel, loadingMore]);
+  }, [initialReel]);
 
   useEffect(() => {
     loadPage(true);
     db.myReelState()
-      .then(({ state }) => setLiked(new Set(state.likedReels)))
+      .then(({ state }) => {
+        setLiked(new Set(state.likedReels));
+        const mine = [...(state.pendingReels || []), ...(state.failedReels || [])];
+        if (mine.length) setReels((prev) => mergeOwnerReels(prev, mine));
+      })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    let ticks = 0;
+    const poll = async () => {
+      ticks += 1;
+      const local = listLocalReels();
+      for (const row of local) {
+        try {
+          const { reel } = await db.myReel(row.id);
+          if (cancelled) return;
+          setReels((prev) => replaceReelInList(prev, reel));
+          if (reel.status === 'ready' || reel.status === 'deleted') forgetLocalReel(row.id);
+        } catch {}
+      }
+      try {
+        const { state } = await db.myReelState();
+        const mine = [...(state.pendingReels || []), ...(state.failedReels || [])];
+        if (mine.length && !cancelled) setReels((prev) => mergeOwnerReels(prev, mine));
+      } catch {}
+      if (!cancelled && ticks < 12 && listLocalReels().length) {
+        timer = setTimeout(poll, REEL_OWNER_POLL_MS);
+      }
+    };
+    let timer = setTimeout(poll, REEL_OWNER_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [user]);
 
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
     const first = viewableItems.find((v) => v.index != null);
@@ -124,6 +183,18 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
     });
   }, []);
 
+  const likeOnly = useCallback((id: string) => {
+    setLiked((prev) => {
+      const { next, changed } = ensureLikedSet(prev, id);
+      if (changed) {
+        db.reelLike(id, true).catch(() => {
+          setLiked((cur) => rollbackLikedSet(cur, id, true));
+        });
+      }
+      return next;
+    });
+  }, []);
+
   const openComments = useCallback(async (reel: ApiReel) => {
     setSheet(reel);
     setDraft('');
@@ -137,6 +208,10 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
 
   const sendComment = useCallback(async () => {
     if (!sheet || !draft.trim()) return;
+    if (!user) {
+      navigation.navigate('Auth');
+      return;
+    }
     const text = draft.trim();
     setDraft('');
     try {
@@ -145,17 +220,17 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
         ...c,
         {
           id,
-          userId: user?.id || '',
-          username: user?.username || 'yo',
-          userName: user?.name || 'Yo',
-          avatarUrl: user?.avatarUrl || null,
+          userId: user.id,
+          username: user.username || 'yo',
+          userName: user.name || 'Yo',
+          avatarUrl: user.avatarUrl || null,
           text,
           createdAt,
         },
       ]);
       setMyComments((m) => ({ ...m, [sheet.id]: (m[sheet.id] || 0) + 1 }));
     } catch {}
-  }, [draft, sheet, user]);
+  }, [draft, sheet, user, navigation]);
 
   const extraData = useMemo(
     () => ({ liked, myComments, muted, stableIndex, commentsOpen: !!sheet }),
@@ -185,6 +260,20 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
 
   const onToggleMute = useCallback(() => setMuted((m) => !m), []);
 
+  const onDelete = useCallback(async (reel: ApiReel) => {
+    if (!canDeleteReel(user?.id, reel.userId)) return;
+    try {
+      await db.deleteReel(reel.id);
+      forgetLocalReel(reel.id);
+      setReels((prev) => removeReelFromList(prev, reel.id));
+    } catch {}
+  }, [user?.id]);
+
+  const goCreate = useCallback(() => {
+    if (!user) navigation.navigate('Auth');
+    else navigation.navigate('CreateReel');
+  }, [navigation, user]);
+
   const renderItem = useCallback(
     ({ item, index }: { item: ApiReel; index: number }) => {
       const role = playerRoleForIndex(index, stableIndex);
@@ -203,17 +292,20 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
             muted={muted}
             liked={liked.has(item.id)}
             extraComments={myComments[item.id] || 0}
+            isOwner={canDeleteReel(user?.id, item.userId)}
             onToggleLike={toggleLike}
+            onLikeOnly={likeOnly}
             onOpenComments={openComments}
             onShare={onShare}
             onOpenProfile={onOpenProfile}
             onOpenPet={onOpenPet}
             onToggleMute={onToggleMute}
+            onDelete={onDelete}
           />
         </View>
       );
     },
-    [stableIndex, tabFocused, reelsPageVisible, foreground, muted, liked, myComments, toggleLike, openComments, onShare, onOpenProfile, onOpenPet, onToggleMute, navigation, viewportH, sheet]
+    [stableIndex, tabFocused, reelsPageVisible, foreground, muted, liked, myComments, toggleLike, likeOnly, openComments, onShare, onOpenProfile, onOpenPet, onToggleMute, onDelete, user?.id, viewportH, sheet]
   );
 
   const keyExtractor = useCallback((item: ApiReel) => item.id, []);
@@ -221,6 +313,8 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
     (_: unknown, index: number) => ({ length: viewportH, offset: viewportH * index, index }),
     [viewportH]
   );
+
+  const view = reelsFeedView({ loading: boot, error: bootError, count: reels.length });
 
   return (
     <View
@@ -230,7 +324,7 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
         if (h > 0 && h !== viewportH) setViewportH(h);
       }}
     >
-      {viewportH > 0 && reels.length > 0 ? (
+      {viewportH > 0 && view === 'list' ? (
         <FlatList
           data={reels}
           extraData={extraData}
@@ -245,25 +339,49 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
           onEndReached={() => {
-            if (hasMore) loadPage(false);
+            if (hasMore && !pageError) loadPage(false);
           }}
           onEndReachedThreshold={0.4}
           initialNumToRender={1}
           maxToRenderPerBatch={1}
           windowSize={3}
           removeClippedSubviews={false}
+          ListFooterComponent={
+            pageError ? (
+              <Pressable style={styles.pageRetry} onPress={() => loadPage(false)} accessibilityLabel="Reintentar">
+                <Text style={styles.pageRetryT}>No se pudo cargar más. Reintentar</Text>
+              </Pressable>
+            ) : loadingMore ? (
+              <View style={styles.skel} />
+            ) : null
+          }
         />
+      ) : view === 'loading' ? (
+        <View style={styles.skelWrap}>
+          <View style={styles.skelCard} />
+          <View style={styles.skelLine} />
+          <View style={[styles.skelLine, { width: '40%' }]} />
+        </View>
+      ) : view === 'error' ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>No pudimos cargar los Reels</Text>
+          <Pressable style={styles.cta} onPress={() => loadPage(true)} accessibilityLabel="Reintentar">
+            <Text style={styles.ctaT}>Reintentar</Text>
+          </Pressable>
+        </View>
       ) : (
         <View style={styles.empty}>
           <Ionicons name="film-outline" size={40} color="#fff" />
-          <Text style={styles.emptyTitle}>Reels de mascotas</Text>
-          <Text style={styles.emptySub}>Todavía no hay videos listos. Publicá el primero.</Text>
+          <Text style={styles.emptyTitle}>Aún no hay Reels</Text>
+          <Pressable style={styles.cta} onPress={goCreate} accessibilityLabel={user ? 'Crear Reel' : 'Iniciar sesión'}>
+            <Text style={styles.ctaT}>{user ? 'Crear el primero' : 'Iniciar sesión'}</Text>
+          </Pressable>
         </View>
       )}
 
       <Pressable
         style={[styles.fab, { top: insets.top + 10 }]}
-        onPress={() => navigation.navigate('CreateReel')}
+        onPress={goCreate}
         accessibilityLabel="Crear Reel"
       >
         <Ionicons name="add" size={26} color="#fff" />
@@ -271,12 +389,14 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
 
       {sheet ? (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
+          enabled={Platform.OS !== 'web'}
+          keyboardVerticalOffset={0}
           style={styles.sheet}
         >
           <View style={styles.sheetHead}>
-            <Text style={styles.sheetTitle}>Comentarios</Text>
-            <Pressable onPress={() => setSheet(null)}>
+            <Text style={styles.sheetTitle}>Comentarios {comments.length ? `(${comments.length})` : ''}</Text>
+            <Pressable onPress={() => setSheet(null)} accessibilityLabel="Cerrar comentarios" hitSlop={10}>
               <Ionicons name="close" size={22} color={colors.text} />
             </Pressable>
           </View>
@@ -284,6 +404,7 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
             data={comments}
             keyExtractor={(c) => c.id}
             style={{ maxHeight: 240 }}
+            keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
               <View style={styles.commentRow}>
                 <Image
@@ -309,8 +430,14 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
               placeholder="Escribí un comentario"
               placeholderTextColor={colors.textMuted}
               style={styles.input}
+              accessibilityLabel="Campo de comentario"
             />
-            <Pressable onPress={sendComment} disabled={!draft.trim()}>
+            <Pressable
+              onPress={sendComment}
+              disabled={!draft.trim()}
+              accessibilityLabel="Publicar comentario"
+              hitSlop={8}
+            >
               <Ionicons name="send" size={20} color={draft.trim() ? colors.primary : colors.textMuted} />
             </Pressable>
           </View>
@@ -322,9 +449,16 @@ export default function ReelsScreen({ initialReel }: { initialReel?: ApiReel | n
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
-  emptyTitle: { color: '#fff', fontWeight: '800', fontSize: 20 },
-  emptySub: { color: '#ccc', textAlign: 'center' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+  emptyTitle: { color: '#fff', fontWeight: '800', fontSize: 20, textAlign: 'center' },
+  cta: { backgroundColor: colors.primary, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10 },
+  ctaT: { color: '#fff', fontWeight: '800' },
+  skelWrap: { flex: 1, justifyContent: 'flex-end', padding: 24, gap: 10 },
+  skelCard: { ...StyleSheet.absoluteFillObject, backgroundColor: '#1a1a1a' },
+  skelLine: { height: 12, width: '70%', backgroundColor: '#2a2a2a', borderRadius: 6 },
+  skel: { height: 8 },
+  pageRetry: { padding: 16, alignItems: 'center' },
+  pageRetryT: { color: '#fff', fontWeight: '700' },
   fab: {
     position: 'absolute',
     right: 14,
@@ -344,9 +478,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     padding: 16,
-    maxHeight: '50%',
+    paddingBottom: 20,
+    maxHeight: '55%',
   },
-  sheetHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  sheetHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' },
   sheetTitle: { fontWeight: '800', color: colors.text },
   commentRow: { flexDirection: 'row', gap: 8, marginBottom: 10, alignItems: 'flex-start' },
   commentAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.border },

@@ -102,7 +102,7 @@ export function ReelTextEditor({ overlay, boxW, boxH, onChange, onRemove }: Prop
             </Pressable>
           </View>
           <View style={styles.actions}>
-            <Pressable onPress={onRemove} hitSlop={10}>
+            <Pressable onPress={onRemove} hitSlop={10} accessibilityLabel="Eliminar texto">
               <Ionicons name="trash-outline" size={22} color="#fff" />
             </Pressable>
             <Pressable

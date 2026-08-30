@@ -421,3 +421,123 @@ export function clientReelValidationError(input: {
   if (clientDurationRejects(input.durationMs)) return REEL_DURATION_REJECT_MESSAGE;
   return null;
 }
+
+export const REEL_DOUBLE_TAP_MS = 280;
+export const REEL_CAPTION_PREVIEW = 90;
+export const REEL_SHARE_MESSAGE = 'Mirate este Reel en Animaldex 🐾';
+export const REEL_OWNER_POLL_MS = 8000;
+
+export function formatReelCount(n: number): string {
+  const v = Math.max(0, Math.round(Number(n) || 0));
+  if (v < 1000) return String(v);
+  const trim = (x: number) => x.toFixed(1).replace(/\.0$/, '');
+  if (v < 1_000_000) return `${trim(v / 1000)}K`;
+  return `${trim(v / 1_000_000)}M`;
+}
+
+export type ReelVideoTapKind = 'wait' | 'single' | 'double-like' | 'double-ignore';
+
+export function resolveReelVideoTap(input: {
+  now: number;
+  lastTapAt: number | null;
+  alreadyLiked: boolean;
+  windowMs?: number;
+}): { kind: ReelVideoTapKind; nextLastTapAt: number | null } {
+  const windowMs = input.windowMs ?? REEL_DOUBLE_TAP_MS;
+  if (input.lastTapAt != null && input.now - input.lastTapAt <= windowMs) {
+    return {
+      kind: input.alreadyLiked ? 'double-ignore' : 'double-like',
+      nextLastTapAt: null,
+    };
+  }
+  return { kind: 'wait', nextLastTapAt: input.now };
+}
+
+export function ensureLikedSet(prev: Iterable<string>, id: string): { next: Set<string>; changed: boolean } {
+  const next = new Set(prev);
+  if (next.has(id)) return { next, changed: false };
+  next.add(id);
+  return { next, changed: true };
+}
+
+export function reelCaptionDisplay(caption: string, expanded: boolean, preview = REEL_CAPTION_PREVIEW): {
+  text: string;
+  showToggle: boolean;
+  toggle: 'more' | 'less' | null;
+} {
+  const raw = String(caption || '');
+  const showToggle = raw.length > preview;
+  if (!showToggle) return { text: raw, showToggle: false, toggle: null };
+  if (expanded) return { text: raw, showToggle: true, toggle: 'less' };
+  return { text: `${raw.slice(0, preview)}...`, showToggle: true, toggle: 'more' };
+}
+
+export function createReelIsDirty(input: {
+  originalUri?: string | null;
+  caption?: string;
+  overlayCount?: number;
+  phase?: string;
+}): boolean {
+  if (input.phase === 'ready' || input.phase === 'processing') return false;
+  if (input.phase === 'preparing' || input.phase === 'uploading') return true;
+  return !!(input.originalUri || String(input.caption || '').trim() || (input.overlayCount || 0) > 0);
+}
+
+export type ReelsFeedView = 'loading' | 'error' | 'empty' | 'list';
+
+export function reelsFeedView(input: { loading: boolean; error: boolean; count: number }): ReelsFeedView {
+  if (input.loading && input.count === 0) return 'loading';
+  if (input.error && input.count === 0) return 'error';
+  if (input.count === 0) return 'empty';
+  return 'list';
+}
+
+export function paginationFailureKeeps<T>(prev: T[]): T[] {
+  return prev;
+}
+
+export function mergeOwnerReels<T extends { id: string }>(feed: T[], mine: T[]): T[] {
+  const seen = new Set(feed.map((r) => r.id));
+  const extra = mine.filter((r) => !seen.has(r.id));
+  return extra.length ? [...extra, ...feed] : feed;
+}
+
+export function replaceReelInList<T extends { id: string }>(list: T[], next: T): T[] {
+  let found = false;
+  const out = list.map((r) => {
+    if (r.id === next.id) {
+      found = true;
+      return next;
+    }
+    return r;
+  });
+  return found ? out : [next, ...list];
+}
+
+export function removeReelFromList<T extends { id: string }>(list: T[], id: string): T[] {
+  return list.filter((r) => r.id !== id);
+}
+
+export function ownerReelSurface(status: string): 'ready' | 'processing' | 'failed' | 'hidden' {
+  if (status === 'ready') return 'ready';
+  if (status === 'uploading' || status === 'processing') return 'processing';
+  if (status === 'upload_failed' || status === 'processing_failed' || status === 'rejected') return 'failed';
+  return 'hidden';
+}
+
+export function canDeleteReel(viewerId: string | null | undefined, ownerId: string | null | undefined): boolean {
+  return !!(viewerId && ownerId && viewerId === ownerId);
+}
+
+export function failedReelIsPublic(): boolean {
+  return false;
+}
+
+export function sessionMutePersists(current: boolean, nextReelId: string, prevReelId: string): boolean {
+  return current;
+}
+
+export function reelSharePayload(url: string, platform: 'ios' | 'android' | 'web'): { message: string; url?: string } {
+  if (platform === 'ios') return { message: REEL_SHARE_MESSAGE, url };
+  return { message: `${REEL_SHARE_MESSAGE}\n${url}` };
+}
