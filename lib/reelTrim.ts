@@ -3,7 +3,7 @@
  * maxDuration está en MILISEGUNDOS (30000 = 30 s), no en segundos.
  * Requiere código nativo: el próximo AAB / EAS Build. No Expo Go.
  */
-import { REEL_MAX_DURATION_MS, galleryNeedsTrim, reelUploadSource } from './reels';
+import { REEL_MAX_DURATION_MS, galleryNeedsTrim, reelUploadSource } from './reels.ts';
 
 export const REEL_TRIM_MAX_DURATION_MS = REEL_MAX_DURATION_MS;
 
