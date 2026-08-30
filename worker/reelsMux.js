@@ -22,6 +22,7 @@ import {
   planReelCleanup,
   reelUploadLimited,
 } from '../lib/reels.ts';
+import { REELS_SCHEMA_STATEMENTS, reelsSchemaApplyEnabled } from '../lib/reelsSchema.ts';
 import { verifyMuxSignature } from '../lib/reelsWebhook.ts';
 
 async function d1(env, sql, params = []) {
@@ -31,58 +32,15 @@ async function d1(env, sql, params = []) {
 
 export async function ensureReelsSchema(env) {
   if (env._reelsReady) return;
-  await d1(env, `CREATE TABLE IF NOT EXISTS reels (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    author_profile_id TEXT,
-    pet_id TEXT,
-    caption TEXT DEFAULT '',
-    mux_upload_id TEXT,
-    mux_asset_id TEXT,
-    mux_playback_id TEXT,
-    status TEXT NOT NULL,
-    moderation TEXT NOT NULL DEFAULT 'none',
-    duration_ms INTEGER,
-    width INTEGER,
-    height INTEGER,
-    error TEXT,
-    mux_last_event_id TEXT,
-    cleanup_needed INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL,
-    ready_at INTEGER,
-    deleted_at INTEGER
-  )`);
-  await d1(env, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_reels_mux_upload ON reels (mux_upload_id) WHERE mux_upload_id IS NOT NULL');
-  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_reels_feed ON reels (status, deleted_at, created_at DESC)');
-  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_reels_user ON reels (user_id, created_at DESC)');
-  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_reels_asset ON reels (mux_asset_id)');
-  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_reels_cleanup ON reels (cleanup_needed, status)');
-  await d1(env, `CREATE TABLE IF NOT EXISTS reel_likes (
-    user_id TEXT NOT NULL,
-    reel_id TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    PRIMARY KEY (user_id, reel_id)
-  )`);
-  await d1(env, `CREATE TABLE IF NOT EXISTS reel_comments (
-    id TEXT PRIMARY KEY,
-    reel_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    text TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  )`);
-  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_reel_comments_reel ON reel_comments (reel_id, created_at ASC)');
-  await d1(env, `CREATE TABLE IF NOT EXISTS reel_upload_attempts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  )`);
-  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_reel_upload_attempts_user ON reel_upload_attempts (user_id, created_at DESC)');
-  await d1(env, `CREATE TABLE IF NOT EXISTS mux_webhook_events (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    reel_id TEXT,
-    created_at INTEGER NOT NULL
-  )`);
+  // Por defecto no toca D1: la migración consciente es la fuente de verdad.
+  // Solo aplica SQL si REELS_SCHEMA_APPLY=1 (mismos statements que 001_reels.sql).
+  if (!reelsSchemaApplyEnabled(env.REELS_SCHEMA_APPLY)) {
+    env._reelsReady = true;
+    return;
+  }
+  for (const sql of REELS_SCHEMA_STATEMENTS) {
+    await d1(env, sql);
+  }
   env._reelsReady = true;
 }
 
@@ -388,6 +346,7 @@ export async function handleAuthReelAction(env, body, json, clean, userId) {
     const durationMs = body.durationMs == null ? null : Number(body.durationMs);
     const caption = clean(body.caption, REEL_CAPTION_MAX);
     if (!mime) return json({ error: 'Formato no soportado. Usá MP4 o MOV.' }, 400);
+    // byteSize es declarado por el cliente. El archivo va directo a Mux.
     if (Number.isFinite(bytes) && isReelFileTooLarge(bytes)) return json({ error: 'El video puede pesar hasta 50 MB.' }, 413);
     if (clientDurationRejects(durationMs)) return json({ error: 'Los Reels pueden durar hasta 30 segundos.' }, 400);
     if (!muxConfigured(env)) return json({ error: 'Mux no configurado' }, 503);

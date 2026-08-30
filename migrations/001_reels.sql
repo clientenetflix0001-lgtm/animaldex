@@ -1,5 +1,7 @@
--- Reels + Mux (NO ejecutar contra D1 remoto en esta rama).
--- Convención: CREATE TABLE IF NOT EXISTS, igual que ensure* del Worker.
+-- Reels + Mux (NO ejecutar contra D1 remoto hasta autorización explícita).
+-- Fuente de verdad del esquema. El Worker NO aplica esto al desplegar
+-- salvo que exista REELS_SCHEMA_APPLY=1 (entonces usa los mismos
+-- statements de lib/reelsSchema.ts). CREATE IF NOT EXISTS es idempotente.
 -- No altera la tabla de publicaciones del Feed.
 
 CREATE TABLE IF NOT EXISTS reels (

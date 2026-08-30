@@ -214,7 +214,7 @@ export default function CreateReelScreen() {
           </>
         )}
 
-        <Text style={styles.sectionLabel}>Video (máx. 30 segundos, MP4/MOV, 50 MB)</Text>
+        <Text style={styles.sectionLabel}>Video (máx. 30.00 s, MP4/MOV, hasta 50 MB en el dispositivo)</Text>
         <Pressable style={styles.pickBtn} onPress={pickVideo} disabled={busy}>
           <Ionicons name="videocam-outline" size={22} color={colors.primary} />
           <Text style={styles.pickText}>{localUri ? 'Cambiar video' : 'Elegir de la galería'}</Text>

@@ -26,6 +26,7 @@ import {
   shouldPlayReel,
   shouldStartStream,
 } from '../lib/reels.ts';
+import { REELS_SCHEMA_STATEMENTS, normalizeSql, reelsSchemaApplyEnabled } from '../lib/reelsSchema.ts';
 import { verifyMuxSignature } from '../lib/reelsWebhook.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -65,23 +66,26 @@ const uploading = {
 };
 
 describe('duración 30 segundos', () => {
-  it('5 s, 29 s y 30.00 s son válidos en cliente y Mux', () => {
-    assert.equal(clientDurationRejects(5000), false);
-    assert.equal(clientDurationRejects(29000), false);
-    assert.equal(clientDurationRejects(30000), false);
-    assert.equal(muxDurationRejects(5), false);
-    assert.equal(muxDurationRejects(29), false);
+  it('29.99 y 30.00 son válidos; 30.01, 30.25 y 31.00 se rechazan', () => {
+    assert.equal(muxDurationRejects(29.99), false);
     assert.equal(muxDurationRejects(30), false);
-    assert.equal(muxDurationRejects(30.25), false);
+    assert.equal(muxDurationRejects(30.0), false);
+    assert.equal(muxDurationRejects(30.01), true);
+    assert.equal(muxDurationRejects(30.25), true);
+    assert.equal(muxDurationRejects(31), true);
+    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(29.99)).patch.status, 'ready');
+    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(30.0)).patch.status, 'ready');
+    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(30.01)).patch.status, 'rejected');
+    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(30.25)).patch.status, 'rejected');
+    assert.equal(applyMuxWebhookEvent(uploading, readyEvent(31)).patch.status, 'rejected');
   });
 
-  it('>30 s se rechaza; holgura no acepta 30.26', () => {
+  it('cliente: 30000 ms válido, cualquier ms por encima se rechaza', () => {
+    assert.equal(clientDurationRejects(29990), false);
+    assert.equal(clientDurationRejects(30000), false);
     assert.equal(clientDurationRejects(30001), true);
-    assert.equal(muxDurationRejects(30.26), true);
-    assert.equal(muxDurationRejects(31), true);
-    assert.equal(clientReelValidationError({ mime: 'video/mp4', durationMs: 45000 }), REEL_DURATION_REJECT_MESSAGE);
+    assert.equal(clientReelValidationError({ mime: 'video/mp4', durationMs: 30010 }), REEL_DURATION_REJECT_MESSAGE);
     const applied = applyMuxWebhookEvent(uploading, readyEvent(31));
-    assert.equal(applied.patch.status, 'rejected');
     assert.equal(applied.requestMuxDelete, true);
     assert.equal(isPublicReel({ status: 'rejected' }), false);
   });
@@ -95,9 +99,12 @@ describe('MIME y tamaño', () => {
     assert.equal(isAllowedReelMime('image/jpeg'), false);
   });
 
-  it('archivo demasiado grande', () => {
+  it('archivo demasiado grande (tamaño declarado, no el binario real)', () => {
     assert.equal(isReelFileTooLarge(REEL_MAX_BYTES), false);
     assert.equal(isReelFileTooLarge(REEL_MAX_BYTES + 1), true);
+    assert.match(reelsMux, /byteSize es declarado por el cliente/);
+    assert.match(reelsMux, /body\.byteSize/);
+    assert.doesNotMatch(reelsMux, /request\.arrayBuffer|request\.blob/);
     assert.match(clientReelValidationError({ mime: 'video/mp4', bytes: REEL_MAX_BYTES + 10 }) || '', /50 MB/);
   });
 });
@@ -221,6 +228,22 @@ describe('rate limit y limpieza', () => {
     assert.equal(muxCleanupEnabled('1'), true);
     assert.match(reelsMux, /MUX_CLEANUP_ENABLED/);
     assert.match(worker, /runReelCleanup/);
+  });
+});
+
+describe('esquema D1: migración vs ensureReelsSchema', () => {
+  it('la migración es la fuente de verdad y coincide con REELS_SCHEMA_STATEMENTS', () => {
+    const fromFile = migration
+      .split(';')
+      .map((s) => normalizeSql(s))
+      .filter((s) => /^(CREATE TABLE|CREATE UNIQUE INDEX|CREATE INDEX)/i.test(s));
+    const fromCode = REELS_SCHEMA_STATEMENTS.map((s) => normalizeSql(s));
+    assert.deepEqual(fromCode, fromFile);
+    assert.equal(reelsSchemaApplyEnabled(undefined), false);
+    assert.equal(reelsSchemaApplyEnabled(''), false);
+    assert.equal(reelsSchemaApplyEnabled('1'), true);
+    assert.match(reelsMux, /reelsSchemaApplyEnabled\(env\.REELS_SCHEMA_APPLY\)/);
+    assert.match(reelsMux, /REELS_SCHEMA_STATEMENTS/);
   });
 });
 

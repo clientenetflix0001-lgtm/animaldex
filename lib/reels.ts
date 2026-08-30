@@ -1,20 +1,28 @@
 /**
  * Política de Reels + Mux (cliente, Worker y tests).
  *
- * Duración máxima: 30.00 s es válido.
- * Mux a veces reporta un contenedor ~30.0x; holgura 0.25 s evita rechazar
- * un reel legítimo de 30 s. Se rechaza si durationSec > 30.25.
- * El cliente, si conoce la duración, usa un tope estricto de 30000 ms (UX).
- * La autoridad final es siempre la metadata de Mux en el webhook.
+ * Duración (límite de producto, sin holgura):
+ *   30.00 s inclusive = válido
+ *   cualquier durationSec > 30.00 = rechazado
+ * Mux puede reportar un contenedor ligeramente por encima de 30.00
+ * (p. ej. 30.01) aunque el recorte visual sea “30 s”. Eso se rechaza:
+ * no se sube el límite de producto para absorber el redondeo.
+ * Cliente (UX): si mide duración, > 30000 ms se rechaza. 30000 es válido.
+ * Autoridad final: duration de Mux en el webhook.
+ *
+ * Tamaño 50 MB: el archivo NO atraviesa el Worker. Cliente valida
+ * fileSize del picker. Worker solo puede rechazar el byteSize DECLARADO
+ * en createReelUpload. Mux no se usa aquí como medidor de bytes del
+ * original (no hay metadata fiable de “peso del archivo subido”).
  *
  * Secrets (solo Worker, nunca cliente):
  *   MUX_TOKEN_ID, MUX_TOKEN_SECRET, MUX_WEBHOOK_SECRET
  * Limpieza Mux DELETE solo si MUX_CLEANUP_ENABLED === '1'.
+ * Schema D1: migrations/001_reels.sql es la fuente de verdad.
+ * ensureReelsSchema no aplica SQL salvo REELS_SCHEMA_APPLY=1.
  */
 
 export const REEL_MAX_DURATION_SEC = 30;
-export const REEL_DURATION_TOLERANCE_SEC = 0.25;
-export const REEL_MAX_DURATION_ACCEPTED_SEC = REEL_MAX_DURATION_SEC + REEL_DURATION_TOLERANCE_SEC;
 export const REEL_MAX_DURATION_MS = REEL_MAX_DURATION_SEC * 1000;
 export const REEL_MAX_BYTES = 50 * 1024 * 1024;
 export const REEL_ALLOWED_MIMES = ['video/mp4', 'video/quicktime'] as const;
@@ -55,6 +63,7 @@ export function normalizeReelMime(raw: string | null | undefined): string | null
   return isAllowedReelMime(mime) ? mime : null;
 }
 
+/** Valida un tamaño DECLARADO (picker / body.byteSize), no el archivo real. */
 export function isReelFileTooLarge(bytes: number | null | undefined): boolean {
   if (bytes == null || !Number.isFinite(Number(bytes))) return false;
   return Number(bytes) > REEL_MAX_BYTES;
@@ -69,14 +78,14 @@ export function clientDurationRejects(durationMs: number | null | undefined): bo
 }
 
 /**
- * Autoridad Mux/backend: segundos (float).
- * 30.00 → válido; 30.25 → válido (holgura de contenedor); 30.26 → rechazado.
+ * Autoridad Mux/backend: segundos (float de Mux).
+ * 29.99 y 30.00 → válido; 30.01, 30.25, 31.00 → rechazado.
  */
 export function muxDurationRejects(durationSec: number | null | undefined): boolean {
   if (durationSec == null || !Number.isFinite(Number(durationSec)) || Number(durationSec) < 0) {
     return true;
   }
-  return Number(durationSec) > REEL_MAX_DURATION_ACCEPTED_SEC;
+  return Number(durationSec) > REEL_MAX_DURATION_SEC;
 }
 
 export function durationSecToMs(durationSec: number): number {
