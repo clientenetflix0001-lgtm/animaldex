@@ -9,7 +9,6 @@ import {
   bufferSecondsForRole,
   displayedLikeCount,
   formatReelCount,
-  ownerReelFailedCopy,
   ownerReelSurface,
   reelCaptionDisplay,
   resolveReelVideoTap,
@@ -202,22 +201,6 @@ function ReelCardInner({
 
       <ReelOverlayLayer overlays={overlays} />
 
-      {surface === 'processing' ? (
-        <View style={styles.ownerState} pointerEvents="none">
-          <ActivityIndicator color="#fff" />
-          <Text style={styles.ownerStateT}>Procesando Reel…</Text>
-        </View>
-      ) : null}
-
-      {surface === 'failed' && isOwner ? (
-        <View style={styles.ownerState}>
-          <Text style={styles.ownerStateT}>{ownerReelFailedCopy(reel.status)}</Text>
-          <Pressable onPress={confirmDelete} style={styles.retry} accessibilityLabel="Eliminar Reel">
-            <Text style={styles.retryText}>Eliminar</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
       {!firstFrame && role === 'active' && !failed && surface === 'ready' ? (
         <View style={styles.prepare} pointerEvents="none">
           <ActivityIndicator color="#fff" />
@@ -367,14 +350,6 @@ const styles = StyleSheet.create({
   failText: { color: '#fff', fontWeight: '700' },
   retry: { backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },
   retryText: { color: '#fff', fontWeight: '800' },
-  ownerState: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  ownerStateT: { color: '#fff', fontWeight: '800', textAlign: 'center', paddingHorizontal: 24 },
   pauseBadge: {
     position: 'absolute',
     alignSelf: 'center',

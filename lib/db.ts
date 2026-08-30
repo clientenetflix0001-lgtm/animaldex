@@ -47,7 +47,14 @@ async function call(path: string, body: object): Promise<any> {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err: any = new Error(json.error || `Error ${res.status}`);
+    const raw = json?.error ?? json?.message;
+    const extracted =
+      typeof raw === 'string' && raw.trim() && raw !== '[object Object]'
+        ? raw.trim()
+        : raw && typeof raw === 'object'
+          ? String((raw as { message?: string; error?: string }).message || (raw as { error?: string }).error || '').trim()
+          : '';
+    const err: any = new Error(extracted && extracted !== '[object Object]' ? extracted : `Error ${res.status}`);
     err.status = res.status;
     throw err;
   }

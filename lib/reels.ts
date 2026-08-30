@@ -527,6 +527,78 @@ export function mergeOwnerReels<T extends { id: string }>(feed: T[], mine: T[]):
   return extra.length ? [...extra, ...feed] : feed;
 }
 
+export function hasValidReelPlaybackId(playbackId: string | null | undefined): boolean {
+  const id = String(playbackId || '').trim();
+  return !!id && id !== 'null' && id !== 'undefined';
+}
+
+/** Sección Reels: solo publicaciones reales (ready + playback). */
+export function reelBelongsInReelsFeed(reel: {
+  status?: string | null;
+  playbackId?: string | null;
+  muxPlaybackId?: string | null;
+  mux_playback_id?: string | null;
+} | null | undefined): boolean {
+  if (!reel || reel.status !== 'ready') return false;
+  return hasValidReelPlaybackId(reel.playbackId || reel.muxPlaybackId || reel.mux_playback_id);
+}
+
+export function filterReelsForFeed<T extends {
+  status?: string | null;
+  playbackId?: string | null;
+  muxPlaybackId?: string | null;
+  mux_playback_id?: string | null;
+}>(list: T[] | null | undefined): T[] {
+  return (list || []).filter((r) => reelBelongsInReelsFeed(r));
+}
+
+export function decideOwnerReelPoll(reel: {
+  status?: string | null;
+  playbackId?: string | null;
+  muxPlaybackId?: string | null;
+  mux_playback_id?: string | null;
+} | null | undefined): 'show' | 'forget' | 'wait' {
+  if (!reel) return 'forget';
+  if (reelBelongsInReelsFeed(reel)) return 'show';
+  const status = String(reel.status || '');
+  if (
+    status === 'upload_failed' ||
+    status === 'processing_failed' ||
+    status === 'rejected' ||
+    status === 'deleted'
+  ) {
+    return 'forget';
+  }
+  return 'wait';
+}
+
+export function applyOwnerPollToFeed<T extends {
+  id: string;
+  status?: string | null;
+  playbackId?: string | null;
+}>(list: T[], next: T): T[] {
+  const decision = decideOwnerReelPoll(next);
+  if (decision === 'show') return replaceReelInList(list, next);
+  if (decision === 'forget') return removeReelFromList(list, next.id);
+  return removeReelFromList(list, next.id);
+}
+
+export type ReelPublishFailurePlan = {
+  cancel: boolean;
+  rememberForPoll: boolean;
+  forget: boolean;
+};
+
+/** 429 / sin reelId: nada local. Fallo pre-PUT: cancel + limpiar. PUT ok: poll invisible. */
+export function planReelPublishFailure(input: {
+  createdId?: string | null;
+  putSucceeded: boolean;
+}): ReelPublishFailurePlan {
+  if (!input.createdId) return { cancel: false, rememberForPoll: false, forget: false };
+  if (!input.putSucceeded) return { cancel: true, rememberForPoll: false, forget: true };
+  return { cancel: false, rememberForPoll: true, forget: false };
+}
+
 export function replaceReelInList<T extends { id: string }>(list: T[], next: T): T[] {
   let found = false;
   const out = list.map((r) => {
@@ -560,17 +632,64 @@ export function ownerReelFailedCopy(status: string): string {
 export const REEL_RATE_LIMIT_MESSAGE =
   'Alcanzaste temporalmente el límite de publicaciones de Reels. Podrás volver a intentarlo más tarde.';
 
-export function reelPublishErrorMessage(err: unknown): string {
-  const status = err && typeof err === 'object' && 'status' in err ? Number((err as { status?: number }).status) : 0;
-  const raw = err instanceof Error ? err.message : String((err as { message?: string })?.message || err || '');
-  if (status === 429 || /límite de subidas/i.test(raw)) return REEL_RATE_LIMIT_MESSAGE;
-  if (raw && raw !== 'No se pudo publicar el Reel') return raw;
-  return 'No se pudo publicar el Reel';
+export const REEL_PUBLISH_FALLBACK = 'No se pudo publicar el Reel';
+
+function firstHumanErrorText(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const text = value.trim();
+    if (!text) continue;
+    if (text === '[object Object]') continue;
+    if (text.startsWith('{') && text.endsWith('}')) continue;
+    if (text.startsWith('[') && text.endsWith(']')) continue;
+    return text;
+  }
+  return null;
 }
 
-/** Solo cancelar si el PUT a Mux / completeReelUpload no terminó. */
-export function shouldCancelReelAfterPublishError(uploadCompleted: boolean): boolean {
-  return !uploadCompleted;
+function nestedErrorFields(err: unknown): unknown[] {
+  if (!err || typeof err !== 'object') return [];
+  const o = err as Record<string, unknown>;
+  const nested = [o.body, o.data, o.response, o.cause].filter((v) => v && typeof v === 'object') as Record<
+    string,
+    unknown
+  >[];
+  const out: unknown[] = [o.message, o.error];
+  for (const n of nested) {
+    out.push(n.message, n.error);
+    if (n.error && typeof n.error === 'object') {
+      const inner = n.error as Record<string, unknown>;
+      out.push(inner.message, inner.error);
+    }
+  }
+  if (o.error && typeof o.error === 'object') {
+    const inner = o.error as Record<string, unknown>;
+    out.push(inner.message, inner.error);
+  }
+  return out;
+}
+
+export function getReelErrorMessage(err: unknown): string {
+  if (err == null || err === '') return REEL_PUBLISH_FALLBACK;
+  if (typeof err === 'string') {
+    const direct = firstHumanErrorText(err);
+    if (direct && /límite de subidas/i.test(direct)) return REEL_RATE_LIMIT_MESSAGE;
+    return direct || REEL_PUBLISH_FALLBACK;
+  }
+  if (typeof err !== 'object') return REEL_PUBLISH_FALLBACK;
+  const status = 'status' in err ? Number((err as { status?: number }).status) : 0;
+  const raw = firstHumanErrorText(...nestedErrorFields(err));
+  if (status === 429 || (raw && /límite de subidas/i.test(raw))) return REEL_RATE_LIMIT_MESSAGE;
+  return raw || REEL_PUBLISH_FALLBACK;
+}
+
+export function reelPublishErrorMessage(err: unknown): string {
+  return getReelErrorMessage(err);
+}
+
+/** Cancelar solo si el PUT a Mux no llegó a completarse. */
+export function shouldCancelReelAfterPublishError(putSucceeded: boolean): boolean {
+  return !putSucceeded;
 }
 
 export function canDeleteReel(viewerId: string | null | undefined, ownerId: string | null | undefined): boolean {

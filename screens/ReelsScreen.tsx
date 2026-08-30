@@ -24,13 +24,14 @@ import {
   REEL_FEED_PAGE,
   REEL_OWNER_POLL_MS,
   REEL_SCROLL_DEBOUNCE_MS,
+  applyOwnerPollToFeed,
   canDeleteReel,
+  decideOwnerReelPoll,
   ensureLikedSet,
-  mergeOwnerReels,
+  filterReelsForFeed,
   paginationFailureKeeps,
   playerRoleForIndex,
   removeReelFromList,
-  replaceReelInList,
   reelsFeedView,
   rollbackLikedSet,
   shouldPlayReel,
@@ -38,7 +39,7 @@ import {
   toggleLikedSet,
 } from '../lib/reels';
 import { appendUniqueReels, type ReelGridScope } from '../lib/reelGrid';
-import { forgetLocalReel, listLocalReels } from '../lib/reelSession';
+import { forgetLocalReel, listLocalReels, shouldForgetLocalReelStatus } from '../lib/reelSession';
 import { colors } from '../lib/theme';
 import { Image } from 'expo-image';
 import { thumb, userFallbackAvatar } from '../lib/images';
@@ -61,7 +62,9 @@ export default function ReelsScreen({
   const reelsPageVisible = useReelsPageVisible();
   const insets = useSafeAreaInsets();
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
-  const seeded = initialReels && initialReels.length ? initialReels : initialReel ? [initialReel] : [];
+  const seeded = filterReelsForFeed(
+    initialReels && initialReels.length ? initialReels : initialReel ? [initialReel] : []
+  );
   const startIndex = Math.max(0, Math.min(initialIndex, Math.max(0, seeded.length - 1)));
   const [reels, setReels] = useState<ApiReel[]>(seeded);
   const [liked, setLiked] = useState<Set<string>>(new Set());
@@ -114,11 +117,15 @@ export default function ReelsScreen({
       setPageError(false);
       setBootError(false);
       setReels((prev) => {
+        const published = filterReelsForFeed(page);
         if (reset) {
-          if (seeded.length) return appendUniqueReels(seeded, page);
-          return initialReel && !page.some((r) => r.id === initialReel.id) ? [initialReel, ...page] : page;
+          if (seeded.length) return filterReelsForFeed(appendUniqueReels(seeded, published));
+          const seedOne = initialReel && filterReelsForFeed([initialReel])[0];
+          return seedOne && !published.some((r) => r.id === seedOne.id)
+            ? [seedOne, ...published]
+            : published;
         }
-        return appendUniqueReels(prev, page);
+        return filterReelsForFeed(appendUniqueReels(prev, published));
       });
     } catch {
       if (reset) {
@@ -145,9 +152,6 @@ export default function ReelsScreen({
     db.myReelState()
       .then(({ state }) => {
         setLiked(new Set(state.likedReels));
-        if (scoped) return;
-        const mine = [...(state.pendingReels || []), ...(state.failedReels || [])];
-        if (mine.length) setReels((prev) => mergeOwnerReels(prev, mine));
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -164,15 +168,16 @@ export default function ReelsScreen({
         try {
           const { reel } = await db.myReel(row.id);
           if (cancelled) return;
-          setReels((prev) => replaceReelInList(prev, reel));
-          if (reel.status === 'ready' || reel.status === 'deleted') forgetLocalReel(row.id);
+          const decision = decideOwnerReelPoll(reel);
+          if (decision === 'show') {
+            setReels((prev) => applyOwnerPollToFeed(prev, reel));
+            forgetLocalReel(row.id);
+          } else if (decision === 'forget' || shouldForgetLocalReelStatus(reel.status)) {
+            forgetLocalReel(row.id);
+            setReels((prev) => removeReelFromList(prev, row.id));
+          }
         } catch {}
       }
-      try {
-        const { state } = await db.myReelState();
-        const mine = [...(state.pendingReels || []), ...(state.failedReels || [])];
-        if (mine.length && !cancelled && !scoped) setReels((prev) => mergeOwnerReels(prev, mine));
-      } catch {}
       if (!cancelled && ticks < 12 && listLocalReels().length) {
         timer = setTimeout(poll, REEL_OWNER_POLL_MS);
       }

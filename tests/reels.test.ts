@@ -574,8 +574,11 @@ describe('estados feed, processing, delete, overlays UX', () => {
     assert.match(reelsMux, /Ese Reel no es tuyo/);
     assert.match(reelsMux, /deleteReel/);
     assert.match(reelsMux, /cleanup_disabled|MUX_CLEANUP_ENABLED/);
-    assert.match(card, /Procesando Reel/);
-    assert.match(card, /ownerReelFailedCopy/);
+    assert.doesNotMatch(card, /Procesando Reel/);
+    assert.doesNotMatch(card, /No se pudo subir este Reel/);
+    assert.match(card, /Eliminar Reel/);
+    assert.doesNotMatch(reelsScreen, /mergeOwnerReels/);
+    assert.match(reelsScreen, /filterReelsForFeed/);
     const merged = mergeOwnerReels([{ id: 'a' }], [{ id: 'p' }, { id: 'a' }]);
     assert.equal(merged[0].id, 'p');
     assert.equal(merged.length, 2);

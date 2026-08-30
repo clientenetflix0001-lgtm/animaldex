@@ -26,8 +26,8 @@ import {
   REEL_DURATION_REJECT_MESSAGE,
   clientReelValidationError,
   createReelIsDirty,
+  planReelPublishFailure,
   reelPublishErrorMessage,
-  shouldCancelReelAfterPublishError,
 } from '../lib/reels';
 import {
   canAddReelOverlay,
@@ -40,7 +40,7 @@ import {
   openReelTrimEditor,
   shouldOpenReelTrim,
 } from '../lib/reelTrim';
-import { rememberLocalReel } from '../lib/reelSession';
+import { forgetLocalReel, rememberLocalReel } from '../lib/reelSession';
 import { reelDevAttach, reelDevMark, reelDevT0 } from '../lib/reelDevTiming';
 import { ReelOverlayLayer } from '../components/ReelOverlayLayer';
 import { ReelTextEditor } from '../components/ReelTextEditor';
@@ -293,7 +293,8 @@ export default function CreateReelScreen() {
     setPhase('preparing');
     setError('');
     reelDevT0();
-    let uploadCompleted = false;
+    let createdId: string | null = null;
+    let putSucceeded = false;
     try {
       const created = await db.createReelUpload({
         mime,
@@ -304,6 +305,7 @@ export default function CreateReelScreen() {
         authorProfileId: activeProfileId,
         overlays: cleanOverlays,
       });
+      createdId = created.reelId;
       createdIdRef.current = created.reelId;
       reelDevAttach(created.reelId);
       setPhase('uploading');
@@ -319,8 +321,8 @@ export default function CreateReelScreen() {
       if (!put.ok) {
         throw new Error('No se pudo subir el video a Mux');
       }
+      putSucceeded = true;
       await db.completeReelUpload(created.reelId);
-      uploadCompleted = true;
       rememberLocalReel({
         id: created.reelId,
         status: 'processing',
@@ -336,13 +338,16 @@ export default function CreateReelScreen() {
         const { reel } = await db.myReel(created.reelId);
         if (reel.status === 'ready') {
           ready = true;
+          forgetLocalReel(created.reelId);
           reelDevMark(created.reelId, 'T4');
           break;
         }
         if (reel.status === 'rejected') {
+          forgetLocalReel(created.reelId);
           throw new Error(REEL_DURATION_REJECT_MESSAGE);
         }
         if (reel.status === 'upload_failed' || reel.status === 'processing_failed') {
+          forgetLocalReel(created.reelId);
           throw new Error('Mux no pudo procesar el video');
         }
       }
@@ -361,12 +366,15 @@ export default function CreateReelScreen() {
         }]
       );
     } catch (e: any) {
-      const failedId = createdIdRef.current;
-      if (failedId && shouldCancelReelAfterPublishError(uploadCompleted)) {
-        await db.cancelReelUpload(failedId).catch(() => {});
+      const plan = planReelPublishFailure({ createdId, putSucceeded });
+      if (createdId && plan.cancel) {
+        await db.cancelReelUpload(createdId).catch(() => {});
+      }
+      if (createdId && plan.forget) forgetLocalReel(createdId);
+      if (createdId && plan.rememberForPoll) {
         rememberLocalReel({
-          id: failedId,
-          status: 'upload_failed',
+          id: createdId,
+          status: 'processing',
           caption: caption.trim(),
           thumbnailUri: source,
           createdAt: Date.now(),

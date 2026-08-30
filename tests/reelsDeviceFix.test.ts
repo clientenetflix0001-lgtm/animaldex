@@ -69,13 +69,13 @@ describe('BUG 2: rate limit, error real, uploading no es processing', () => {
     assert.equal(reelPublishErrorMessage(new Error('Mux no configurado')), 'Mux no configurado');
     assert.equal(reelPublishErrorMessage(new Error('')), 'No se pudo publicar el Reel');
     assert.match(createReel, /reelPublishErrorMessage/);
-    assert.match(createReel, /shouldCancelReelAfterPublishError/);
+    assert.match(createReel, /planReelPublishFailure/);
     assert.match(createReel, /cancelReelUpload/);
     assert.equal(shouldCancelReelAfterPublishError(false), true);
     assert.equal(shouldCancelReelAfterPublishError(true), false);
   });
 
-  it('upload fallido no queda processing; processing real sigue; failed solo owner', () => {
+  it('upload fallido / processing no van al feed Reels', () => {
     assert.equal(ownerReelSurface('uploading'), 'failed');
     assert.equal(ownerReelSurface('upload_failed'), 'failed');
     assert.equal(ownerReelSurface('processing'), 'processing');
@@ -84,7 +84,8 @@ describe('BUG 2: rate limit, error real, uploading no es processing', () => {
     assert.equal(ownerReelFailedCopy('upload_failed'), 'No se pudo subir este Reel');
     assert.equal(ownerReelFailedCopy('processing_failed'), 'No pudimos procesar este Reel.');
     const card = readFileSync(join(root, 'components/ReelCard.tsx'), 'utf8');
-    assert.match(card, /surface === 'failed' && isOwner/);
+    assert.doesNotMatch(card, /surface === 'failed' && isOwner/);
+    assert.doesNotMatch(card, /Procesando Reel/);
   });
 });
 

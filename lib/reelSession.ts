@@ -37,3 +37,18 @@ export function updateLocalReel(id: string, patch: Partial<LocalOwnerReel>): Loc
 export function clearLocalReels(): void {
   mine.clear();
 }
+
+/** El pending local nunca puebla el feed Reels. */
+export function localReelMayAppearInFeed(_row?: LocalOwnerReel | null): boolean {
+  return false;
+}
+
+export function shouldForgetLocalReelStatus(status: string): boolean {
+  return (
+    status === 'ready' ||
+    status === 'deleted' ||
+    status === 'upload_failed' ||
+    status === 'processing_failed' ||
+    status === 'rejected'
+  );
+}
