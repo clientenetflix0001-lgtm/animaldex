@@ -13,6 +13,7 @@ export type AppLinkTarget =
   | { screen: 'PetProfile'; params: { petId: string } }
   | { screen: 'AlertDetail'; params: { alertId: string } }
   | { screen: 'ListingDetail'; params: { listingId: string } }
+  | { screen: 'ReelViewer'; params: { reelId: string } }
   | { screen: 'PublicProfile'; params: { username: string } }
   | { screen: 'Tabs'; params: { screen: AppLinkTab } };
 
@@ -32,6 +33,7 @@ const RESERVED_SEGMENTS = new Set([
   'pet',
   'a',
   'm',
+  'r',
   'login',
   'register',
   'auth',
@@ -130,6 +132,9 @@ export function resolveAppLink(url: string | null | undefined): AppLinkTarget | 
   }
   if (head === 'm' && id) {
     return { screen: 'ListingDetail', params: { listingId: id } };
+  }
+  if (head === 'r' && id) {
+    return { screen: 'ReelViewer', params: { reelId: id } };
   }
 
   if (parts.length === 1) {

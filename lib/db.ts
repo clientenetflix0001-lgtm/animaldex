@@ -47,7 +47,14 @@ async function call(path: string, body: object): Promise<any> {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err: any = new Error(json.error || `Error ${res.status}`);
+    const raw = json?.error ?? json?.message;
+    const extracted =
+      typeof raw === 'string' && raw.trim() && raw !== '[object Object]'
+        ? raw.trim()
+        : raw && typeof raw === 'object'
+          ? String((raw as { message?: string; error?: string }).message || (raw as { error?: string }).error || '').trim()
+          : '';
+    const err: any = new Error(extracted && extracted !== '[object Object]' ? extracted : `Error ${res.status}`);
     err.status = res.status;
     throw err;
   }
@@ -114,6 +121,39 @@ export interface ApiPost {
   authorProfileName?: string | null;
   authorProfileUsername?: string | null;
   authorProfileAvatar?: string | null;
+}
+
+export interface ApiReel {
+  id: string;
+  userId: string;
+  petId: string | null;
+  caption: string;
+  status: string;
+  moderation?: string;
+  durationMs: number | null;
+  width: number | null;
+  height: number | null;
+  createdAt: number;
+  readyAt: number | null;
+  likeCount: number;
+  commentCount: number;
+  isLiked?: boolean;
+  petName: string | null;
+  petEmoji: string | null;
+  petAvatar: string | null;
+  petSpecies: string | null;
+  petUsername?: string | null;
+  username: string | null;
+  userName: string | null;
+  authorProfileId?: string | null;
+  authorProfileType?: 'personal' | 'business' | 'protector' | null;
+  authorProfileName?: string | null;
+  authorProfileUsername?: string | null;
+  authorProfileAvatar?: string | null;
+  playbackId: string | null;
+  hlsUrl: string | null;
+  thumbnailUrl: string | null;
+  overlays?: import('./reelOverlays').ReelTextOverlay[];
 }
 
 export interface ApiComment {
@@ -224,12 +264,13 @@ export interface ApiTag {
 
 export interface ApiNotification {
   id: string;
-  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday';
+  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday' | 'reel_like' | 'reel_comment';
   actorId: string | null;
   actorName: string;
   actorUsername: string;
   actorAvatar: string | null;
   postId?: string;
+  reelId?: string;
   postImage?: string | null;
   petId?: string;
   petUsername?: string | null;
@@ -510,6 +551,43 @@ export const db = {
     call('/db', { action: 'sellerReviews', targetUserId }),
   sellerReview: (targetUserId: string, rating: number, text?: string): Promise<{ ok: boolean }> =>
     call('/db', { action: 'sellerReview', targetUserId, rating, text }),
+
+  reelsFeed: (before?: number, limit = 10): Promise<{ reels: ApiReel[]; hasMore: boolean }> =>
+    call('/db', { action: 'reelsFeed', before, limit }),
+  profileReels: (profileId: string, before?: number, limit = 12): Promise<{ reels: ApiReel[]; hasMore: boolean }> =>
+    call('/db', { action: 'profileReels', profileId, before, limit }),
+  petReels: (petId: string, before?: number, limit = 12): Promise<{ reels: ApiReel[]; hasMore: boolean }> =>
+    call('/db', { action: 'petReels', petId, before, limit }),
+  userReels: (userId: string, before?: number, limit = 12): Promise<{ reels: ApiReel[]; hasMore: boolean }> =>
+    call('/db', { action: 'userReels', userId, before, limit }),
+  reelDetail: (reelId: string): Promise<{ reel: ApiReel; comments: ApiComment[] }> =>
+    call('/db', { action: 'reelDetail', reelId }),
+  reelComments: (reelId: string): Promise<{ comments: ApiComment[] }> =>
+    call('/db', { action: 'reelComments', reelId }),
+  createReelUpload: (input: {
+    mime: string;
+    byteSize?: number | null;
+    durationMs?: number | null;
+    caption?: string;
+    petId?: string | null;
+    authorProfileId?: string | null;
+    overlays?: import('./reelOverlays').ReelTextOverlay[];
+  }): Promise<{ reelId: string; uploadUrl: string; timeoutSec: number }> =>
+    call('/db', { action: 'createReelUpload', ...input }),
+  completeReelUpload: (reelId: string): Promise<{ status: string }> =>
+    call('/db', { action: 'completeReelUpload', reelId }),
+  cancelReelUpload: (reelId: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'cancelReelUpload', reelId }),
+  myReel: (reelId: string): Promise<{ reel: ApiReel }> => call('/db', { action: 'myReel', reelId }),
+  myReelState: (): Promise<{
+    state: { likedReels: string[]; pendingReels?: ApiReel[]; failedReels?: ApiReel[] };
+  }> => call('/db', { action: 'myReelState' }),
+  reelLike: (reelId: string, value: boolean): Promise<{ likeCount: number }> =>
+    call('/db', { action: 'reelLike', reelId, value }),
+  reelComment: (reelId: string, text: string): Promise<{ id: string; createdAt: number }> =>
+    call('/db', { action: 'reelComment', reelId, text }),
+  deleteReel: (reelId: string): Promise<{ ok: boolean; muxDeleted?: boolean }> =>
+    call('/db', { action: 'deleteReel', reelId }),
 };
 
 // ---------- Helpers ----------

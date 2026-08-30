@@ -12,6 +12,8 @@ import { userFallbackAvatar, thumb } from '../lib/images';
 import { colors, radius, spacing } from '../lib/theme';
 import { SIDEBAR_FULL, SIDEBAR_RAIL } from '../lib/responsive';
 import { navigateMainTab } from '../lib/tabProfileStack';
+import { planMainTabPress, shouldHighlightTab } from '../lib/feedReelsNav';
+import { useFeedReelsNav } from '../lib/feedReelsNavContext';
 
 export const TAB_ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap }> = {
   Inicio: { on: 'home', off: 'home-outline' },
@@ -42,7 +44,20 @@ interface Props {
 export function Sidebar({ state, navigation, mode }: Props) {
   const { user, logout } = useStore();
   const { unread } = useNotifications();
+  const { page, setPage } = useFeedReelsNav();
+  const focusedName = state.routes[state.index]?.name as string;
   const full = mode === 'full';
+
+  const pressMainTab = (name: string) => {
+    const plan = planMainTabPress({ pressed: name, navFocused: focusedName, feedPage: page });
+    if (plan.kind === 'noop') return;
+    if (plan.kind === 'setPage') {
+      setPage(plan.page);
+      return;
+    }
+    if (plan.page != null) setPage(plan.page);
+    navigateMainTab(navigation, plan.tab);
+  };
 
   const confirmLogout = () => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -57,7 +72,7 @@ export function Sidebar({ state, navigation, mode }: Props) {
       {/* Logo */}
       <Pressable
         style={[styles.logoRow, !full && styles.logoRail]}
-        onPress={() => navigateMainTab(navigation, 'Inicio')}
+        onPress={() => pressMainTab('Inicio')}
       >
         <Text style={styles.logoEmoji}>🐾</Text>
         {full && <Text style={styles.logoText}>Animaldex</Text>}
@@ -79,14 +94,14 @@ export function Sidebar({ state, navigation, mode }: Props) {
 
       {/* Navegación */}
       <View style={styles.nav}>
-        {state.routes.map((route: any, idx: number) => {
-          const active = state.index === idx;
+        {state.routes.map((route: any) => {
+          const active = shouldHighlightTab(route.name, focusedName, page);
           const icons = TAB_ICONS[route.name];
           if (!icons) return null;
           return (
             <Pressable
               key={route.key}
-              onPress={() => navigateMainTab(navigation, route.name)}
+              onPress={() => pressMainTab(route.name)}
               style={(st: any) => [
                 styles.item,
                 !full && styles.itemRail,

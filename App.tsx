@@ -13,10 +13,11 @@ import { SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics } from 'react
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 import ExploreScreen from './screens/ExploreScreen';
 import CreatePostScreen from './screens/CreatePostScreen';
+import CreateChooserScreen from './screens/CreateChooserScreen';
 import ActivityScreen from './screens/ActivityScreen';
 import UserProfileScreen from './screens/UserProfileScreen';
 import PublicProfileScreen from './screens/PublicProfileScreen';
@@ -34,6 +35,8 @@ import AlertsScreen from './screens/AlertsScreen';
 import CreateAlertScreen from './screens/CreateAlertScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
 import FeedReelsSwiper from './screens/FeedReelsSwiper';
+import CreateReelScreen from './screens/CreateReelScreen';
+import ReelViewerScreen from './screens/ReelViewerScreen';
 import MarketScreen from './screens/MarketScreen';
 import CreateListingScreen from './screens/CreateListingScreen';
 import ListingDetailScreen from './screens/ListingDetailScreen';
@@ -50,6 +53,8 @@ import { useBreakpoint } from './lib/responsive';
 import { Sidebar } from './components/Sidebar';
 import { extractTagCode } from './lib/tags';
 import { createTabProfileStack, navigateMainTab } from './lib/tabProfileStack';
+import { planMainTabPress, shouldHighlightTab } from './lib/feedReelsNav';
+import { FeedReelsNavProvider, useFeedReelsNav } from './lib/feedReelsNavContext';
 import { navigationRef } from './lib/navigationRef';
 import { attachPushResponseListeners, ensurePushHandler, registerPushTokenIfGranted, setPushNavGate } from './lib/push';
 import {
@@ -69,15 +74,21 @@ function MyProfileTab() {
 }
 
 function InicioRoot() {
-  return <FeedReelsSwiper initialPage={0} />;
+  return <FeedReelsSwiper />;
 }
 
-function ReelsRoot() {
-  return <FeedReelsSwiper initialPage={1} />;
+function ReelsTabBridge() {
+  const navigation = useNavigation<any>();
+  const { setPage } = useFeedReelsNav();
+  useEffect(() => {
+    setPage(1);
+    navigation.navigate('Inicio');
+  }, [navigation, setPage]);
+  return null;
 }
 
 const InicioStack = createTabProfileStack(InicioRoot);
-const ReelsStack = createTabProfileStack(ReelsRoot);
+const ReelsStack = createTabProfileStack(ReelsTabBridge);
 const AlertasStack = createTabProfileStack(AlertsScreen);
 const MercadoStack = createTabProfileStack(MarketScreen);
 const ActividadStack = createTabProfileStack(ActivityScreen);
@@ -111,6 +122,7 @@ function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
   const insets = useSafeAreaInsets();
   const bottomInset = Platform.OS === 'web' ? 0 : insets.bottom;
   const focusedName = state.routes[state.index]?.name as keyof TabParamList;
+  const { page, setPage } = useFeedReelsNav();
 
   return (
     <View
@@ -124,13 +136,22 @@ function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
       ]}
     >
       {MOBILE_TAB_ORDER.map((name) => {
-        const focused = focusedName === name;
+        const focused = shouldHighlightTab(name, focusedName, page);
         const icons = TAB_ICONS[name];
         const size = name === 'Crear' ? 32 : 24;
         return (
           <Pressable
             key={name}
-            onPress={() => navigateMainTab(navigation, name)}
+            onPress={() => {
+              const plan = planMainTabPress({ pressed: name, navFocused: focusedName, feedPage: page });
+              if (plan.kind === 'noop') return;
+              if (plan.kind === 'setPage') {
+                setPage(plan.page);
+                return;
+              }
+              if (plan.page != null) setPage(plan.page);
+              navigateMainTab(navigation, plan.tab);
+            }}
             style={styles.tabItem}
             accessibilityRole="button"
             accessibilityLabel={name === 'Crear' ? 'Crear' : name}
@@ -174,21 +195,23 @@ function Tabs() {
   // ---------- Escritorio (web ≥ 1024px): sidebar estilo Instagram ----------
   if (desktopWeb) {
     return (
-      <Tab.Navigator
-        tabBar={(props) => <Sidebar {...(props as any)} mode={sidebarMode === 'full' ? 'full' : 'rail'} />}
-        screenOptions={{
-          headerShown: false,
-          sceneStyle: { paddingLeft: sidebarWidth, backgroundColor: colors.bg },
-        }}
-      >
-        <Tab.Screen name="Inicio" component={InicioStack} />
-        <Tab.Screen name="Reels" component={ReelsStack} />
-        <Tab.Screen name="Alertas" component={AlertasStack} />
-        <Tab.Screen name="Mercado" component={MercadoStack} />
-        <Tab.Screen name="Crear" component={CreatePostScreen} />
-        <Tab.Screen name="Actividad" component={ActividadStack} />
-        <Tab.Screen name="Perfil" component={PerfilStack} />
-      </Tab.Navigator>
+      <FeedReelsNavProvider>
+        <Tab.Navigator
+          tabBar={(props) => <Sidebar {...(props as any)} mode={sidebarMode === 'full' ? 'full' : 'rail'} />}
+          screenOptions={{
+            headerShown: false,
+            sceneStyle: { paddingLeft: sidebarWidth, backgroundColor: colors.bg },
+          }}
+        >
+          <Tab.Screen name="Inicio" component={InicioStack} />
+          <Tab.Screen name="Reels" component={ReelsStack} />
+          <Tab.Screen name="Alertas" component={AlertasStack} />
+          <Tab.Screen name="Mercado" component={MercadoStack} />
+          <Tab.Screen name="Crear" component={CreateChooserScreen} />
+          <Tab.Screen name="Actividad" component={ActividadStack} />
+          <Tab.Screen name="Perfil" component={PerfilStack} />
+        </Tab.Navigator>
+      </FeedReelsNavProvider>
     );
   }
 
@@ -199,18 +222,20 @@ function Tabs() {
   // para no tapar la barra. El Root Stack conserva las mismas pantallas
   // para deep links y App Links (/pet/:handle, /:username).
   return (
-    <Tab.Navigator
-      tabBar={(props) => <MobileTabBar state={props.state} navigation={props.navigation} />}
-      screenOptions={{ headerShown: false }}
-    >
-      <Tab.Screen name="Inicio" component={InicioStack} />
-      <Tab.Screen name="Reels" component={ReelsStack} />
-      <Tab.Screen name="Alertas" component={AlertasStack} />
-      <Tab.Screen name="Crear" component={CreatePostScreen} />
-      <Tab.Screen name="Mercado" component={MercadoStack} />
-      <Tab.Screen name="Perfil" component={PerfilStack} />
-      <Tab.Screen name="Actividad" component={ActividadStack} />
-    </Tab.Navigator>
+    <FeedReelsNavProvider>
+      <Tab.Navigator
+        tabBar={(props) => <MobileTabBar state={props.state} navigation={props.navigation} />}
+        screenOptions={{ headerShown: false }}
+      >
+        <Tab.Screen name="Inicio" component={InicioStack} />
+        <Tab.Screen name="Reels" component={ReelsStack} />
+        <Tab.Screen name="Alertas" component={AlertasStack} />
+        <Tab.Screen name="Crear" component={CreateChooserScreen} />
+        <Tab.Screen name="Mercado" component={MercadoStack} />
+        <Tab.Screen name="Perfil" component={PerfilStack} />
+        <Tab.Screen name="Actividad" component={ActividadStack} />
+      </Tab.Navigator>
+    </FeedReelsNavProvider>
   );
 }
 
@@ -249,6 +274,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       AlertDetail: 'a/:alertId',
       CreateListing: 'vender',
       ListingDetail: 'm/:listingId',
+      ReelViewer: 'r/:reelId',
       SellerShop: 'tienda/:userId',
       MarketFavorites: 'mercado-favoritos',
       Auth: 'entrar',
@@ -395,6 +421,7 @@ function PublicNavigator() {
         options={{ title: 'Alerta', ...screenHeaderOptions }}
       />
       <Stack.Screen name="ListingDetail" component={ListingDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ReelViewer" component={ReelViewerScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -483,6 +510,21 @@ function RootNavigator() {
       <Stack.Screen
         name="ListingDetail"
         component={ListingDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreatePost"
+        component={CreatePostScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreateReel"
+        component={CreateReelScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ReelViewer"
+        component={ReelViewerScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

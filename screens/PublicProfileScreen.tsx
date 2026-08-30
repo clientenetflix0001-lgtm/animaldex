@@ -35,13 +35,21 @@ import {
 import ProtectorPetGridItem, { PROTECTOR_GRID_GAP } from '../components/ProtectorPetGridItem';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 import { isReservedPublicUsername } from '../lib/publicHandles';
+import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
+import type { ApiReel } from '../lib/db';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-type TabKey = 'mascotas' | 'posts';
+type TabKey = 'mascotas' | 'posts' | 'reels';
 
-const TABS: { id: TabKey; label: string }[] = [
+const PROTECTOR_TABS: { id: TabKey; label: string }[] = [
   { id: 'mascotas', label: 'Mascotas' },
   { id: 'posts', label: 'Publicaciones' },
+  { id: 'reels', label: 'Reels' },
+];
+
+const PAGE_TABS: { id: TabKey; label: string }[] = [
+  { id: 'posts', label: 'Publicaciones' },
+  { id: 'reels', label: 'Reels' },
 ];
 
 const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
@@ -109,6 +117,7 @@ export default function PublicProfileScreen() {
       });
       setIsOwner(pub.isOwner);
       setFollowing(pub.isFollowing);
+      setTab(pub.profile.type === 'protector' ? 'mascotas' : 'posts');
       setPosts(feed.posts.map(apiPostToPost));
     } catch {
       setProfile(null);
@@ -151,6 +160,9 @@ export default function PublicProfileScreen() {
   );
 
   const postTile = (width - spacing.lg * 2 - 4) / 3;
+  const reelScope = profile && profile.type !== 'personal' ? { type: 'profile' as const, id: profile.id } : null;
+  const reelsGrid = useReelGrid(reelScope, tab === 'reels' && !!reelScope);
+  const isOwnerViewer = isOwner;
 
   if (!loading && profile?.type === 'personal' && profile.accountId) {
     return <UserProfileScreen userId={profile.accountId} showBack />;
@@ -266,49 +278,72 @@ export default function PublicProfileScreen() {
         )}
       </View>
 
-      {isProtector && (
-        <>
-          <View style={styles.tabRow}>
-            {TABS.map((t) => (
-              <Pressable
-                key={t.id}
-                style={[styles.tabBtn, tab === t.id && styles.tabActive]}
-                onPress={() => setTab(t.id)}
-              >
-                <Text style={[styles.tabLabel, tab === t.id && styles.tabLabelOn]} numberOfLines={1}>
-                  {t.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          {tab === 'mascotas' && (
-            <View style={styles.filters}>
-              <FilterRow items={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
-              <FilterRow items={SPECIES_FILTERS} value={speciesFilter} onChange={setSpeciesFilter} />
-            </View>
-          )}
-        </>
+      <View style={styles.tabRow}>
+        {(isProtector ? PROTECTOR_TABS : PAGE_TABS).map((t) => (
+          <Pressable
+            key={t.id}
+            style={[styles.tabBtn, tab === t.id && styles.tabActive]}
+            onPress={() => setTab(t.id)}
+            accessibilityLabel={t.label}
+          >
+            <Text style={[styles.tabLabel, tab === t.id && styles.tabLabelOn]} numberOfLines={1}>
+              {t.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      {isProtector && tab === 'mascotas' && (
+        <View style={styles.filters}>
+          <FilterRow items={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
+          <FilterRow items={SPECIES_FILTERS} value={speciesFilter} onChange={setSpeciesFilter} />
+        </View>
       )}
     </View>
+  );
+
+  const renderReelItem = ({ item, index }: { item: ApiReel; index: number }) => (
+    <ReelGridTile
+      reel={item}
+      size={postTile}
+      isOwner={isOwnerViewer}
+      onPress={() =>
+        reelScope &&
+        openReelFromGrid(navigation, {
+          reel: item,
+          items: reelsGrid.items,
+          index,
+          scope: reelScope,
+        })
+      }
+    />
   );
 
   if (!isProtector) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <FlatList
-          data={posts}
-          keyExtractor={(p) => p.id}
+          data={tab === 'reels' ? reelsGrid.items : posts}
+          key={tab === 'reels' ? 'reels' : 'posts'}
+          keyExtractor={(item) => item.id}
           ListHeaderComponent={header}
           numColumns={3}
           columnWrapperStyle={{ gap: 2, paddingHorizontal: spacing.lg }}
           contentContainerStyle={{ paddingBottom: guest ? 260 : 40 }}
-          renderItem={({ item }) => (
-            <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item))}>
-              <PostGridMedia post={item} size={postTile} />
-            </Pressable>
-          )}
+          onEndReached={tab === 'reels' ? reelsGrid.loadMore : undefined}
+          onEndReachedThreshold={0.4}
+          renderItem={({ item, index }) =>
+            tab === 'reels'
+              ? renderReelItem({ item: item as ApiReel, index })
+              : (
+                <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item as Post))}>
+                  <PostGridMedia post={item as Post} size={postTile} />
+                </Pressable>
+              )
+          }
           ListEmptyComponent={
-            <Text style={styles.empty}>Todavía no hay publicaciones de este perfil.</Text>
+            <Text style={styles.empty}>
+              {tab === 'reels' ? 'Todavía no hay Reels de este perfil.' : 'Todavía no hay publicaciones de este perfil.'}
+            </Text>
           }
         />
         {inviteBar}
@@ -333,6 +368,20 @@ export default function PublicProfileScreen() {
             </Pressable>
           )}
           ListEmptyComponent={<Text style={styles.empty}>Este perfil todavía no publicó.</Text>}
+        />
+      ) : tab === 'reels' ? (
+        <FlatList
+          data={reelsGrid.items}
+          key="reels"
+          keyExtractor={(r) => r.id}
+          ListHeaderComponent={header}
+          numColumns={3}
+          columnWrapperStyle={reelsGrid.items.length ? { gap: 2, paddingHorizontal: spacing.lg } : undefined}
+          contentContainerStyle={{ paddingBottom: guest ? 260 : 40 }}
+          onEndReached={reelsGrid.loadMore}
+          onEndReachedThreshold={0.4}
+          renderItem={renderReelItem}
+          ListEmptyComponent={<Text style={styles.empty}>Este perfil todavía no tiene Reels.</Text>}
         />
       ) : (
         <FlatList

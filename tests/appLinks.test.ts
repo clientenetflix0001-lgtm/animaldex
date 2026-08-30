@@ -77,6 +77,19 @@ describe('resolveAppLink: recursos públicos pages.dev', () => {
     }
   });
 
+  it('reel /r/:id → ReelViewer', () => {
+    for (const host of HOSTS) {
+      assert.deepEqual(resolveAppLink(`${host}/r/reel-1`), {
+        screen: 'ReelViewer',
+        params: { reelId: 'reel-1' },
+      });
+    }
+    assert.deepEqual(resolveAppLink('animaldex://r/reel-1'), {
+      screen: 'ReelViewer',
+      params: { reelId: 'reel-1' },
+    });
+  });
+
   it('mercado /m/:id → ListingDetail', () => {
     for (const host of HOSTS) {
       assert.deepEqual(resolveAppLink(`${host}/m/listing-7`), {
@@ -196,6 +209,7 @@ describe('App.tsx y app.json solo pages.dev', () => {
     assert.match(app, /PetProfile: 'pet\/:petId'/);
     assert.match(app, /AlertDetail: 'a\/:alertId'/);
     assert.match(app, /ListingDetail: 'm\/:listingId'/);
+    assert.match(app, /ReelViewer: 'r\/:reelId'/);
     assert.match(app, /PublicProfile: ':username'/);
     assert.match(app, /function AppLinkHandler/);
     assert.match(app, /name="ListingDetail"/);
@@ -214,6 +228,7 @@ describe('App.tsx y app.json solo pages.dev', () => {
     assert.match(serialized, /"pathPrefix":"\/pet\/"/);
     assert.match(serialized, /"pathPrefix":"\/a\/"/);
     assert.match(serialized, /"pathPrefix":"\/m\/"/);
+    assert.match(serialized, /"pathPrefix":"\/r\/"/);
     assert.match(serialized, /pathAdvancedPattern/);
     assert.doesNotMatch(serialized, /animaldex\.com/);
     assert.equal(filters.length, 2);
