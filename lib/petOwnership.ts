@@ -83,3 +83,69 @@ export function reconcileSelectedPetId<T extends { id?: string }>(
   if (!id) return null;
   return (available || []).some((pet) => pet.id === id) ? id : null;
 }
+
+export const POST_PET_NOT_OWNED_ERROR = 'Esa mascota no es tuya';
+export const POST_PET_IDENTITY_ERROR =
+  'La mascota seleccionada no pertenece al perfil o página desde la que estás publicando.';
+
+export type PostPetAuthPet = {
+  userId?: string | null;
+  profileId?: string | null;
+};
+
+export type PostPetAuthProfile = {
+  id?: string | null;
+  type?: string | null;
+  accountId?: string | null;
+};
+
+export type PostPetAuthResult =
+  | { ok: true }
+  | { ok: false; code: 'pet_not_owned' | 'identity_mismatch' };
+
+function isManagedPageAuthor(type: string | null | undefined): boolean {
+  return type === 'protector' || type === 'business';
+}
+
+/**
+ * Autorización createPost: cuenta + identidad autora + mascota.
+ * Sin mascota → permitido. No usa care_status.
+ */
+export function petAllowedForAuthorIdentity(input: {
+  accountId: string;
+  pet?: PostPetAuthPet | null;
+  author?: PostPetAuthProfile | null;
+  petProfile?: PostPetAuthProfile | null;
+}): PostPetAuthResult {
+  const accountId = trimId(input.accountId);
+  if (!accountId) return { ok: false, code: 'pet_not_owned' };
+  const pet = input.pet;
+  if (!pet) return { ok: true };
+
+  if (trimId(pet.userId) !== accountId) return { ok: false, code: 'pet_not_owned' };
+
+  const author = input.author;
+  if (author && trimId(author.accountId) && trimId(author.accountId) !== accountId) {
+    return { ok: false, code: 'identity_mismatch' };
+  }
+
+  if (isManagedPageAuthor(author?.type)) {
+    const authorId = trimId(author?.id);
+    if (authorId && petBelongsToProfile(pet, authorId)) return { ok: true };
+    return { ok: false, code: 'identity_mismatch' };
+  }
+
+  const petProfileId = trimId(pet.profileId);
+  if (!petProfileId) return { ok: true };
+
+  const petProfile = input.petProfile;
+  if (
+    petProfile &&
+    trimId(petProfile.id) === petProfileId &&
+    petProfile.type === 'personal' &&
+    trimId(petProfile.accountId) === accountId
+  ) {
+    return { ok: true };
+  }
+  return { ok: false, code: 'identity_mismatch' };
+}

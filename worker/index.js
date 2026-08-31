@@ -32,6 +32,11 @@ import {
   tokensToDisableFromReceipts,
   tokensToDisableFromTickets,
 } from '../lib/pushPolicy.ts';
+import {
+  POST_PET_IDENTITY_ERROR,
+  POST_PET_NOT_OWNED_ERROR,
+  petAllowedForAuthorIdentity,
+} from '../lib/petOwnership.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -2229,17 +2234,43 @@ async function handleDb(request, env) {
       } else {
         backgroundId = null;
       }
+      let ownedPet = null;
       if (petId) {
-        const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
-        if (!pets[0]) return json({ error: 'Esa mascota no es tuya' }, 403);
+        const pets = await d1(env, 'SELECT id, user_id, profile_id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
+        if (!pets[0]) return json({ error: POST_PET_NOT_OWNED_ERROR }, 403);
+        ownedPet = pets[0];
       }
       let authorProfileId = clean(body.authorProfileId, 80) || null;
+      let authorRow = null;
       if (authorProfileId) {
-        const owned = await d1(env, 'SELECT id FROM profiles WHERE id = ? AND account_id = ?', [authorProfileId, userId]);
+        const owned = await d1(env, 'SELECT id, type, account_id FROM profiles WHERE id = ? AND account_id = ?', [authorProfileId, userId]);
         if (!owned[0]) return json({ error: 'Ese perfil no es tuyo' }, 403);
+        authorRow = owned[0];
       } else {
         const personal = await ensurePersonalProfile(env, userId);
         authorProfileId = personal ? personal.id : null;
+        authorRow = personal || null;
+      }
+      if (ownedPet) {
+        let petProfile = null;
+        if (ownedPet.profile_id) {
+          const prs = await d1(env, 'SELECT id, type, account_id FROM profiles WHERE id = ?', [ownedPet.profile_id]);
+          petProfile = prs[0] || null;
+        }
+        const gate = petAllowedForAuthorIdentity({
+          accountId: userId,
+          pet: { userId: ownedPet.user_id, profileId: ownedPet.profile_id },
+          author: authorRow
+            ? { id: authorRow.id, type: authorRow.type, accountId: authorRow.account_id }
+            : null,
+          petProfile: petProfile
+            ? { id: petProfile.id, type: petProfile.type, accountId: petProfile.account_id }
+            : null,
+        });
+        if (!gate.ok) {
+          if (gate.code === 'pet_not_owned') return json({ error: POST_PET_NOT_OWNED_ERROR }, 403);
+          return json({ error: POST_PET_IDENTITY_ERROR }, 403);
+        }
       }
       const id = `post-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(env, 'INSERT INTO posts (id, user_id, pet_id, image, caption, created_at, author_profile_id, image_w, image_h, background_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, petId, image, caption, now, authorProfileId, imageWidth, imageHeight, backgroundId]);
