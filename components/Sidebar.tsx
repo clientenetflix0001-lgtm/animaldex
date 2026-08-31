@@ -12,28 +12,9 @@ import { userFallbackAvatar, thumb } from '../lib/images';
 import { colors, radius, spacing } from '../lib/theme';
 import { SIDEBAR_FULL, SIDEBAR_RAIL } from '../lib/responsive';
 import { navigateMainTab } from '../lib/tabProfileStack';
+import { TAB_ICONS, TAB_LABELS } from '../lib/mainTabs';
 import { planMainTabPress, shouldHighlightTab } from '../lib/feedReelsNav';
 import { useFeedReelsNav } from '../lib/feedReelsNavContext';
-
-export const TAB_ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap }> = {
-  Inicio: { on: 'home', off: 'home-outline' },
-  Reels: { on: 'film', off: 'film-outline' },
-  Alertas: { on: 'warning', off: 'warning-outline' },
-  Mercado: { on: 'storefront', off: 'storefront-outline' },
-  Crear: { on: 'add-circle', off: 'add-circle-outline' },
-  Actividad: { on: 'heart', off: 'heart-outline' },
-  Perfil: { on: 'person', off: 'person-outline' },
-};
-
-const LABELS: Record<string, string> = {
-  Inicio: 'Inicio',
-  Reels: 'Reels',
-  Alertas: 'Alertas',
-  Mercado: 'Mercado',
-  Crear: 'Crear',
-  Actividad: 'Actividad',
-  Perfil: 'Perfil',
-};
 
 interface Props {
   state: any;
@@ -122,7 +103,7 @@ export function Sidebar({ state, navigation, mode }: Props) {
               </View>
               {full && (
                 <Text style={[styles.itemLabel, active && styles.itemLabelActive]}>
-                  {LABELS[route.name] ?? route.name}
+                  {TAB_LABELS[route.name as keyof typeof TAB_LABELS] ?? route.name}
                 </Text>
               )}
             </Pressable>

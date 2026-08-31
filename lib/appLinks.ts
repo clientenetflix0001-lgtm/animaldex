@@ -6,7 +6,7 @@ export const APP_LINK_PREFIXES = [
 
 export const APP_LINK_HTTPS_HOSTS = ['animaldex-web.pages.dev'] as const;
 
-export type AppLinkTab = 'Inicio' | 'Reels' | 'Alertas' | 'Mercado' | 'Crear' | 'Actividad' | 'Perfil';
+export type AppLinkTab = 'Inicio' | 'Reels' | 'Alertas' | 'Mercado' | 'Crear' | 'Mascotas' | 'Actividad' | 'Perfil';
 
 export type AppLinkTarget =
   | { screen: 'PostDetail'; params: { postId: string; d?: string } }
@@ -22,6 +22,7 @@ const TAB_SEGMENTS: Record<string, AppLinkTab> = {
   alertas: 'Alertas',
   mercado: 'Mercado',
   crear: 'Crear',
+  mascotas: 'Mascotas',
   actividad: 'Actividad',
   perfil: 'Perfil',
 };
@@ -46,6 +47,7 @@ const RESERVED_SEGMENTS = new Set([
   'admin',
   'api',
   'crear',
+  'mascotas',
   'actividad',
   'perfil',
   'explorar',

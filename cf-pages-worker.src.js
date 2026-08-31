@@ -275,7 +275,7 @@ async function buildOgMeta(request, env, url) {
   // Keep in sync with lib/publicHandles.ts and worker/index.js
   const reserved = new Set([
     'p', 'pet', 'a', 'm', 'r', 'login', 'register', 'auth', 'feed', 'reels', 'alerts', 'alertas',
-    'marketplace', 'mercado', 'admin', 'api', 'crear', 'actividad', 'perfil', 'explorar',
+    'marketplace', 'mercado', 'admin', 'api', 'crear', 'mascotas', 'actividad', 'perfil', 'explorar',
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
     'editar-perfil-publico', 'crear-alerta', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
@@ -502,7 +502,7 @@ export default {
 
     const spaHandle = (url.pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i) || [])[1];
     const spaReserved = new Set([
-      'p','pet','a','m','r','reels','alertas','mercado','crear','actividad','perfil',
+      'p','pet','a','m','r','reels','alertas','mercado','crear','mascotas','actividad','perfil',
       'explorar','verificar','escanear','entrar','tienda','admin','vender',
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
     ]);

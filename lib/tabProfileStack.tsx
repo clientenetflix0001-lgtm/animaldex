@@ -20,6 +20,7 @@ export const PROFILE_STACK_TABS = new Set<keyof TabParamList>([
   'Reels',
   'Alertas',
   'Mercado',
+  'Mascotas',
   'Actividad',
   'Perfil',
 ]);

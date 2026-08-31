@@ -14,6 +14,7 @@ export type TabParamList = {
   Alertas: NavigatorScreenParams<TabProfileStackParamList> | undefined;
   Mercado: NavigatorScreenParams<TabProfileStackParamList> | undefined;
   Crear: undefined;
+  Mascotas: NavigatorScreenParams<TabProfileStackParamList> | undefined;
   Actividad: NavigatorScreenParams<TabProfileStackParamList> | undefined;
   Perfil: NavigatorScreenParams<TabProfileStackParamList> | undefined;
 };

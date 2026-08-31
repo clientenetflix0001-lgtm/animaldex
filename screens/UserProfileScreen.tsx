@@ -28,6 +28,7 @@ import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { useProfiles, CreateProfileSheet } from '../features/profiles';
 import { PROFILE_TYPE_LABEL, type PublicProfile } from '../features/profiles/profileTypes';
+import { filterPersonalPets } from '../lib/petOwnership';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
 
@@ -149,12 +150,14 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
     userFallbackAvatar(displayUsername || 'yo');
   const isVerified = isMe ? !!verifiedPhone : !!profile?.verifiedPhone;
 
+  const ownedPets = isMe ? myPets : profilePets;
+  const personalPets = filterPersonalPets(ownedPets, isMe ? myProfiles : accountProfiles);
   const displayPets: DisplayPet[] = demoUser
     ? demoUser.petIds.map((pid) => {
         const p = getDemoPet(pid);
         return { id: p.id, name: p.name, emoji: p.emoji, breed: p.breed, avatarUri: petAvatar(p) };
       })
-    : (isMe ? myPets : profilePets).map((p) => ({
+    : personalPets.map((p) => ({
         id: p.id,
         name: p.name,
         emoji: p.emoji,
@@ -332,7 +335,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
       )}
 
       <Text style={styles.sectionTitle}>
-        {isMe ? 'Mis perfiles' : 'Perfiles'}
+        {isMe ? 'Mis páginas' : 'Páginas'}
       </Text>
       <FlatList
         horizontal
@@ -346,7 +349,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
               <View style={styles.addCircle}>
                 <Ionicons name="add" size={28} color={colors.primary} />
               </View>
-              <Text style={styles.petName}>Crear perfil</Text>
+              <Text style={styles.petName}>Crear página</Text>
               <Text style={styles.petBreed}>Tienda o refugio</Text>
             </Pressable>
           ) : null

@@ -28,6 +28,7 @@ export const RESERVED_PUBLIC_USERNAMES: readonly string[] = [
   'admin',
   'api',
   'crear',
+  'mascotas',
   'actividad',
   'perfil',
   'explorar',

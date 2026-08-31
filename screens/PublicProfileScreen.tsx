@@ -26,6 +26,7 @@ import { colors, spacing, radius } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import type { PublicProfile } from '../features/profiles/profileTypes';
+import { editIdentityLabel, isManagedPageType } from '../features/profiles/profileTypes';
 import UserProfileScreen from './UserProfileScreen';
 import {
   filterProtectorPets,
@@ -257,7 +258,7 @@ export default function PublicProfileScreen() {
               style={styles.editBtn}
               onPress={() => navigation.navigate('EditPublicProfile', { profileId: profile.id })}
             >
-              <Text style={styles.editText}>Editar perfil</Text>
+              <Text style={styles.editText}>{editIdentityLabel(profile.type)}</Text>
             </Pressable>
             {isProtector && (
               <Pressable
@@ -342,7 +343,13 @@ export default function PublicProfileScreen() {
           }
           ListEmptyComponent={
             <Text style={styles.empty}>
-              {tab === 'reels' ? 'Todavía no hay Reels de este perfil.' : 'Todavía no hay publicaciones de este perfil.'}
+              {tab === 'reels'
+                ? (isManagedPageType(profile.type)
+                  ? 'Todavía no hay Reels de esta página.'
+                  : 'Todavía no hay Reels de este perfil.')
+                : (isManagedPageType(profile.type)
+                  ? 'Todavía no hay publicaciones de esta página.'
+                  : 'Todavía no hay publicaciones de este perfil.')}
             </Text>
           }
         />
@@ -367,7 +374,9 @@ export default function PublicProfileScreen() {
               <PostGridMedia post={item} size={postTile} />
             </Pressable>
           )}
-          ListEmptyComponent={<Text style={styles.empty}>Este perfil todavía no publicó.</Text>}
+          ListEmptyComponent={
+            <Text style={styles.empty}>Esta página todavía no publicó.</Text>
+          }
         />
       ) : tab === 'reels' ? (
         <FlatList
@@ -381,7 +390,13 @@ export default function PublicProfileScreen() {
           onEndReached={reelsGrid.loadMore}
           onEndReachedThreshold={0.4}
           renderItem={renderReelItem}
-          ListEmptyComponent={<Text style={styles.empty}>Este perfil todavía no tiene Reels.</Text>}
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {isManagedPageType(profile.type)
+                ? 'Esta página todavía no tiene Reels.'
+                : 'Este perfil todavía no tiene Reels.'}
+            </Text>
+          }
         />
       ) : (
         <FlatList

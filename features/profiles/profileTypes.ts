@@ -22,10 +22,23 @@ export const PROFILE_LIMITS: Record<ProfileType, number> = {
 };
 
 export const PROFILE_TYPE_LABEL: Record<ProfileType, string> = {
-  personal: 'Personal',
-  business: 'Tienda',
-  protector: 'Proteccionista',
+  personal: 'Perfil personal',
+  business: 'Página empresarial',
+  protector: 'Página de proteccionista/refugio',
 };
+
+/** Identidad administrada (empresa/refugio) = página. Cuenta/mascota = perfil. */
+export function isManagedPageType(type: ProfileType | null | undefined): boolean {
+  return type === 'business' || type === 'protector';
+}
+
+export function managedIdentityNoun(type: ProfileType | null | undefined): 'perfil' | 'página' {
+  return isManagedPageType(type) ? 'página' : 'perfil';
+}
+
+export function editIdentityLabel(type: ProfileType | null | undefined): string {
+  return isManagedPageType(type) ? 'Editar página' : 'Editar perfil';
+}
 
 export const PROFILE_TYPE_BADGE: Record<ProfileType, string | null> = {
   personal: null,
@@ -38,6 +51,6 @@ export function countByType(profiles: PublicProfile[], type: ProfileType): numbe
 }
 
 export function limitMessage(type: Exclude<ProfileType, 'personal'>): string {
-  if (type === 'business') return 'Ya alcanzaste el límite de 2 perfiles empresariales.';
-  return 'Ya alcanzaste el límite de 2 perfiles de proteccionista.';
+  if (type === 'business') return 'Ya alcanzaste el límite de 2 páginas empresariales.';
+  return 'Ya alcanzaste el límite de 2 páginas de proteccionista.';
 }

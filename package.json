@@ -58,7 +58,9 @@
     "test:reels-integration": "node --experimental-strip-types --test tests/reelsIntegration.test.ts",
     "test:reel-push": "node --experimental-strip-types --test tests/reelPush.test.ts",
     "test:reels-device": "node --experimental-strip-types --test tests/reelsDeviceFix.test.ts",
-    "test:reels-published": "node --experimental-strip-types --test tests/reelsPublishedOnly.test.ts"
+    "test:reels-published": "node --experimental-strip-types --test tests/reelsPublishedOnly.test.ts",
+    "test:pets-pages": "node --experimental-strip-types --test tests/petsPagesNav.test.ts tests/petOwnership.test.ts tests/postPetAuth.test.ts",
+    "test:integrated": "node --experimental-strip-types --test tests/integratedPetsReels.test.ts"
   },
   "private": true
 }
