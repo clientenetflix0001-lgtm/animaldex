@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { db } from '../lib/db';
 import { thumb, petFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius } from '../lib/theme';
 import { ProfileSwitcher, useProfiles } from '../features/profiles';
+import { petsForPublishingIdentity, reconcileSelectedPetId } from '../lib/petOwnership';
 import {
   REEL_CAPTION_MAX,
   REEL_DURATION_REJECT_MESSAGE,
@@ -131,8 +132,7 @@ function phaseLabelOf(phase: Phase, error: string): string {
 export default function CreateReelScreen() {
   const navigation = useNavigation<any>();
   const { myPets, user } = useStore();
-  const { activeProfileId, activeProfile } = useProfiles();
-  const isOrg = activeProfile?.type === 'business' || activeProfile?.type === 'protector';
+  const { activeProfileId, activeProfile, profiles } = useProfiles();
   const busyRef = useRef(false);
   const createdIdRef = useRef<string | null>(null);
   const leavingRef = useRef(false);
@@ -153,8 +153,22 @@ export default function CreateReelScreen() {
   const [phase, setPhase] = useState<Phase>('pick');
   const [error, setError] = useState('');
 
+  const pickerPets = useMemo(
+    () =>
+      petsForPublishingIdentity(
+        myPets,
+        { profileId: activeProfileId, type: activeProfile?.type },
+        profiles
+      ),
+    [myPets, activeProfileId, activeProfile?.type, profiles]
+  );
+
+  useEffect(() => {
+    setSelectedPet((current) => reconcileSelectedPetId(current, pickerPets));
+  }, [activeProfileId, pickerPets]);
+
   const uploadUri = fileToUpload(originalUri, trimmedUri);
-  const activePetId = isOrg ? null : selectedPet;
+  const activePetId = reconcileSelectedPetId(selectedPet, pickerPets);
   const busy = phase === 'preparing' || phase === 'uploading';
   const submitted = phase === 'processing' || phase === 'ready';
   const dirty = createReelIsDirty({
@@ -520,40 +534,36 @@ export default function CreateReelScreen() {
         <Text style={styles.sectionLabel}>Publicar como</Text>
         <ProfileSwitcher compact />
 
-        {!isOrg && (
-          <>
-            <Text style={styles.sectionLabel}>¿Quién protagoniza?</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.petPicker}>
+        <Text style={styles.sectionLabel}>¿Quién protagoniza?</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.petPicker}>
+          <Pressable
+            style={[styles.petOption, !activePetId && styles.petOptionActive]}
+            onPress={() => setSelectedPet(null)}
+          >
+            <View style={[styles.petOptionImg, styles.noneAvatar]}>
+              <Ionicons name="person" size={18} color={colors.textMuted} />
+            </View>
+            <Text style={[styles.petOptionName, !activePetId && { color: colors.primary }]}>Ninguno</Text>
+          </Pressable>
+          {pickerPets.map((p) => {
+            const active = p.id === activePetId;
+            return (
               <Pressable
-                style={[styles.petOption, !activePetId && styles.petOptionActive]}
-                onPress={() => setSelectedPet(null)}
+                key={p.id}
+                style={[styles.petOption, active && styles.petOptionActive]}
+                onPress={() => setSelectedPet(p.id)}
               >
-                <View style={[styles.petOptionImg, styles.noneAvatar]}>
-                  <Ionicons name="person" size={18} color={colors.textMuted} />
-                </View>
-                <Text style={[styles.petOptionName, !activePetId && { color: colors.primary }]}>Ninguno</Text>
+                <Image
+                  source={{ uri: thumb(p.avatarUrl ?? petFallbackAvatar(p.id), 100) }}
+                  style={styles.petOptionImg}
+                />
+                <Text style={[styles.petOptionName, active && { color: colors.primary }]}>
+                  {p.name} {p.emoji}
+                </Text>
               </Pressable>
-              {myPets.map((p) => {
-                const active = p.id === activePetId;
-                return (
-                  <Pressable
-                    key={p.id}
-                    style={[styles.petOption, active && styles.petOptionActive]}
-                    onPress={() => setSelectedPet(p.id)}
-                  >
-                    <Image
-                      source={{ uri: thumb(p.avatarUrl ?? petFallbackAvatar(p.id), 100) }}
-                      style={styles.petOptionImg}
-                    />
-                    <Text style={[styles.petOptionName, active && { color: colors.primary }]}>
-                      {p.name} {p.emoji}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </>
-        )}
+            );
+          })}
+        </ScrollView>
 
         <Text style={styles.sectionLabel}>Descripción</Text>
         <TextInput

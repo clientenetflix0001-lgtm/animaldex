@@ -26,6 +26,11 @@ import { REELS_SCHEMA_STATEMENTS, reelsSchemaApplyEnabled } from '../lib/reelsSc
 import { verifyMuxSignature } from '../lib/reelsWebhook.ts';
 import { parseReelOverlays, serializeReelOverlays } from '../lib/reelOverlays.ts';
 import { authorizeOwnedPetId, authorizeOwnedProfileId } from '../lib/reelAuth.ts';
+import {
+  POST_PET_IDENTITY_ERROR,
+  POST_PET_NOT_OWNED_ERROR,
+  petAllowedForAuthorIdentity,
+} from '../lib/petOwnership.ts';
 import { clampReelGridLimit, profileReelsOwnerStatuses } from '../lib/reelGrid.ts';
 import {
   planReelCommentPush,
@@ -414,6 +419,47 @@ export async function handleAuthReelAction(env, body, json, clean, userId, notif
     // byteSize es declarado por el cliente. El archivo va directo a Mux.
     if (Number.isFinite(bytes) && isReelFileTooLarge(bytes)) return json({ error: 'El video puede pesar hasta 50 MB.' }, 413);
     if (clientDurationRejects(durationMs)) return json({ error: 'Los Reels pueden durar hasta 30 segundos.' }, 400);
+
+    let authorProfileId = clean(body.authorProfileId, 80) || null;
+    const ownedProfiles = await d1(env, 'SELECT id, type, account_id FROM profiles WHERE account_id = ?', [userId]);
+    const personalId = (ownedProfiles.find((p) => p.type === 'personal') || {}).id || null;
+    const profileAuth = authorizeOwnedProfileId(authorProfileId, ownedProfiles.map((p) => p.id), personalId);
+    if (!profileAuth.ok) return json({ error: profileAuth.error }, profileAuth.status);
+    authorProfileId = profileAuth.profileId;
+    const authorRow = authorProfileId
+      ? ownedProfiles.find((p) => p.id === authorProfileId) || null
+      : null;
+
+    const petRequested = clean(body.petId, 80) || null;
+    const ownedPets = petRequested
+      ? await d1(env, 'SELECT id, user_id, profile_id FROM pets WHERE id = ? AND user_id = ?', [petRequested, userId])
+      : [];
+    const petAuth = authorizeOwnedPetId(petRequested, ownedPets.map((p) => p.id));
+    if (!petAuth.ok) return json({ error: POST_PET_NOT_OWNED_ERROR }, petAuth.status);
+    const petId = petAuth.petId;
+    const ownedPet = ownedPets[0] || null;
+    if (ownedPet) {
+      let petProfile = null;
+      if (ownedPet.profile_id) {
+        const prs = await d1(env, 'SELECT id, type, account_id FROM profiles WHERE id = ?', [ownedPet.profile_id]);
+        petProfile = prs[0] || null;
+      }
+      const gate = petAllowedForAuthorIdentity({
+        accountId: userId,
+        pet: { userId: ownedPet.user_id, profileId: ownedPet.profile_id },
+        author: authorRow
+          ? { id: authorRow.id, type: authorRow.type, accountId: authorRow.account_id }
+          : null,
+        petProfile: petProfile
+          ? { id: petProfile.id, type: petProfile.type, accountId: petProfile.account_id }
+          : null,
+      });
+      if (!gate.ok) {
+        if (gate.code === 'pet_not_owned') return json({ error: POST_PET_NOT_OWNED_ERROR }, 403);
+        return json({ error: POST_PET_IDENTITY_ERROR }, 403);
+      }
+    }
+
     if (!muxConfigured(env)) return json({ error: 'Mux no configurado' }, 503);
 
     const hourAgo = now - 60 * 60 * 1000;
@@ -423,21 +469,6 @@ export async function handleAuthReelAction(env, body, json, clean, userId, notif
     if (reelUploadLimited(hourRows[0]?.n || 0, dayRows[0]?.n || 0)) {
       return json({ error: `Límite de subidas: ${REEL_UPLOADS_PER_HOUR}/hora o ${REEL_UPLOADS_PER_DAY}/día` }, 429);
     }
-
-    let authorProfileId = clean(body.authorProfileId, 80) || null;
-    const ownedProfiles = await d1(env, 'SELECT id, type FROM profiles WHERE account_id = ?', [userId]);
-    const personalId = (ownedProfiles.find((p) => p.type === 'personal') || {}).id || null;
-    const profileAuth = authorizeOwnedProfileId(authorProfileId, ownedProfiles.map((p) => p.id), personalId);
-    if (!profileAuth.ok) return json({ error: profileAuth.error }, profileAuth.status);
-    authorProfileId = profileAuth.profileId;
-
-    const petRequested = clean(body.petId, 80) || null;
-    const ownedPets = petRequested
-      ? await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petRequested, userId])
-      : [];
-    const petAuth = authorizeOwnedPetId(petRequested, ownedPets.map((p) => p.id));
-    if (!petAuth.ok) return json({ error: petAuth.error }, petAuth.status);
-    const petId = petAuth.petId;
 
     const attemptId = `rua-${now}-${Math.random().toString(36).slice(2, 8)}`;
     await d1(env, 'INSERT INTO reel_upload_attempts (id, user_id, created_at) VALUES (?, ?, ?)', [attemptId, userId, now]);
