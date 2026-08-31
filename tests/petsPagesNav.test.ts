@@ -85,7 +85,8 @@ describe('4–10. pantalla Mis mascotas', () => {
   it('carga mascotas del usuario autenticado desde myPets / myState', () => {
     assert.match(myPets, /const \{ myPets, refreshMyPets \} = useStore\(\)/);
     assert.match(myPets, /refreshMyPets\(\)/);
-    assert.match(myPets, /buildMyPetsGrid\(myPets\)/);
+    assert.match(myPets, /filterPersonalPets\(myPets, profiles\)/);
+    assert.match(myPets, /buildMyPetsGrid\(personalPets\)/);
     assert.match(store, /refreshMyPets/);
     assert.match(store, /db\.myState\(\)/);
     assert.match(worker, /action === 'myState'/);

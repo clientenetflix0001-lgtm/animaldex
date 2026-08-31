@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -30,13 +30,17 @@ import {
   getActivePostBackgrounds,
   isAllowedBackgroundId,
 } from '../lib/postBackgrounds';
+import {
+  canAddPetForPublishingIdentity,
+  petsForPublishingIdentity,
+  reconcileSelectedPetId,
+} from '../lib/petOwnership';
 
 export default function CreatePostScreen() {
   const navigation = useNavigation<any>();
   const { desktopWeb } = useBreakpoint();
-  const { myPets, refreshMyPets, notifyPostCreated } = useStore();
-  const { activeProfileId, activeProfile } = useProfiles();
-  const isOrg = activeProfile?.type === 'business' || activeProfile?.type === 'protector';
+  const { myPets, notifyPostCreated } = useStore();
+  const { activeProfileId, activeProfile, profiles } = useProfiles();
 
   const [selectedPet, setSelectedPet] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
@@ -47,8 +51,26 @@ export default function CreatePostScreen() {
   const [publishing, setPublishing] = useState(false);
   const [uploadNote, setUploadNote] = useState('');
 
-  const activePetId = isOrg ? null : selectedPet;
-  const activePet = myPets.find((p) => p.id === activePetId);
+  const pickerPets = useMemo(
+    () =>
+      petsForPublishingIdentity(
+        myPets,
+        { profileId: activeProfileId, type: activeProfile?.type },
+        profiles
+      ),
+    [myPets, activeProfileId, activeProfile?.type, profiles]
+  );
+  const canAddPet = canAddPetForPublishingIdentity({
+    profileId: activeProfileId,
+    type: activeProfile?.type,
+  });
+
+  useEffect(() => {
+    setSelectedPet((current) => reconcileSelectedPetId(current, pickerPets));
+  }, [activeProfileId, pickerPets]);
+
+  const activePetId = reconcileSelectedPetId(selectedPet, pickerPets);
+  const activePet = pickerPets.find((p) => p.id === activePetId);
 
   const pickFromGallery = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -162,8 +184,6 @@ export default function CreatePostScreen() {
           <Text style={styles.sectionLabel}>Publicar como</Text>
           <ProfileSwitcher compact />
 
-          {!isOrg && (
-            <>
           <Text style={styles.sectionLabel}>¿Quién protagoniza esta foto?</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.petPicker}>
             <Pressable
@@ -176,7 +196,7 @@ export default function CreatePostScreen() {
               <Text style={[styles.petOptionName, !activePetId && { color: colors.primary }]}>Ninguno</Text>
               {!activePetId && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
             </Pressable>
-            {myPets.map((p) => {
+            {pickerPets.map((p) => {
               const active = p.id === activePetId;
               return (
                 <Pressable
@@ -196,13 +216,23 @@ export default function CreatePostScreen() {
                 </Pressable>
               );
             })}
-            <Pressable style={styles.petOptionAdd} onPress={() => navigation.navigate('AddPet')}>
-              <Ionicons name="add" size={20} color={colors.primary} />
-              <Text style={styles.petOptionAddText}>Nueva</Text>
-            </Pressable>
+            {canAddPet ? (
+              <Pressable
+                style={styles.petOptionAdd}
+                onPress={() =>
+                  navigation.navigate(
+                    'AddPet',
+                    activeProfile?.type === 'protector' && activeProfile.id
+                      ? { profileId: activeProfile.id }
+                      : undefined
+                  )
+                }
+              >
+                <Ionicons name="add" size={20} color={colors.primary} />
+                <Text style={styles.petOptionAddText}>Nueva</Text>
+              </Pressable>
+            ) : null}
           </ScrollView>
-            </>
-          )}
 
           <Text style={styles.sectionLabel}>Foto (opcional)</Text>
           {photo ? (
@@ -278,7 +308,7 @@ export default function CreatePostScreen() {
           <Text style={styles.sectionLabel}>Texto</Text>
           <TextInput
             style={styles.captionInput}
-            placeholder={isOrg || !activePet ? 'Escribí tu publicación. Podés publicar solo texto.' : `¿Qué está pasando, ${activePet.name}? Podés publicar solo texto.`}
+            placeholder={!activePet ? 'Escribí tu publicación. Podés publicar solo texto.' : `¿Qué está pasando, ${activePet.name}? Podés publicar solo texto.`}
             placeholderTextColor={colors.textMuted}
             multiline
             value={caption}

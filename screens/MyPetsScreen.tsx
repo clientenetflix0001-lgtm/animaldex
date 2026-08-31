@@ -15,6 +15,8 @@ import {
   buildMyPetsGrid,
   type MyPetsGridItem,
 } from '../lib/myPetsGrid';
+import { filterPersonalPets } from '../lib/petOwnership';
+import { useProfiles } from '../features/profiles';
 
 const GRID_GAP = spacing.md;
 const GRID_PAD = spacing.lg;
@@ -23,6 +25,7 @@ export default function MyPetsScreen() {
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
   const { myPets, refreshMyPets } = useStore();
+  const { profiles } = useProfiles();
 
   useFocusEffect(
     useCallback(() => {
@@ -31,7 +34,8 @@ export default function MyPetsScreen() {
   );
 
   const tileW = (width - GRID_PAD * 2 - GRID_GAP) / 2;
-  const items = useMemo(() => buildMyPetsGrid(myPets), [myPets]);
+  const personalPets = useMemo(() => filterPersonalPets(myPets, profiles), [myPets, profiles]);
+  const items = useMemo(() => buildMyPetsGrid(personalPets), [personalPets]);
 
   const openAdopt = useCallback(() => navigation.navigate(ADOPT_ROUTE), [navigation]);
   const openAdd = useCallback(() => navigation.navigate(ADD_PET_ROUTE), [navigation]);

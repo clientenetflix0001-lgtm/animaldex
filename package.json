@@ -51,7 +51,7 @@
     "test:push": "node --experimental-strip-types --test tests/push.test.ts",
     "test:links": "node --experimental-strip-types --test tests/appLinks.test.ts",
     "test:adoption": "node --experimental-strip-types --test tests/adoptionDiscovery.test.ts",
-    "test:pets-pages": "node --experimental-strip-types --test tests/petsPagesNav.test.ts"
+    "test:pets-pages": "node --experimental-strip-types --test tests/petsPagesNav.test.ts tests/petOwnership.test.ts"
   },
   "private": true
 }
