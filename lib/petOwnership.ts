@@ -3,7 +3,6 @@ import { isCommonUserPet } from './petBirthday.ts';
 export type PetOwnershipPet = {
   id?: string;
   profileId?: string | null;
-  careStatus?: string | null;
 };
 
 export type ProfileTypeHint = {
@@ -31,7 +30,7 @@ export function profileTypeForPet(
   return found?.type;
 }
 
-/** Misma semántica que cumpleaños: NULL o profile.type === 'personal'. No usa care_status. */
+/** Misma semántica que cumpleaños: NULL o profile.type === 'personal'. El estado no participa. */
 export function isPersonalPet(
   pet: PetOwnershipPet,
   profiles?: readonly ProfileTypeHint[] | null
