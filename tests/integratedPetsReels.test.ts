@@ -164,7 +164,11 @@ describe('8. createPost autorización en Worker integrado', () => {
       }),
       { ok: false, code: 'identity_mismatch' },
     );
-    assert.match(worker, new RegExp(POST_PET_IDENTITY_ERROR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(worker, /POST_PET_IDENTITY_ERROR/);
+    assert.equal(
+      POST_PET_IDENTITY_ERROR,
+      'La mascota seleccionada no pertenece al perfil o página desde la que estás publicando.',
+    );
   });
 });
 
