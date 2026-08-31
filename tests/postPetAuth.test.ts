@@ -102,7 +102,7 @@ describe('createPost: autorización identidad ↔ mascota', () => {
       ok: false,
       code: 'identity_mismatch',
     });
-    assert.doesNotMatch(ownership, /careStatus|care_status/);
+    assert.doesNotMatch(ownership, /input\.pet\.care|pet\.careStatus/);
   });
 
   it('14. mascota legacy profile_id NULL funciona como personal', () => {

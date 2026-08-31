@@ -109,7 +109,7 @@ function isManagedPageAuthor(type: string | null | undefined): boolean {
 
 /**
  * Autorización createPost: cuenta + identidad autora + mascota.
- * Sin mascota → permitido. No usa care_status.
+ * Sin mascota → permitido. El estado de la mascota no participa.
  */
 export function petAllowedForAuthorIdentity(input: {
   accountId: string;
