@@ -178,6 +178,10 @@ function navigatePushDestination(dest: NonNullable<ReturnType<typeof pushNavDest
     navigationRef.navigate('PetProfile', dest.params);
     return true;
   }
+  if (dest.name === 'ReelViewer') {
+    navigationRef.navigate('ReelViewer', dest.params);
+    return true;
+  }
   navigationRef.navigate('Tabs', dest.params as never);
   return true;
 }

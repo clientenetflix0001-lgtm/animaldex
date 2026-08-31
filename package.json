@@ -25,6 +25,7 @@
     "expo-secure-store": "^57.0.1",
     "expo-status-bar": "~57.0.1",
     "expo-updates": "~57.0.12",
+    "expo-video": "~57.0.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.2",
@@ -32,6 +33,7 @@
     "react-native-reanimated": "^4.5.3",
     "react-native-safe-area-context": "^5.8.1",
     "react-native-screens": "^4.26.2",
+    "react-native-video-trim": "^8.2.2",
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
@@ -50,7 +52,13 @@
     "test:time": "node --experimental-strip-types --test tests/compactTime.test.ts",
     "test:push": "node --experimental-strip-types --test tests/push.test.ts",
     "test:links": "node --experimental-strip-types --test tests/appLinks.test.ts",
-    "test:adoption": "node --experimental-strip-types --test tests/adoptionDiscovery.test.ts"
+    "test:adoption": "node --experimental-strip-types --test tests/adoptionDiscovery.test.ts",
+    "test:feed-media": "node --experimental-strip-types --test tests/feedMediaLayout.test.ts",
+    "test:reels": "node --experimental-strip-types --test tests/reels.test.ts",
+    "test:reels-integration": "node --experimental-strip-types --test tests/reelsIntegration.test.ts",
+    "test:reel-push": "node --experimental-strip-types --test tests/reelPush.test.ts",
+    "test:reels-device": "node --experimental-strip-types --test tests/reelsDeviceFix.test.ts",
+    "test:reels-published": "node --experimental-strip-types --test tests/reelsPublishedOnly.test.ts"
   },
   "private": true
 }

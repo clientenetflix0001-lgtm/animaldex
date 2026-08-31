@@ -1,38 +1,24 @@
-// ============================================================
-// Animaldex — Navegación horizontal Feed ↔ Reels
-// ============================================================
-// Envuelve Feed (página 0) y Reels (página 1) en un carrusel
-// horizontal con "paging": deslizar el dedo de derecha a izquierda
-// pasa de Feed a Reels, y de izquierda a derecha vuelve a Feed.
-// Cada instancia recibe `initialPage` según desde qué pestaña de la
-// barra inferior se accedió (Inicio → 0, Reels → 1), para que el
-// tab activo y la página visible siempre coincidan al entrar.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, ScrollView, StyleSheet, LayoutChangeEvent } from 'react-native';
+import { View, ScrollView, StyleSheet, LayoutChangeEvent, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import FeedScreen from './FeedScreen';
 import ReelsScreen from './ReelsScreen';
+import { ReelsPageVisibleProvider } from '../lib/reelsFocus';
+import { shouldPlayFeedReels } from '../lib/feedReelsNav';
+import { useFeedReelsNav } from '../lib/feedReelsNavContext';
 
-interface Props {
-  initialPage: 0 | 1;
-}
-
-export default function FeedReelsSwiper({ initialPage }: Props) {
+export default function FeedReelsSwiper() {
   const scrollRef = useRef<ScrollView>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const appliedInitialRef = useRef(false);
+  const { page, setPage } = useFeedReelsNav();
+  const tabFocused = useIsFocused();
 
   useEffect(() => {
-    if (size.width > 0 && !appliedInitialRef.current) {
-      appliedInitialRef.current = true;
-      if (initialPage === 1) {
-        // Sin animación: al entrar por la pestaña "Reels" debe verse
-        // directamente esa página, no un salto visible desde Feed.
-        requestAnimationFrame(() => {
-          scrollRef.current?.scrollTo({ x: size.width, animated: false });
-        });
-      }
-    }
-  }, [size.width, initialPage]);
+    if (!size.width) return;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ x: page * size.width, animated: true });
+    });
+  }, [page, size.width]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -40,6 +26,14 @@ export default function FeedReelsSwiper({ initialPage }: Props) {
       setSize({ width, height });
     }
   }, [size.width, size.height]);
+
+  const onMomentumScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!size.width) return;
+    const next = Math.round(e.nativeEvent.contentOffset.x / size.width);
+    setPage(next <= 0 ? 0 : 1);
+  }, [setPage, size.width]);
+
+  const reelsVisible = shouldPlayFeedReels({ page, tabFocused });
 
   return (
     <View style={styles.root} onLayout={onLayout}>
@@ -49,14 +43,16 @@ export default function FeedReelsSwiper({ initialPage }: Props) {
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          scrollEventThrottle={16}
+          onMomentumScrollEnd={onMomentumScrollEnd}
           style={{ width: size.width, height: size.height }}
         >
           <View style={{ width: size.width, height: size.height }}>
             <FeedScreen />
           </View>
           <View style={{ width: size.width, height: size.height }}>
-            <ReelsScreen />
+            <ReelsPageVisibleProvider visible={reelsVisible}>
+              <ReelsScreen />
+            </ReelsPageVisibleProvider>
           </View>
         </ScrollView>
       )}

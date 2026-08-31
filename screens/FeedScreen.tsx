@@ -20,6 +20,7 @@ import { RootStackParamList, TabParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ProfileSwitcher } from '../features/profiles';
 import WantToAdoptButton from '../components/WantToAdoptButton';
+import { feedMediaPerfNoteRenderItem } from '../lib/feedMediaPerf';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Inicio'>,
@@ -243,18 +244,21 @@ export default function FeedScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: Post }) => (
-      <PostCard
-        post={item}
-        liked={likedSet.has(item.id)}
-        saved={savedSet.has(item.id)}
-        extraComments={myComments[item.id]?.length ?? 0}
-        onToggleLike={toggleLike}
-        onToggleSave={toggleSave}
-        onOpenPet={openPet}
-        onOpenPost={openPost}
-      />
-    ),
+    ({ item }: { item: Post }) => {
+      feedMediaPerfNoteRenderItem();
+      return (
+        <PostCard
+          post={item}
+          liked={likedSet.has(item.id)}
+          saved={savedSet.has(item.id)}
+          extraComments={myComments[item.id]?.length ?? 0}
+          onToggleLike={toggleLike}
+          onToggleSave={toggleSave}
+          onOpenPet={openPet}
+          onOpenPost={openPost}
+        />
+      );
+    },
     [likedSet, savedSet, myComments, toggleLike, toggleSave, openPet, openPost]
   );
 

@@ -4,16 +4,23 @@ import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { large } from '../lib/images';
 import { colors } from '../lib/theme';
+import { feedMediaBoxStyle } from '../lib/feedMediaLayout';
+import { feedMediaPerfNoteMediaBox } from '../lib/feedMediaPerf';
 
 interface Props {
   uri: string;
   imageWidth?: number | null;
   imageHeight?: number | null;
-  /** Altura uniforme del contenedor en móvil (por defecto 350px para el Feed). */
+  /** Altura fija (detalle / escritorio). El Feed usa `layout="feed"`. */
   containerHeight?: number;
-  /** Permite desactivar el visor en pantalla completa si se desea. */
+  /**
+   * `feed`: reserva alto con metadatos (clamp 4:5–1.91:1) o 350 si no hay width/height.
+   * `fixed`: caja de `containerHeight` (PostDetail).
+   */
+  layout?: 'fixed' | 'feed';
+  /** Clave estable para reciclar caché de expo-image en el Feed. */
+  recyclingKey?: string;
   allowFullScreen?: boolean;
-  /** Callback opcional para doble tap (ej: dar like con animación de corazón). */
   onDoubleTap?: () => void;
 }
 
@@ -28,6 +35,8 @@ export function AdaptivePostImage({
   imageWidth,
   imageHeight,
   containerHeight = 350,
+  layout = 'fixed',
+  recyclingKey,
   allowFullScreen = true,
   onDoubleTap,
 }: Props) {
@@ -62,15 +71,26 @@ export function AdaptivePostImage({
     }
   }, [allowFullScreen, onDoubleTap]);
 
+  const boxStyle =
+    layout === 'feed'
+      ? feedMediaBoxStyle(imageWidth, imageHeight)
+      : { width: '100%' as const, height: containerHeight };
+
+  if (layout === 'feed') {
+    feedMediaPerfNoteMediaBox('aspectRatio' in boxStyle ? 'aspect' : 'fallback');
+  }
+
   return (
     <>
-      <Pressable onPress={handlePress} style={[styles.container, { height: containerHeight }]}>
+      <Pressable onPress={handlePress} style={[styles.container, boxStyle]}>
         <Image
           source={{ uri: large(uri) }}
           style={styles.image}
           contentFit="cover"
           contentPosition="center"
-          transition={200}
+          cachePolicy={layout === 'feed' ? 'memory-disk' : 'disk'}
+          recyclingKey={recyclingKey || uri}
+          transition={layout === 'feed' ? 0 : 200}
           placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
         />
       </Pressable>

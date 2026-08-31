@@ -82,8 +82,18 @@ export function mergeNotificationPrefs(row: Partial<Record<NotificationPrefKey, 
   return out;
 }
 
-export function prefAllows(prefs: ReturnType<typeof mergeNotificationPrefs>, type: 'location' | 'birthday'): boolean {
-  return type === 'location' ? prefs.location : prefs.birthday;
+export type PushEventType = 'location' | 'birthday' | 'like' | 'comment' | 'reel_like' | 'reel_comment';
+
+/**
+ * Reels reutiliza las prefs existentes `like` / `comment` (opción A).
+ * Default: like=false, comment=true. No se agregan columnas nuevas.
+ */
+export function prefAllows(prefs: ReturnType<typeof mergeNotificationPrefs>, type: PushEventType): boolean {
+  if (type === 'location') return prefs.location;
+  if (type === 'birthday') return prefs.birthday;
+  if (type === 'like' || type === 'reel_like') return prefs.like;
+  if (type === 'comment' || type === 'reel_comment') return prefs.comment;
+  return false;
 }
 
 export function assignPushToken(
@@ -142,6 +152,25 @@ export function locationPushCopy(petName: string, actorName?: string | null): { 
   };
 }
 
+export function reelLikePushCopy(actorName: string): { title: string; body: string } {
+  const actor = String(actorName || '').trim() || 'Alguien';
+  return { title: 'Animaldex', body: `${actor} le dio me gusta a tu Reel` };
+}
+
+export function reelCommentPushCopy(actorName: string, preview?: string | null): { title: string; body: string } {
+  const actor = String(actorName || '').trim() || 'Alguien';
+  const t = String(preview || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  return {
+    title: 'Animaldex',
+    body: t ? `${actor} comentó tu Reel: "${t}"` : `${actor} comentó tu Reel`,
+  };
+}
+
 export function birthdayPushCopy(petName: string, years: number): { title: string; body: string } {
   const name = String(petName || '').trim() || 'tu mascota';
   const age = years === 1 ? '1 año' : `${years} años`;
@@ -171,6 +200,49 @@ export function locationPushMessage(input: {
       petId: input.petId,
       shareId: input.shareId,
       url: '/actividad',
+    },
+  };
+}
+
+export function reelLikePushMessage(input: {
+  token: string;
+  reelId: string;
+  actorName: string;
+}): Record<string, unknown> {
+  const copy = reelLikePushCopy(input.actorName);
+  return {
+    to: input.token,
+    title: copy.title,
+    body: copy.body,
+    sound: 'default',
+    priority: 'default',
+    channelId: PUSH_CHANNEL_PETS,
+    data: {
+      type: 'reel_like',
+      reelId: input.reelId,
+      url: `/r/${encodeURIComponent(input.reelId)}`,
+    },
+  };
+}
+
+export function reelCommentPushMessage(input: {
+  token: string;
+  reelId: string;
+  actorName: string;
+  commentPreview?: string | null;
+}): Record<string, unknown> {
+  const copy = reelCommentPushCopy(input.actorName, input.commentPreview);
+  return {
+    to: input.token,
+    title: copy.title,
+    body: copy.body,
+    sound: 'default',
+    priority: 'default',
+    channelId: PUSH_CHANNEL_PETS,
+    data: {
+      type: 'reel_comment',
+      reelId: input.reelId,
+      url: `/r/${encodeURIComponent(input.reelId)}`,
     },
   };
 }
@@ -251,12 +323,14 @@ export type PushData = {
   petUsername?: string;
   shareId?: string;
   url?: string;
+  reelId?: string;
 };
 
 export type PushNavTarget = {
-  kind: 'pet' | 'activity' | 'none';
+  kind: 'pet' | 'activity' | 'reel' | 'none';
   petId?: string;
   shareId?: string;
+  reelId?: string;
 };
 
 function asPushField(value: unknown): string | undefined {
@@ -287,11 +361,27 @@ export function normalizePushData(raw: unknown): PushData {
     petUsername: asPushField(inner.petUsername),
     shareId: asPushField(inner.shareId),
     url: asPushField(inner.url),
+    reelId: asPushField(inner.reelId),
   };
+}
+
+function reelIdFromPushUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const m = String(url).match(/\/r\/([^/?#]+)/);
+  if (!m) return undefined;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
 }
 
 export function parsePushNav(data: unknown): PushNavTarget {
   const d = normalizePushData(data);
+  const reelId = d.reelId || reelIdFromPushUrl(d.url);
+  if (d.type === 'reel_like' || d.type === 'reel_comment' || reelId) {
+    if (reelId) return { kind: 'reel', reelId };
+  }
   if (d.type === 'birthday' || (d.url && d.url.startsWith('/pet/'))) {
     const fromUrl = d.url ? d.url.replace(/^\/pet\//, '') : '';
     return { kind: 'pet', petId: d.petUsername || fromUrl || d.petId };
@@ -320,13 +410,20 @@ export function pushTapFlushDecision(input: {
 /** Destino existente: cumpleaños → PetProfile; ubicación → tab Actividad. */
 export function pushNavDestination(
   data: unknown
-): { name: 'PetProfile'; params: { petId: string } } | { name: 'Tabs'; params: { screen: 'Actividad' } } | null {
+):
+  | { name: 'PetProfile'; params: { petId: string } }
+  | { name: 'Tabs'; params: { screen: 'Actividad' } }
+  | { name: 'ReelViewer'; params: { reelId: string } }
+  | null {
   const nav = parsePushNav(data);
   if (nav.kind === 'pet' && nav.petId) {
     return { name: 'PetProfile', params: { petId: nav.petId } };
   }
   if (nav.kind === 'activity') {
     return { name: 'Tabs', params: { screen: 'Actividad' } };
+  }
+  if (nav.kind === 'reel' && nav.reelId) {
+    return { name: 'ReelViewer', params: { reelId: nav.reelId } };
   }
   return null;
 }
