@@ -10,6 +10,7 @@
 // para RN) y en su lugar se usan expresiones regulares livianas.
 
 import { isReservedPublicUsername, USERNAME_RE } from './publicHandles';
+import { hasPetSuffix } from './petHandles';
 
 export type ScanResolution =
   | { kind: 'pet'; id: string; raw: string }
@@ -32,6 +33,9 @@ function matchKnownPath(path: string): { kind: 'pet' | 'user' | 'handle' | 'post
   if (m) return { kind: 'user', id: decodeURIComponent(m[1]) };
   m = clean.match(/^p\/([^/?#]+)/i);
   if (m) return { kind: 'post', id: decodeURIComponent(m[1]) };
+  if (hasPetSuffix(clean) && USERNAME_RE.test(clean)) {
+    return { kind: 'pet', id: decodeURIComponent(clean.toLowerCase()) };
+  }
   if (USERNAME_RE.test(clean) && !isReservedPublicUsername(clean)) {
     return { kind: 'handle', username: clean.toLowerCase() };
   }

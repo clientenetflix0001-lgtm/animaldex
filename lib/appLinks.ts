@@ -1,3 +1,5 @@
+import { hasPetSuffix, isValidPetUsername } from './petHandles';
+
 /** Prefijos que React Navigation y el parser público reconocen. */
 export const APP_LINK_PREFIXES = [
   'animaldex://',
@@ -143,6 +145,9 @@ export function resolveAppLink(url: string | null | undefined): AppLinkTarget | 
     const seg = head.toLowerCase();
     const tab = TAB_SEGMENTS[seg];
     if (tab) return { screen: 'Tabs', params: { screen: tab } };
+    if (hasPetSuffix(seg) && (isValidPetUsername(seg) || USERNAME_RE.test(seg))) {
+      return { screen: 'PetProfile', params: { petId: seg } };
+    }
     if (USERNAME_RE.test(seg) && !RESERVED_SEGMENTS.has(seg)) {
       return { screen: 'PublicProfile', params: { username: seg } };
     }

@@ -354,7 +354,9 @@ export const db = {
   follow: (targetType: 'pet' | 'user' | 'profile', targetId: string, value: boolean) =>
     call('/db', { action: 'follow', targetType, targetId, value }),
   publicProfile: (idOrUsername: { profileId?: string; username?: string }): Promise<{
-    profile: import('../features/profiles/profileTypes').PublicProfile;
+    kind?: 'profile' | 'pet';
+    pet?: ApiPet;
+    profile?: import('../features/profiles/profileTypes').PublicProfile;
     pets: ApiPet[];
     stats: { pets: number; adoption: number; adopted: number; recovering: number; followers: number };
     transferredPets?: ApiPet[];
@@ -426,7 +428,10 @@ export const db = {
     sex?: 'macho' | 'hembra' | null;
     neutered?: boolean | null;
   }): Promise<{ pet: ApiPet }> => call('/db', { action: 'createPet', ...pet }),
-  checkPetUsername: (username: string, excludePetId?: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>
+  checkPetUsername: (
+    username: string,
+    excludePetId?: string
+  ): Promise<{ ok: boolean; available: boolean; reason?: string; suggestion?: string | null }> =>
     call('/db', { action: 'checkPetUsername', username, excludePetId }),
   updatePet: (petId: string, fields: Partial<ApiPet>) =>
     call('/db', { action: 'updatePet', petId, ...fields }),

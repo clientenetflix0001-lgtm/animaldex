@@ -300,7 +300,9 @@ async function buildOgMeta(request, env, url) {
           title: `${p.name} ${p.emoji || '🐾'} en Animaldex`,
           description: `${p.breed || p.species}${p.bio ? ' · ' + p.bio : ''}`,
           image: p.avatar_url || petImage('perro', 11, 600),
-          url: `${origin}/pet/${p.id}`,
+          url: String(p.username || '').toLowerCase().endsWith('.pet')
+            ? `${origin}/${String(p.username).toLowerCase()}`
+            : `${origin}/pet/${p.id}`,
         };
       }
     }
@@ -394,7 +396,34 @@ async function buildOgMeta(request, env, url) {
     }
   } else if (handleMatch && !reserved.has(handleMatch[1].toLowerCase())) {
     const handle = handleMatch[1].toLowerCase();
-    const profiles = await d1Query(env, 'SELECT * FROM profiles WHERE LOWER(username) = ? LIMIT 1', [handle]);
+    if (/\.pet$/i.test(handle)) {
+      let rows = await d1Query(env, 'SELECT * FROM pets WHERE LOWER(username) = LOWER(?) LIMIT 1', [handle]);
+      if (!rows[0]) {
+        try {
+          const aliases = await d1Query(
+            env,
+            'SELECT pet_id FROM pet_username_aliases WHERE LOWER(old_username) = LOWER(?) LIMIT 1',
+            [handle]
+          );
+          if (aliases[0] && aliases[0].pet_id) {
+            rows = await d1Query(env, 'SELECT * FROM pets WHERE id = ? LIMIT 1', [aliases[0].pet_id]);
+          }
+        } catch (_) {}
+      }
+      if (rows[0]) {
+        const p = rows[0];
+        const publicHandle = String(p.username || handle).toLowerCase();
+        meta = {
+          title: `${p.name} ${p.emoji || '🐾'} en Animaldex`,
+          description: `${p.breed || p.species}${p.bio ? ' · ' + p.bio : ''} · @${publicHandle}`,
+          image: p.avatar_url || petImage('perro', 11, 600),
+          url: `${origin}/${publicHandle}`,
+        };
+      }
+    }
+    const profiles = !meta
+      ? await d1Query(env, 'SELECT * FROM profiles WHERE LOWER(username) = ? LIMIT 1', [handle])
+      : [];
     if (profiles[0]) {
       const pr = profiles[0];
       const bio = String(pr.bio || '').replace(/\s+/g, ' ').trim();
@@ -419,7 +448,7 @@ async function buildOgMeta(request, env, url) {
           url: `${origin}/${pr.username}`,
         };
       }
-      } else {
+      } else if (!meta) {
         const users = await d1Query(env, 'SELECT * FROM users WHERE LOWER(username) = ? LIMIT 1', [handle]);
         if (users[0]) {
           const u = users[0];
@@ -430,6 +459,18 @@ async function buildOgMeta(request, env, url) {
             image: u.avatar_url || petImage('perro', 11, 600),
             url: `${origin}/${u.username}`,
           };
+        } else {
+          const petRows = await d1Query(env, 'SELECT * FROM pets WHERE LOWER(username) = LOWER(?) LIMIT 1', [handle]);
+          if (petRows[0]) {
+            const p = petRows[0];
+            const publicHandle = String(p.username || handle).toLowerCase();
+            meta = {
+              title: `${p.name} ${p.emoji || '🐾'} en Animaldex`,
+              description: `${p.breed || p.species}${p.bio ? ' · ' + p.bio : ''} · @${publicHandle}`,
+              image: p.avatar_url || petImage('perro', 11, 600),
+              url: publicHandle.endsWith('.pet') ? `${origin}/${publicHandle}` : `${origin}/pet/${p.id}`,
+            };
+          }
         }
       }
   }
@@ -507,7 +548,7 @@ export default {
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
     ]);
     const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase());
-    const maybePet = /^\/pet\/[^/]+\/?$/.test(url.pathname);
+    const maybePet = /^\/pet\/[^/]+\/?$/.test(url.pathname) || (spaHandle && /\.pet$/i.test(spaHandle));
     const assetType = (assetResponse.headers.get('content-type') || '').toLowerCase();
     const assetIsHtml = assetResponse.status === 404 || assetType.includes('text/html');
 
@@ -521,7 +562,7 @@ export default {
       let metaPath = '';
       try { metaPath = new URL(meta.url).pathname.replace(/\/$/, '') || '/'; } catch (_) {}
       const matched = maybePet
-        ? metaPath.indexOf('/pet/') === 0
+        ? metaPath.indexOf('/pet/') === 0 || /\.pet$/i.test(metaPath)
         : metaPath === expectedPath;
       if (meta && matched) {
         const source = assetResponse.status === 404

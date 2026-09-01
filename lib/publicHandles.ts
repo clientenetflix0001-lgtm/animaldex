@@ -70,9 +70,15 @@ export function isReservedPublicUsername(value: string): boolean {
   return RESERVED_SET.has(normalizePublicUsername(value));
 }
 
+/** `.pet` es namespace exclusivo de mascotas. Humanos y Páginas no pueden usarlo. */
+export function isPetReservedSuffix(value: string): boolean {
+  return normalizePublicUsername(value).endsWith('.pet');
+}
+
 export function isValidPublicUsername(value: string): boolean {
   const handle = normalizePublicUsername(value);
   if (!USERNAME_RE.test(handle) || isReservedPublicUsername(handle)) return false;
+  if (isPetReservedSuffix(handle)) return false;
   if (usernameLooksLikePhone(handle)) return false;
   return true;
 }

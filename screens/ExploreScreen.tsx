@@ -209,7 +209,10 @@ export default function ExploreScreen() {
                     <Text style={styles.petRowName}>
                       {item.pet.name} {item.pet.emoji}
                     </Text>
-                    <Text style={styles.petRowSub}>{item.pet.breed || item.pet.species} · Comunidad</Text>
+                    <Text style={styles.petRowSub}>
+                      {item.pet.username ? `@${item.pet.username} · ` : ''}
+                      {item.pet.breed || item.pet.species} · Comunidad
+                    </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                 </Pressable>

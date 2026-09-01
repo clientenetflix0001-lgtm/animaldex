@@ -6,6 +6,7 @@ import {
   DefaultTheme,
   RouteProp,
   LinkingOptions,
+  getStateFromPath as rnGetStateFromPath,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -63,6 +64,7 @@ import {
   APP_LINK_PREFIXES,
   applyAppLinkIfReady,
   rememberIncomingAppLink,
+  resolveAppLink,
 } from './lib/appLinks';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -267,6 +269,21 @@ const linking: LinkingOptions<RootStackParamList> = {
       MarketFavorites: 'mercado-favoritos',
       Auth: 'entrar',
     },
+  },
+  getStateFromPath(path, options) {
+    const href = path.startsWith('http')
+      ? path
+      : `https://animaldex-web.pages.dev${path.startsWith('/') ? path : `/${path}`}`;
+    const target = resolveAppLink(href);
+    if (target?.screen === 'PetProfile') {
+      return {
+        routes: [
+          { name: 'Tabs' },
+          { name: 'PetProfile', params: target.params },
+        ],
+      };
+    }
+    return rnGetStateFromPath(path, options);
   },
   async getInitialURL() {
     const url = await Linking.getInitialURL();

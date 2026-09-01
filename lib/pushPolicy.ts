@@ -4,6 +4,8 @@
  * Sin coordenadas, teléfono ni email en el payload visible.
  */
 
+import { isValidPetUsername } from './petHandles';
+
 export const EXPO_PUSH_SEND_URL = 'https://exp.host/--/api/v2/push/send';
 export const EXPO_PUSH_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
 export const EXPO_PUSH_BATCH_MAX = 100;
@@ -256,6 +258,7 @@ export function birthdayPushMessage(input: {
 }): Record<string, unknown> {
   const copy = birthdayPushCopy(input.petName, input.years);
   const handle = String(input.petUsername || '').trim();
+  const url = isValidPetUsername(handle) ? `/${handle}` : `/pet/${handle || input.petId}`;
   return {
     to: input.token,
     title: copy.title,
@@ -267,7 +270,7 @@ export function birthdayPushMessage(input: {
       type: 'birthday',
       petId: input.petId,
       petUsername: handle || null,
-      url: `/pet/${handle || input.petId}`,
+      url,
     },
   };
 }
@@ -382,8 +385,9 @@ export function parsePushNav(data: unknown): PushNavTarget {
   if (d.type === 'reel_like' || d.type === 'reel_comment' || reelId) {
     if (reelId) return { kind: 'reel', reelId };
   }
-  if (d.type === 'birthday' || (d.url && d.url.startsWith('/pet/'))) {
-    const fromUrl = d.url ? d.url.replace(/^\/pet\//, '') : '';
+  if (d.type === 'birthday' || (d.url && (d.url.startsWith('/pet/') || isValidPetUsername(String(d.url).replace(/^\//, ''))))) {
+    const path = String(d.url || '').replace(/^\//, '');
+    const fromUrl = path.startsWith('pet/') ? path.slice(4) : (isValidPetUsername(path) ? path : '');
     return { kind: 'pet', petId: d.petUsername || fromUrl || d.petId };
   }
   if (d.type === 'location' || d.url === '/actividad') {

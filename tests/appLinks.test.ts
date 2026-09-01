@@ -99,6 +99,21 @@ describe('resolveAppLink: recursos públicos pages.dev', () => {
     }
   });
 
+  it('mascota /nina.pet → PetProfile (no PublicProfile)', () => {
+    assert.deepEqual(resolveAppLink('https://animaldex-web.pages.dev/nina.pet'), {
+      screen: 'PetProfile',
+      params: { petId: 'nina.pet' },
+    });
+    assert.deepEqual(resolveAppLink('https://animaldex-web.pages.dev/toby.pet/'), {
+      screen: 'PetProfile',
+      params: { petId: 'toby.pet' },
+    });
+    assert.deepEqual(resolveAppLink('animaldex://nina.pet'), {
+      screen: 'PetProfile',
+      params: { petId: 'nina.pet' },
+    });
+  });
+
   it('usuario / empresa / refugio /:username → PublicProfile', () => {
     assert.deepEqual(resolveAppLink('https://animaldex-web.pages.dev/lucasfuentes'), {
       screen: 'PublicProfile',

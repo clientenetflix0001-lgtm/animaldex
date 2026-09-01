@@ -35,7 +35,8 @@ import {
 } from '../lib/petFields';
 import ProtectorPetGridItem, { PROTECTOR_GRID_GAP } from '../components/ProtectorPetGridItem';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
-import { isReservedPublicUsername } from '../lib/publicHandles';
+import { isReservedPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
+import { hasPetSuffix, isValidPetUsername } from '../lib/petHandles';
 import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
 import type { ApiReel } from '../lib/db';
 
@@ -88,6 +89,10 @@ export default function PublicProfileScreen() {
   const load = useCallback(async () => {
     setNotFound(false);
     try {
+      if (routeUsername && hasPetSuffix(routeUsername)) {
+        navigation.replace('PetProfile', { petId: normalizePublicUsername(routeUsername) });
+        return;
+      }
       if (routeUsername && isReservedPublicUsername(routeUsername)) {
         setProfile(null);
         setNotFound(true);
@@ -97,6 +102,12 @@ export default function PublicProfileScreen() {
         profileId: routeProfileId,
         username: routeUsername,
       });
+      if (pub.kind === 'pet' && pub.pet) {
+        navigation.replace('PetProfile', {
+          petId: isValidPetUsername(pub.pet.username || '') ? pub.pet.username! : pub.pet.id,
+        });
+        return;
+      }
       const handle = pub.profile.username;
       if (handle && routeUsername && routeUsername.toLowerCase() !== handle.toLowerCase()) {
         navigation.replace('PublicProfile', { username: handle });

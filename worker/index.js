@@ -45,6 +45,16 @@ import {
   POST_PET_NOT_OWNED_ERROR,
   petAllowedForAuthorIdentity,
 } from '../lib/petOwnership.ts';
+import {
+  PET_SUFFIX_RESERVED_ERROR,
+  PET_TAKEN_ERROR,
+  PET_USERNAME_INVALID_ERROR,
+  hasPetSuffix,
+  isValidPetUsername,
+  parsePetUsernameInput,
+  petUsernameCandidates,
+  suggestPetUsernameBase,
+} from '../lib/petHandles.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -230,7 +240,7 @@ function isReservedPublicUsername(username) {
   return RESERVED_PUBLIC_USERNAMES.has(String(username || '').toLowerCase());
 }
 
-async function usernameTaken(env, username, allowAccountId, allowProfileId) {
+async function usernameTaken(env, username, allowAccountId, allowProfileId, allowPetId) {
   const handle = String(username || '').toLowerCase();
   if (isReservedPublicUsername(handle) || usernameLooksLikePhone(handle)) return true;
   const users = await d1(env, 'SELECT id FROM users WHERE LOWER(username) = ?', [handle]);
@@ -238,7 +248,73 @@ async function usernameTaken(env, username, allowAccountId, allowProfileId) {
   const profiles = await d1(env, 'SELECT id FROM profiles WHERE LOWER(username) = ?', [handle]);
   if (profiles[0] && profiles[0].id !== allowProfileId) return true;
   const pets = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ?', [handle]);
-  return pets.length > 0;
+  if (pets[0] && pets[0].id !== allowPetId) return true;
+  try {
+    const aliases = await d1(env, 'SELECT pet_id FROM pet_username_aliases WHERE LOWER(old_username) = ?', [handle]);
+    if (aliases[0] && aliases[0].pet_id !== allowPetId) return true;
+  } catch (_) {}
+  return false;
+}
+
+function humanPetSuffixBlocked(username) {
+  return hasPetSuffix(username) ? PET_SUFFIX_RESERVED_ERROR : null;
+}
+
+async function findPetByHandleOrAlias(env, ref) {
+  const key = String(ref || '').trim();
+  if (!key) return null;
+  const pets = await d1(env, 'SELECT * FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1', [key, key]);
+  if (pets[0]) return pets[0];
+  try {
+    const aliases = await d1(env, 'SELECT pet_id FROM pet_username_aliases WHERE LOWER(old_username) = LOWER(?) LIMIT 1', [key]);
+    if (aliases[0] && aliases[0].pet_id) {
+      const rows = await d1(env, 'SELECT * FROM pets WHERE id = ? LIMIT 1', [aliases[0].pet_id]);
+      return rows[0] || null;
+    }
+  } catch (_) {}
+  return null;
+}
+
+function isUniqueConstraintError(err) {
+  return /UNIQUE/i.test(String(err && err.message ? err.message : err || ''));
+}
+
+async function takenPetHandleSet(env, candidates, excludePetId) {
+  const set = new Set();
+  if (!candidates.length) return set;
+  const ph = candidates.map(() => '?').join(',');
+  const [pets, users, profiles] = await Promise.all([
+    d1(env, `SELECT id, LOWER(username) AS u FROM pets WHERE LOWER(username) IN (${ph})`, candidates),
+    d1(env, `SELECT LOWER(username) AS u FROM users WHERE LOWER(username) IN (${ph})`, candidates),
+    d1(env, `SELECT LOWER(username) AS u FROM profiles WHERE LOWER(username) IN (${ph})`, candidates),
+  ]);
+  for (const r of pets) {
+    if (excludePetId && r.id === excludePetId) continue;
+    if (r.u) set.add(r.u);
+  }
+  for (const r of users) if (r.u) set.add(r.u);
+  for (const r of profiles) if (r.u) set.add(r.u);
+  try {
+    const aliases = await d1(
+      env,
+      `SELECT pet_id, LOWER(old_username) AS u FROM pet_username_aliases WHERE LOWER(old_username) IN (${ph})`,
+      candidates
+    );
+    for (const r of aliases) {
+      if (excludePetId && r.pet_id === excludePetId) continue;
+      if (r.u) set.add(r.u);
+    }
+  } catch (_) {}
+  return set;
+}
+
+async function suggestFreePetUsername(env, base, excludePetId) {
+  const candidates = petUsernameCandidates(base || 'mascota', 40);
+  const taken = await takenPetHandleSet(env, candidates, excludePetId);
+  for (const c of candidates) {
+    if (!taken.has(c)) return c;
+  }
+  return null;
 }
 
 async function ensureAuthSchema(env) {
@@ -544,8 +620,8 @@ async function ensurePersonalProfile(env, userId) {
   if (!users[0]) return null;
   const u = users[0];
   let username = String(u.username || 'user').toLowerCase();
-  if (await usernameTaken(env, username, userId)) {
-    username = (username.slice(0, 14) + Date.now().toString(36).slice(-4)).slice(0, 20);
+  if (hasPetSuffix(username) || await usernameTaken(env, username, userId)) {
+    username = (username.replace(/\.pet$/i, '').slice(0, 14) + Date.now().toString(36).slice(-4)).slice(0, 20);
   }
   const id = `prf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   await d1(
@@ -839,6 +915,9 @@ async function handleAuth(request, env) {
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
       }
+      if (humanPetSuffixBlocked(username)) {
+        return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
+      }
       if (isReservedPublicUsername(username) || usernameLooksLikePhone(username)) {
         return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
       }
@@ -857,6 +936,9 @@ async function handleAuth(request, env) {
       const password = String(body.password || '');
       if (!isValidEmail(email)) return json({ error: 'Escribe un correo válido' }, 400);
       if (password.length < PASSWORD_MIN) return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
+      if (humanPetSuffixBlocked(username)) {
+        return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
+      }
       if (!USERNAME_RE.test(username) || isReservedPublicUsername(username) || usernameLooksLikePhone(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres y no puede parecer un teléfono ni una ruta del sistema' }, 400);
       }
@@ -881,6 +963,9 @@ async function handleAuth(request, env) {
         return json({ error: 'Verificá tu teléfono antes de crear la cuenta' }, 400);
       }
       if (password.length < PASSWORD_MIN) return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
+      if (humanPetSuffixBlocked(username)) {
+        return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
+      }
       if (!USERNAME_RE.test(username) || isReservedPublicUsername(username) || usernameLooksLikePhone(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres y no puede parecer un teléfono ni una ruta del sistema' }, 400);
       }
@@ -949,6 +1034,9 @@ async function handleAuth(request, env) {
       if (nextUsername) {
         if (!USERNAME_RE.test(nextUsername)) {
           return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
+        }
+        if (humanPetSuffixBlocked(nextUsername)) {
+          return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
         }
         if (isReservedPublicUsername(nextUsername) || usernameLooksLikePhone(nextUsername)) {
           return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
@@ -1284,6 +1372,7 @@ async function handleDb(request, env) {
 
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
+      if (humanPetSuffixBlocked(username)) return json({ ok: true, available: false, reason: 'reserved_pet' });
       if (isReservedPublicUsername(username)) return json({ ok: true, available: false, reason: 'reserved' });
       if (!USERNAME_RE.test(username) || usernameLooksLikePhone(username)) {
         return json({ ok: true, available: false, reason: 'invalid' });
@@ -1298,6 +1387,11 @@ async function handleDb(request, env) {
       if (username && isReservedPublicUsername(username)) {
         return json({ error: 'Perfil no encontrado' }, 404);
       }
+      if (username && !profileId && hasPetSuffix(username)) {
+        const petHit = await findPetByHandleOrAlias(env, username);
+        if (petHit) return json({ ok: true, kind: 'pet', pet: petRow(petHit) });
+        return json({ error: 'Perfil no encontrado' }, 404);
+      }
       let rows = profileId
         ? await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId])
         : username
@@ -1305,7 +1399,11 @@ async function handleDb(request, env) {
           : [];
       if (!rows[0] && username && !profileId) {
         const users = await d1(env, 'SELECT * FROM users WHERE LOWER(username) = ?', [username]);
-        if (!users[0]) return json({ error: 'Perfil no encontrado' }, 404);
+        if (!users[0]) {
+          const petHit = await findPetByHandleOrAlias(env, username);
+          if (petHit) return json({ ok: true, kind: 'pet', pet: petRow(petHit) });
+          return json({ error: 'Perfil no encontrado' }, 404);
+        }
         const u = users[0];
         const viewerId = await authUser(request, env, body);
         const [pets, followers, following] = await Promise.all([
@@ -1464,7 +1562,11 @@ async function handleDb(request, env) {
 
     if (action === 'petProfile') {
       const petId = clean(body.petId, 80);
-      const pets = await d1(env, 'SELECT * FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1', [petId, petId]);
+      let pets = await d1(env, 'SELECT * FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1', [petId, petId]);
+      if (!pets[0]) {
+        const aliased = await findPetByHandleOrAlias(env, petId);
+        pets = aliased ? [aliased] : [];
+      }
       if (!pets[0]) return json({ error: 'Mascota no encontrada' }, 404);
       const pet = pets[0];
       const [owners, postCount, followerCount, shelterRows] = await Promise.all([
@@ -1487,20 +1589,25 @@ async function handleDb(request, env) {
     if (action === 'search') {
       const q = `%${clean(body.q, 40).toLowerCase()}%`;
       const [pets, users] = await Promise.all([
-        d1(env, 'SELECT * FROM pets WHERE archived_at IS NULL AND (LOWER(name) LIKE ? OR LOWER(breed) LIKE ? OR LOWER(species) LIKE ?) LIMIT 20', [q, q, q]),
+        d1(env, 'SELECT * FROM pets WHERE archived_at IS NULL AND (LOWER(name) LIKE ? OR LOWER(breed) LIKE ? OR LOWER(species) LIKE ? OR LOWER(username) LIKE ?) LIMIT 20', [q, q, q, q]),
         d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE LOWER(username) LIKE ? OR LOWER(name) LIKE ? LIMIT 20', [q, q]),
       ]);
       return json({ ok: true, pets: pets.map(petRow), users: users.map((u) => ({ id: u.id, username: u.username, name: u.name, avatarUrl: u.avatar_url || null })) });
     }
 
     if (action === 'checkPetUsername') {
-      const username = clean(body.username, 20).toLowerCase();
-      if (!USERNAME_RE.test(username)) return json({ ok: true, available: false, reason: 'invalid' });
-      const excludeId = clean(body.excludePetId, 80);
-      const rows = excludeId
-        ? await d1(env, 'SELECT id FROM pets WHERE (LOWER(username) = ? OR LOWER(name) = ?) AND id != ? AND LOWER(username) != LOWER(?)', [username, username, excludeId, excludeId])
-        : await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ? OR LOWER(name) = ?', [username, username]);
-      return json({ ok: true, available: rows.length === 0 });
+      const raw = clean(body.username, 24);
+      const excludeId = clean(body.excludePetId, 80) || null;
+      const username = parsePetUsernameInput(raw)
+        || parsePetUsernameInput(`${suggestPetUsernameBase(raw)}.pet`);
+      if (!username || !isValidPetUsername(username)) {
+        const suggestion = await suggestFreePetUsername(env, suggestPetUsernameBase(raw), excludeId);
+        return json({ ok: true, available: false, reason: 'invalid', suggestion });
+      }
+      const taken = await usernameTaken(env, username, null, null, excludeId);
+      if (!taken) return json({ ok: true, available: true, suggestion: username });
+      const suggestion = await suggestFreePetUsername(env, suggestPetUsernameBase(username), excludeId);
+      return json({ ok: true, available: false, reason: 'taken', suggestion });
     }
     if (action === 'featuredPets') {
       const rows = await d1(env, 'SELECT * FROM pets WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 20');
@@ -2309,6 +2416,9 @@ async function handleDb(request, env) {
         return json({ error: 'Solo se pueden crear perfiles de tienda o proteccionista' }, 400);
       }
       if (name.length < 2) return json({ error: 'Escribe el nombre del perfil' }, 400);
+      if (humanPetSuffixBlocked(username)) {
+        return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
+      }
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
       }
@@ -2357,6 +2467,9 @@ async function handleDb(request, env) {
       const phone = clean(body.phone, 30);
       const avatar = clean(body.avatar, 500) || null;
       if (name.length < 2) return json({ error: 'Escribe el nombre del perfil' }, 400);
+      if (humanPetSuffixBlocked(username)) {
+        return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
+      }
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
       }
@@ -2430,11 +2543,13 @@ async function handleDb(request, env) {
       if (birthDate && !isValidBirthDate(birthDate, now)) {
         return json({ error: 'La fecha de nacimiento no es válida' }, 400);
       }
-      let username = clean(body.username, 20).toLowerCase();
-      if (!USERNAME_RE.test(username)) username = slugHandle(name);
-      if (!USERNAME_RE.test(username)) return json({ error: 'El usuario de la mascota debe tener 3-20 caracteres: letras, números, punto o _' }, 400);
-      const takenUser = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ?', [username]);
-      if (takenUser.length) return json({ error: 'Ese @ de mascota ya está en uso. Probá otro.' }, 409);
+      let username = parsePetUsernameInput(clean(body.username, 24));
+      if (!username || !isValidPetUsername(username)) {
+        return json({ error: PET_USERNAME_INVALID_ERROR }, 400);
+      }
+      if (await usernameTaken(env, username, null, null, null)) {
+        return json({ error: PET_TAKEN_ERROR }, 409);
+      }
       const takenName = await d1(env, 'SELECT id FROM pets WHERE LOWER(name) = LOWER(?)', [name]);
       if (takenName.length) return json({ error: 'Ya existe una mascota con ese nombre. Elegí otro nombre o usuario.' }, 409);
 
@@ -2454,14 +2569,24 @@ async function handleDb(request, env) {
       const adoptionStartedAt = careStatus === 'en_adopcion' ? now : null;
 
       const id = `pet-${now}-${Math.random().toString(36).slice(2, 8)}`;
-      await d1(
-        env,
-        `INSERT INTO pets (
-          id, user_id, name, username, species, breed, age, bio, emoji, avatar_url, created_at,
-          profile_id, care_status, adoption_started_at, birth_date, size, sex, neutered
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, userId, name, username, species, breed, '', bio, emoji, avatarUrl, now, profileId, careStatus, adoptionStartedAt, birthDate, size, sex, neutered]
-      );
+      try {
+        await d1(
+          env,
+          `INSERT INTO pets (
+            id, user_id, name, username, species, breed, age, bio, emoji, avatar_url, created_at,
+            profile_id, care_status, adoption_started_at, birth_date, size, sex, neutered
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, userId, name, username, species, breed, '', bio, emoji, avatarUrl, now, profileId, careStatus, adoptionStartedAt, birthDate, size, sex, neutered]
+        );
+      } catch (err) {
+        if (isUniqueConstraintError(err)) return json({ error: PET_TAKEN_ERROR }, 409);
+        throw err;
+      }
+      const dups = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ?', [username]);
+      if (dups.length > 1) {
+        await d1(env, 'DELETE FROM pets WHERE id = ?', [id]);
+        return json({ error: PET_TAKEN_ERROR }, 409);
+      }
       const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [id]);
       return json({ ok: true, pet: petRow(rows[0]) });
     }
@@ -2491,12 +2616,15 @@ async function handleDb(request, env) {
       }
       let username = p.username;
       if (body.username != null) {
-        username = clean(body.username, 20).toLowerCase();
-        if (!USERNAME_RE.test(username)) return json({ error: 'El usuario de la mascota debe tener 3-20 caracteres: letras, números, punto o _' }, 400);
+        username = parsePetUsernameInput(clean(body.username, 24));
+        if (!username || !isValidPetUsername(username)) {
+          return json({ error: PET_USERNAME_INVALID_ERROR }, 400);
+        }
       }
       if (username && username !== p.username) {
-        const takenUser = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ? AND id != ?', [username, p.id]);
-        if (takenUser.length) return json({ error: 'Ese @ de mascota ya está en uso. Probá otro.' }, 409);
+        if (await usernameTaken(env, username, null, null, p.id)) {
+          return json({ error: PET_TAKEN_ERROR }, 409);
+        }
       }
       if (name !== p.name) {
         const takenName = await d1(env, 'SELECT id FROM pets WHERE LOWER(name) = LOWER(?) AND id != ?', [name, p.id]);

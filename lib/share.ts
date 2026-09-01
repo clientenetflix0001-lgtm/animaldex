@@ -1,5 +1,6 @@
 import { Platform, Share } from 'react-native';
 import { Post, PETS, hashStr, makePost } from './data';
+import { isValidPetUsername } from './petHandles';
 
 // ---------- Base64 URL-safe (UTF-8) ----------
 const B64C = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -186,10 +187,15 @@ export async function sharePublicProfile(name: string, username: string, bio?: s
   await shareLink(title, text, url);
 }
 
+export function petProfileShareUrl(petId: string, handle?: string | null): string {
+  const raw = String(handle || '').replace(/^@/, '').toLowerCase();
+  if (isValidPetUsername(raw)) return `${siteOrigin()}/${encodeURIComponent(raw)}`;
+  return `${siteOrigin()}/pet/${encodeURIComponent(petId)}`;
+}
+
 export async function sharePetProfile(petId: string, handle?: string | null): Promise<void> {
   const demoPet = PETS.find((p) => p.id === petId);
-  const slug = (handle || demoPet?.name || petId).toString().toLowerCase();
-  const url = `${siteOrigin()}/pet/${encodeURIComponent(slug)}`;
+  const url = petProfileShareUrl(petId, handle || demoPet?.name || null);
   const title = demoPet
     ? `${demoPet.name} ${demoPet.emoji} en Animaldex`
     : 'Una mascota adorable en Animaldex 🐾';
