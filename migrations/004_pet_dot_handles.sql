@@ -1,25 +1,21 @@
--- Animaldex — usernames de mascota terminados en .pet
+-- Animaldex — aliases de username de mascota
 -- ============================================================
 -- LOCAL ONLY. NO ejecutar contra D1 remoto desde este cambio.
 --
--- Consulta de inventario (no inventar cantidades sin acceso read-only):
---   SELECT id, username FROM pets ORDER BY id ASC;
---   SELECT COUNT(*) AS n FROM pets;
---   SELECT COUNT(*) AS n FROM pets WHERE LOWER(username) NOT LIKE '%.pet';
+-- Esta migración SOLO prepara schema de aliases.
+-- NO modifica pets.username.
+-- NO crea el UNIQUE index (eso es 005, DESPUÉS del renombrado).
 --
--- Algoritmo (ver lib/petHandleMigration.ts):
---   1. Reservar usernames que YA son válidos (*.pet).
---   2. Para el resto, en orden de pet.id:
---        nina      → nina.pet     (si libre)
---        nina      → nina2.pet    (si nina.pet ocupado)
---        nina.pet  → nina.pet     (no .pet.pet)
---   3. Guardar alias old_username → pet_id para /pet/nina y /nina.
---   4. UNIQUE case-insensitive sobre pets.username.
+-- Worker también puede crear esta tabla con CREATE IF NOT EXISTS
+-- (ensurePetHandleAliasSchema). Correr 004 es idempotente.
 --
--- Rollback:
---   UPDATE pets SET username = a.old_username
---   FROM pet_username_aliases a WHERE a.pet_id = pets.id;
---   (pet.id no cambia.)
+-- Orden real (no ejecutar ahora):
+--   1. inventario SELECT
+--   2. esta tabla aliases (004 o Worker ensure)
+--   3. transformar usernames (script JS, no este SQL)
+--   4. INSERT aliases old → pet_id
+--   5. validar 0 duplicados LOWER(username)
+--   6. migrations/005_pet_dot_handles_unique.sql
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS pet_username_aliases (
@@ -30,6 +26,3 @@ CREATE TABLE IF NOT EXISTS pet_username_aliases (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pet_username_aliases_pet ON pet_username_aliases (pet_id);
-
--- Índice único para carreras createPet/updatePet. SQLite/D1: expresión LOWER.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pets_username_lower ON pets (LOWER(username));

@@ -49,6 +49,7 @@ import {
   PET_SUFFIX_RESERVED_ERROR,
   PET_TAKEN_ERROR,
   PET_USERNAME_INVALID_ERROR,
+  aliasRowForUsernameChange,
   hasPetSuffix,
   isValidPetUsername,
   parsePetUsernameInput,
@@ -306,6 +307,34 @@ async function takenPetHandleSet(env, candidates, excludePetId) {
     }
   } catch (_) {}
   return set;
+}
+
+async function ensurePetHandleAliasSchema(env) {
+  if (env._petAliasSchemaReady) return;
+  await d1(env, `CREATE TABLE IF NOT EXISTS pet_username_aliases (
+    old_username TEXT PRIMARY KEY,
+    pet_id TEXT NOT NULL,
+    new_username TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`);
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pet_username_aliases_pet ON pet_username_aliases (pet_id)');
+  env._petAliasSchemaReady = true;
+}
+
+async function rememberPetUsernameAlias(env, petId, previousUsername, nextUsername, now) {
+  const row = aliasRowForUsernameChange({
+    petId,
+    previousUsername,
+    nextUsername,
+    now,
+  });
+  if (!row) return;
+  await ensurePetHandleAliasSchema(env);
+  await d1(
+    env,
+    'INSERT OR IGNORE INTO pet_username_aliases (old_username, pet_id, new_username, created_at) VALUES (?, ?, ?, ?)',
+    [row.oldUsername, row.petId, row.newUsername, row.createdAt]
+  );
 }
 
 async function suggestFreePetUsername(env, base, excludePetId) {
@@ -1366,6 +1395,7 @@ async function handleDb(request, env) {
     await ensurePushSchema(env);
     await ensureLocationActorColumn(env);
     await ensureReelsSchema(env);
+    await ensurePetHandleAliasSchema(env);
 
     const publicReel = await handlePublicReelAction(env, body, json, clean, request, authUser);
     if (publicReel) return publicReel;
@@ -2625,6 +2655,7 @@ async function handleDb(request, env) {
         if (await usernameTaken(env, username, null, null, p.id)) {
           return json({ error: PET_TAKEN_ERROR }, 409);
         }
+        await rememberPetUsernameAlias(env, p.id, p.username, username, now);
       }
       if (name !== p.name) {
         const takenName = await d1(env, 'SELECT id FROM pets WHERE LOWER(name) = LOWER(?) AND id != ?', [name, p.id]);

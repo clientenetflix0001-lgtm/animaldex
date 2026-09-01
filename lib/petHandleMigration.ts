@@ -28,9 +28,12 @@ export type PetHandleMigrationPlan = {
  *
  * NO ejecuta D1. Solo calcula el mapping.
  */
-export function planPetHandleMigration(pets: readonly PetHandleRow[]): PetHandleMigrationPlan[] {
+export function planPetHandleMigration(
+  pets: readonly PetHandleRow[],
+  extraTaken: Iterable<string> = []
+): PetHandleMigrationPlan[] {
   const sorted = [...pets].sort((a, b) => String(a.id).localeCompare(String(b.id)));
-  const taken = new Set<string>();
+  const taken = new Set([...extraTaken].map((u) => String(u || '').trim().toLowerCase()).filter(Boolean));
 
   for (const pet of sorted) {
     const current = String(pet.username || '').trim().toLowerCase();

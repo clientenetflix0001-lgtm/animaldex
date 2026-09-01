@@ -144,3 +144,34 @@ export function petCanonicalPath(handleOrId: string): string {
   if (isValidPetUsername(h)) return `/${h}`;
   return `/pet/${encodeURIComponent(String(handleOrId || '').replace(/^@/, ''))}`;
 }
+
+/** Alias histórico al cambiar el @. Null si no cambió o no hay username previo. */
+export function aliasRowForUsernameChange(input: {
+  petId: string;
+  previousUsername?: string | null;
+  nextUsername: string;
+  now?: number;
+}): { oldUsername: string; petId: string; newUsername: string; createdAt: number } | null {
+  const prev = normalizePublicUsername(input.previousUsername || '');
+  const next = normalizePublicUsername(input.nextUsername || '');
+  if (!input.petId || !prev || !next || prev === next) return null;
+  return {
+    oldUsername: prev,
+    petId: input.petId,
+    newUsername: next,
+    createdAt: input.now ?? 0,
+  };
+}
+
+/** Redirect canónico solo cuando el path es un handle .pet distinto al actual. */
+export function shouldCanonicalRedirectPetHandle(
+  requested: string | null | undefined,
+  currentUsername: string | null | undefined
+): string | null {
+  const current = normalizePublicUsername(currentUsername || '');
+  const req = normalizePublicUsername(requested || '');
+  if (!isValidPetUsername(current)) return null;
+  if (!hasPetSuffix(req)) return null;
+  if (req === current) return null;
+  return current;
+}

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveAppLink } from '../lib/appLinks.ts';
 import { isValidPublicUsername } from '../lib/publicHandles.ts';
 import {
+  aliasRowForUsernameChange,
   applyEditablePetBase,
   applySuggestionIfCurrent,
   allocateNextPetUsername,
@@ -18,6 +19,7 @@ import {
   parsePetUsernameInput,
   petCanonicalPath,
   PET_TAKEN_ERROR,
+  shouldCanonicalRedirectPetHandle,
   stripPetSuffix,
   suggestPetUsernameBase,
 } from '../lib/petHandles.ts';
@@ -174,7 +176,10 @@ describe('servidor createPet / namespace', () => {
     assert.match(create, /isUniqueConstraintError/);
     assert.match(create, /SELECT id FROM pets WHERE LOWER\(username\) = \?/);
     assert.match(create, /dups\.length > 1/);
-    assert.match(migrationSql, /idx_pets_username_lower/);
+    const uniqueSql = readFileSync(join(root, 'migrations/005_pet_dot_handles_unique.sql'), 'utf8');
+    assert.match(uniqueSql, /idx_pets_username_lower/);
+    assert.doesNotMatch(migrationSql, /idx_pets_username_lower/);
+    assert.match(migrationSql, /NO crea el UNIQUE index/);
   });
 });
 
@@ -321,6 +326,71 @@ describe('migración local (no ejecutada)', () => {
     assert.equal(plan[0].changed, false);
     assert.equal(stripPetSuffix('nina.pet'), 'nina');
     assert.match(migrationSql, /NO ejecutar contra D1 remoto/);
+  });
+});
+
+describe('aliases al cambiar username', () => {
+  it('1. nina.pet → ninita.pet crea alias nina.pet', () => {
+    const row = aliasRowForUsernameChange({
+      petId: 'pet-1',
+      previousUsername: 'nina.pet',
+      nextUsername: 'ninita.pet',
+      now: 10,
+    });
+    assert.deepEqual(row, {
+      oldUsername: 'nina.pet',
+      petId: 'pet-1',
+      newUsername: 'ninita.pet',
+      createdAt: 10,
+    });
+    assert.match(worker, /rememberPetUsernameAlias/);
+    assert.match(action('updatePet'), /rememberPetUsernameAlias/);
+    assert.match(worker, /INSERT OR IGNORE INTO pet_username_aliases/);
+  });
+
+  it('2–3. /nina.pet resuelve alias y canonical es /ninita.pet', () => {
+    assert.equal(shouldCanonicalRedirectPetHandle('nina.pet', 'ninita.pet'), 'ninita.pet');
+    assert.equal(petCanonicalPath('ninita.pet'), '/ninita.pet');
+    const petProfile = readFileSync(join(root, 'screens/PetProfileScreen.tsx'), 'utf8');
+    assert.match(petProfile, /shouldCanonicalRedirectPetHandle/);
+    assert.match(petProfile, /navigation\.replace\('PetProfile'/);
+    assert.match(worker, /findPetByHandleOrAlias/);
+  });
+
+  it('4. nina.pet alias queda reservado', () => {
+    assert.match(worker, /pet_username_aliases WHERE LOWER\(old_username\) = \?/);
+    assert.match(worker, /allowPetId/);
+  });
+
+  it('5. update sin cambio de username no crea alias', () => {
+    assert.equal(
+      aliasRowForUsernameChange({
+        petId: 'pet-1',
+        previousUsername: 'nina.pet',
+        nextUsername: 'nina.pet',
+      }),
+      null
+    );
+  });
+
+  it('6. alias duplicado no se pisa (INSERT OR IGNORE)', () => {
+    assert.match(worker, /INSERT OR IGNORE INTO pet_username_aliases/);
+  });
+
+  it('7–9. migration guarda old username; segundo run idempotente; UNIQUE después', () => {
+    const plan = planPetHandleMigration([{ id: 'pet-a', username: 'nina' }]);
+    assert.equal(plan[0].alias, 'nina');
+    assert.equal(plan[0].newUsername, 'nina.pet');
+    assert.equal(isPetHandleMigrationIdempotent([{ id: 'pet-a', username: 'nina' }]), true);
+    const uniqueSql = readFileSync(join(root, 'migrations/005_pet_dot_handles_unique.sql'), 'utf8');
+    assert.match(uniqueSql, /DESPUÉS del renombrado/);
+    assert.doesNotMatch(readFileSync(join(root, 'migrations/004_pet_dot_handles.sql'), 'utf8'), /CREATE UNIQUE INDEX/);
+  });
+
+  it('10. Worker no explota si falta la tabla: try/catch + ensure', () => {
+    assert.match(worker, /ensurePetHandleAliasSchema/);
+    assert.match(worker, /catch \(_\) \{\}/);
+    assert.match(worker, /CREATE TABLE IF NOT EXISTS pet_username_aliases/);
   });
 });
 
