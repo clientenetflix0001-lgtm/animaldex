@@ -4,7 +4,7 @@
  * Sin coordenadas, teléfono ni email en el payload visible.
  */
 
-import { isValidPetUsername } from './petHandles';
+import { isValidPetUsername } from './petHandles.ts';
 
 export const EXPO_PUSH_SEND_URL = 'https://exp.host/--/api/v2/push/send';
 export const EXPO_PUSH_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';

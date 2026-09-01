@@ -9,8 +9,8 @@
 // Nota: se evita `new URL()` (no siempre disponible/estable en Hermes
 // para RN) y en su lugar se usan expresiones regulares livianas.
 
-import { isReservedPublicUsername, USERNAME_RE } from './publicHandles';
-import { hasPetSuffix } from './petHandles';
+import { isReservedPublicUsername, USERNAME_RE } from './publicHandles.ts';
+import { hasPetSuffix } from './petHandles.ts';
 
 export type ScanResolution =
   | { kind: 'pet'; id: string; raw: string }

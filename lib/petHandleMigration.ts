@@ -3,7 +3,7 @@ import {
   isValidPetUsername,
   normalizePetUsernameBase,
   suggestPetUsernameBase,
-} from './petHandles';
+} from './petHandles.ts';
 
 export type PetHandleRow = {
   id: string;

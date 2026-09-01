@@ -1,6 +1,6 @@
 import { Platform, Share } from 'react-native';
 import { Post, PETS, hashStr, makePost } from './data';
-import { isValidPetUsername } from './petHandles';
+import { isValidPetUsername } from './petHandles.ts';
 
 // ---------- Base64 URL-safe (UTF-8) ----------
 const B64C = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';

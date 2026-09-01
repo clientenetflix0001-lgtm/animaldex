@@ -1,4 +1,4 @@
-import { usernameLooksLikePhone } from './phone';
+import { usernameLooksLikePhone } from './phone.ts';
 
 /** Formato público de handle humano/página: 3-20 caracteres, minúsculas. */
 export const USERNAME_RE = /^[a-z0-9_.]{3,20}$/;

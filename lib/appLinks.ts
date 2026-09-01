@@ -1,4 +1,4 @@
-import { hasPetSuffix, isValidPetUsername } from './petHandles';
+import { hasPetSuffix, isValidPetUsername } from './petHandles.ts';
 
 /** Prefijos que React Navigation y el parser público reconocen. */
 export const APP_LINK_PREFIXES = [

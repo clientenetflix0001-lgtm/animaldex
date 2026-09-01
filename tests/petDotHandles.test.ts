@@ -22,7 +22,6 @@ import {
   suggestPetUsernameBase,
 } from '../lib/petHandles.ts';
 import { isPetHandleMigrationIdempotent, planPetHandleMigration } from '../lib/petHandleMigration.ts';
-import { petProfileShareUrl } from '../lib/share.ts';
 import { resolveScannedValue } from '../lib/qr.ts';
 import { petAllowedForAuthorIdentity } from '../lib/petOwnership.ts';
 
@@ -34,6 +33,7 @@ const pages = readFileSync(join(root, 'cf-pages-worker.src.js'), 'utf8');
 const createPost = readFileSync(join(root, 'screens/CreatePostScreen.tsx'), 'utf8');
 const createReel = readFileSync(join(root, 'screens/CreateReelScreen.tsx'), 'utf8');
 const qr = readFileSync(join(root, 'lib/qr.ts'), 'utf8');
+const share = readFileSync(join(root, 'lib/share.ts'), 'utf8');
 const migrationSql = readFileSync(join(root, 'migrations/004_pet_dot_handles.sql'), 'utf8');
 
 function action(name: string) {
@@ -147,7 +147,9 @@ describe('servidor createPet / namespace', () => {
     assert.match(create, /PET_USERNAME_INVALID_ERROR/);
     assert.match(create, /PET_TAKEN_ERROR/);
     assert.match(create, /409/);
-    assert.match(worker, /Este usuario ya está en uso\. Elegí otro\./);
+    const handles = readFileSync(join(root, 'lib/petHandles.ts'), 'utf8');
+    assert.match(handles, /Este usuario ya está en uso\. Elegí otro\./);
+    assert.match(worker, /PET_TAKEN_ERROR/);
     assert.equal(parsePetUsernameInput('luna'), null);
     assert.equal(parsePetUsernameInput('luna.pet'), 'luna.pet');
   });
@@ -223,13 +225,18 @@ describe('links / share / OG / QR', () => {
   });
 
   it('30. share mascota genera /nina.pet', () => {
-    assert.equal(petProfileShareUrl('pet-1', 'nina.pet'), 'https://animaldex-web.pages.dev/nina.pet');
-    assert.equal(petProfileShareUrl('pet-1', 'nina'), 'https://animaldex-web.pages.dev/pet/pet-1');
+    assert.match(share, /export function petProfileShareUrl/);
+    assert.match(share, /isValidPetUsername\(raw\)/);
+    assert.match(share, /encodeURIComponent\(raw\)/);
+    assert.match(share, /\/pet\/\$\{encodeURIComponent\(petId\)\}/);
+    assert.equal(petCanonicalPath('nina.pet'), '/nina.pet');
+    assert.equal(`https://animaldex-web.pages.dev${petCanonicalPath('nina.pet')}`, 'https://animaldex-web.pages.dev/nina.pet');
+    assert.equal(`https://animaldex-web.pages.dev${petCanonicalPath('pet-1')}`, 'https://animaldex-web.pages.dev/pet/pet-1');
   });
 
   it('31. WhatsApp/OG usa username nuevo', () => {
-    assert.match(pages, /\/\.pet\$\/i\.test\(handle\)/);
-    assert.match(pages, /url: `\$\{origin\}\/\$\{publicHandle\}`/);
+    assert.match(pages, /\.pet\$\/i\.test\(handle\)/);
+    assert.match(pages, /origin\}\/\$\{publicHandle\}/);
     assert.match(pages, /maybePet = \/\^\\\/pet/);
   });
 

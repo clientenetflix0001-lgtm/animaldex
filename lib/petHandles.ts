@@ -1,4 +1,4 @@
-import { isReservedPublicUsername, USERNAME_RE, normalizePublicUsername } from './publicHandles';
+import { isReservedPublicUsername, USERNAME_RE, normalizePublicUsername } from './publicHandles.ts';
 
 /** Sufijo reservado exclusivamente para mascotas. */
 export const PET_SUFFIX = '.pet';
