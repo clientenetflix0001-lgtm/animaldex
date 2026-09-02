@@ -44,7 +44,7 @@ describe('Mis alertas: acciones de resolución', () => {
   it('1. LOST activa muestra Ya apareció', () => {
     assert.equal(alertResolveActionLabel('lost'), 'Ya apareció');
     assert.match(mine, /alertResolveActionLabel\(item\.type, item\.sex\)/);
-    assert.match(create, /cfg\.createLabel/);
+    assert.match(create, /ALERT_CREATE_PRIMARY/);
   });
 
   it('2. SIGHTING activa muestra Encontró a su familia', () => {
@@ -121,7 +121,7 @@ describe('renovación y feed', () => {
   it('15. resuelta no puede renovarse', () => {
     const resolved = { status: 'resolved' as const, resolvedAt: 1, createdAt: 1, renewedAt: 1 };
     assert.equal(canRenewAlert(resolved, Date.now()), false);
-    assert.match(mine, /Renovar publicación/);
+    assert.match(mine, /alertRenewalUi/);
     assert.match(mine, /!resolved \?/);
     assert.match(mine, />Resuelta</);
   });
@@ -183,6 +183,7 @@ describe('encabezado, CTA y URL pública', () => {
   it('24. Quiero adoptar desaparece al resolver', () => {
     assert.match(detail, /alert\.type === 'adoption' && !resolved/);
     assert.match(detail, /WantToAdoptButton/);
+    assert.match(detail, /openAlertAdoption/);
     assert.doesNotMatch(detail, /db\.adoptionContact/);
   });
 
@@ -240,7 +241,7 @@ describe('contexto, tipos y no-regresión', () => {
     assert.equal(parseAlertType('sighting'), 'sighting');
     assert.equal(parseAlertType('nope'), null);
     assert.match(alertActiveHeadline('lost'), /MASCOTA PERDIDA/);
-    assert.match(create, /ALERT_TYPE_IDS/);
+    assert.match(create, /ALERT_CREATE_PRIMARY/);
     assert.match(action('createAlert'), /parseAlertType\(body\.type\)/);
   });
 
