@@ -135,9 +135,11 @@ describe('copy visible: Refugio → Bienestar Animal', () => {
     assert.doesNotMatch(createSheet, /Proteccionista \/ Refugio/);
   });
 
-  it('13. no se cambia copy de Alertas, adopción ni texto de usuario', () => {
-    assert.match(createAlert, /Página de refugio/);
-    assert.match(adoptionContact, /Este refugio todavía no agregó un medio de contacto/);
+  it('13. Alertas y Adoptar usan Bienestar Animal como tipo de página', () => {
+    assert.match(createAlert, /Página de Bienestar Animal/);
+    assert.doesNotMatch(createAlert, /Página de refugio/);
+    assert.match(adoptionContact, /Esta página de Bienestar Animal todavía no agregó un medio de contacto/);
+    assert.doesNotMatch(adoptionContact, /Este refugio todavía no agregó/);
   });
 });
 

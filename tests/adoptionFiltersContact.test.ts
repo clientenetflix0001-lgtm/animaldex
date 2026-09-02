@@ -328,7 +328,8 @@ describe('Quiero adoptar', () => {
       petName: 'Good',
     });
     assert.deepEqual(actionOpen, { kind: 'none', message: ADOPTION_CONTACT_MISSING });
-    assert.match(cardSrc, /Este refugio todavía no agregó un medio de contacto/);
+    assert.match(cardSrc, /ADOPTION_CONTACT_MISSING/);
+    assert.doesNotMatch(cardSrc, /Este refugio todavía no agregó/);
   });
 
   it('29. WhatsApp usa número correcto del refugio', () => {

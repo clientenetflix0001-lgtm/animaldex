@@ -303,7 +303,7 @@ export default function CreateAlertScreen() {
               </View>
               {isProtectorAdoption ? (
                 <Text style={styles.help}>
-                  Las solicitudes usarán el WhatsApp o teléfono de tu Página de refugio.
+                  Las solicitudes usarán el WhatsApp o teléfono de tu Página de Bienestar Animal.
                 </Text>
               ) : null}
               {needsPersonalContact ? (

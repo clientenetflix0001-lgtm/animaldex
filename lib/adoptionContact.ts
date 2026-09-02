@@ -4,7 +4,7 @@ import { petCanonicalPath } from './petHandles.ts';
 export const ADOPTION_CONTACT_REQUIRED =
   'Agregá un número de WhatsApp o teléfono para recibir solicitudes de adopción.';
 export const ADOPTION_CONTACT_MISSING =
-  'Este refugio todavía no agregó un medio de contacto para solicitudes de adopción.';
+  'Esta página de Bienestar Animal todavía no agregó un medio de contacto para solicitudes de adopción.';
 export const ADOPTION_CONTACT_INVALID = 'El número de WhatsApp o teléfono no es válido.';
 export const ADOPTION_SITE_ORIGIN = 'https://animaldex-web.pages.dev';
 

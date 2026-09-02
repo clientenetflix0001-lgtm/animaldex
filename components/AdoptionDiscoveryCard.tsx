@@ -7,7 +7,7 @@ import { adoptionStatusOverlay, compactAgeLabel } from '../lib/compactTime';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { sharePetProfile } from '../lib/share';
 import { db } from '../lib/db';
-import { adoptCtaLabel, resolveAdoptionOpenAction } from '../lib/adoptionContact';
+import { ADOPTION_CONTACT_MISSING, adoptCtaLabel, resolveAdoptionOpenAction } from '../lib/adoptionContact';
 import WantToAdoptButton from './WantToAdoptButton';
 import type { AdoptionCard } from '../lib/adoptionDiscovery';
 import { colors, spacing } from '../lib/theme';
@@ -49,7 +49,7 @@ function AdoptionDiscoveryCard({
     if (contactBusy) return;
     const petId = card.petId;
     if (!petId) {
-      Alert.alert(cta, 'Este refugio todavía no agregó un medio de contacto para solicitudes de adopción.');
+      Alert.alert(cta, ADOPTION_CONTACT_MISSING);
       return;
     }
     setContactBusy(true);
@@ -73,7 +73,7 @@ function AdoptionDiscoveryCard({
         Alert.alert(cta, 'No se pudo abrir el contacto. Probá de nuevo más tarde.');
       }
     } catch {
-      Alert.alert(cta, 'Este refugio todavía no agregó un medio de contacto para solicitudes de adopción.');
+      Alert.alert(cta, ADOPTION_CONTACT_MISSING);
     } finally {
       setContactBusy(false);
     }
