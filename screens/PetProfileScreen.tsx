@@ -41,7 +41,6 @@ import { careStatusLabel, waitingLabel, sizeLabel, speciesLabel as speciesLabelF
 import type { PublicProfile } from '../features/profiles/profileTypes';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 import { openHumanProfile } from '../lib/publicHandles';
-import { shouldCanonicalRedirectPetHandle } from '../lib/petHandles';
 import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
 import type { ApiReel } from '../lib/db';
 
@@ -79,11 +78,6 @@ export default function PetProfileScreen() {
       }
       try {
         const [prof, petPosts] = await Promise.all([db.petProfile(petId), db.petPosts(petId)]);
-        const canonical = shouldCanonicalRedirectPetHandle(petId, prof.pet?.username);
-        if (canonical) {
-          navigation.replace('PetProfile', { petId: canonical });
-          return;
-        }
         setRealPet(prof.pet);
         setRealOwner(prof.owner);
         setShelter(prof.shelter || null);
@@ -92,7 +86,7 @@ export default function PetProfileScreen() {
       } catch {}
       setLoading(false);
     })();
-  }, [petId, demoPet, navigation]);
+  }, [petId, demoPet]);
 
   const following = followedPets.includes(petId);
   const isMyPet = !demoPet && !!realPet && realPet.userId === user?.id;

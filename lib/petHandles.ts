@@ -11,6 +11,7 @@ export const PET_TAKEN_ERROR = 'Este usuario ya está en uso. Elegí otro.';
 export const PET_SUFFIX_RESERVED_ERROR = 'El sufijo .pet está reservado para mascotas';
 export const PET_USERNAME_INVALID_ERROR =
   'El usuario de la mascota debe ser nombre.pet (3-16 letras o números en la parte editable)';
+export const PET_USERNAME_IMMUTABLE_ERROR = 'El usuario de una mascota no se puede cambiar.';
 
 /** Primeros segmentos de rutas públicas: `p.pet`, `pet.pet`, `a.pet`, `m.pet`, `r.pet`. */
 const PET_ROUTE_BASES = new Set(['p', 'pet', 'a', 'm', 'r']);
@@ -145,33 +146,27 @@ export function petCanonicalPath(handleOrId: string): string {
   return `/pet/${encodeURIComponent(String(handleOrId || '').replace(/^@/, ''))}`;
 }
 
-/** Alias histórico al cambiar el @. Null si no cambió o no hay username previo. */
-export function aliasRowForUsernameChange(input: {
-  petId: string;
-  previousUsername?: string | null;
-  nextUsername: string;
-  now?: number;
-}): { oldUsername: string; petId: string; newUsername: string; createdAt: number } | null {
-  const prev = normalizePublicUsername(input.previousUsername || '');
-  const next = normalizePublicUsername(input.nextUsername || '');
-  if (!input.petId || !prev || !next || prev === next) return null;
-  return {
-    oldUsername: prev,
-    petId: input.petId,
-    newUsername: next,
-    createdAt: input.now ?? 0,
-  };
+export type PetUsernameUpdateResult =
+  | { ok: true; username: string }
+  | { ok: false; error: string; status: 409 };
+
+/**
+ * Username de mascota existente: omitido o igual → se conserva.
+ * Distinto → 409. No crea aliases. No escribe DB.
+ */
+export function resolvePetUsernameUpdate(
+  currentUsername: string | null | undefined,
+  requested: unknown
+): PetUsernameUpdateResult {
+  const current = String(currentUsername ?? '');
+  if (requested == null || String(requested).trim() === '') {
+    return { ok: true, username: current };
+  }
+  const raw = String(requested).trim();
+  const next = parsePetUsernameInput(raw) || raw.toLowerCase();
+  if (next !== current.toLowerCase()) {
+    return { ok: false, error: PET_USERNAME_IMMUTABLE_ERROR, status: 409 };
+  }
+  return { ok: true, username: current };
 }
 
-/** Redirect canónico solo cuando el path es un handle .pet distinto al actual. */
-export function shouldCanonicalRedirectPetHandle(
-  requested: string | null | undefined,
-  currentUsername: string | null | undefined
-): string | null {
-  const current = normalizePublicUsername(currentUsername || '');
-  const req = normalizePublicUsername(requested || '');
-  if (!isValidPetUsername(current)) return null;
-  if (!hasPetSuffix(req)) return null;
-  if (req === current) return null;
-  return current;
-}

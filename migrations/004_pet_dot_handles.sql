@@ -2,7 +2,9 @@
 -- ============================================================
 -- LOCAL ONLY. NO ejecutar contra D1 remoto desde este cambio.
 --
--- Esta migración SOLO prepara schema de aliases.
+-- Esta migración SOLO prepara schema de aliases de migración inicial
+-- (nina → nina.pet). El username de mascota es inmutable después de crear;
+-- no se usan aliases para renombres futuros.
 -- NO modifica pets.username.
 -- NO crea el UNIQUE index (eso es 005, DESPUÉS del renombrado).
 --

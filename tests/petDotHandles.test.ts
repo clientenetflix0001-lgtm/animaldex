@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { resolveAppLink } from '../lib/appLinks.ts';
 import { isValidPublicUsername } from '../lib/publicHandles.ts';
 import {
-  aliasRowForUsernameChange,
   applyEditablePetBase,
   applySuggestionIfCurrent,
   allocateNextPetUsername,
@@ -19,7 +18,8 @@ import {
   parsePetUsernameInput,
   petCanonicalPath,
   PET_TAKEN_ERROR,
-  shouldCanonicalRedirectPetHandle,
+  PET_USERNAME_IMMUTABLE_ERROR,
+  resolvePetUsernameUpdate,
   stripPetSuffix,
   suggestPetUsernameBase,
 } from '../lib/petHandles.ts';
@@ -329,68 +329,89 @@ describe('migración local (no ejecutada)', () => {
   });
 });
 
-describe('aliases al cambiar username', () => {
-  it('1. nina.pet → ninita.pet crea alias nina.pet', () => {
-    const row = aliasRowForUsernameChange({
-      petId: 'pet-1',
-      previousUsername: 'nina.pet',
-      nextUsername: 'ninita.pet',
-      now: 10,
+describe('username inmutable después de crear', () => {
+  it('1–2. create elige nina.pet y lo envía al backend', () => {
+    assert.equal(buildPetUsername(suggestPetUsernameBase('Nina')), 'nina.pet');
+    assert.match(addPet, /username: handle/);
+    assert.match(addPet, /db\.createPet\(payload\)/);
+    assert.match(addPet, /Este usuario será único y no podrá cambiarse después/);
+  });
+
+  it('3. editar nombre no regenera username', () => {
+    assert.match(addPet, /if \(!userTouched && !editPetId\) setUsername/);
+    assert.match(addPet, /setLockedUsername\(pet\.username/);
+  });
+
+  it('4–5. EditPet muestra @ read-only y no consulta availability', () => {
+    assert.match(addPet, /handleReadonly/);
+    assert.match(addPet, /El usuario de la mascota no se puede cambiar/);
+    assert.match(addPet, /if \(editPetId\) \{\s*setChecking\(false\)/);
+    assert.doesNotMatch(addPet, /editPetId \? \(<TextInput/);
+  });
+
+  it('6. updatePet sin username conserva nina.pet', () => {
+    assert.deepEqual(resolvePetUsernameUpdate('nina.pet', undefined), { ok: true, username: 'nina.pet' });
+    assert.deepEqual(resolvePetUsernameUpdate('nina.pet', null), { ok: true, username: 'nina.pet' });
+    assert.deepEqual(resolvePetUsernameUpdate('nina.pet', ''), { ok: true, username: 'nina.pet' });
+    assert.deepEqual(resolvePetUsernameUpdate('nina.pet', '   '), { ok: true, username: 'nina.pet' });
+  });
+
+  it('7. updatePet enviando nina.pet permite otros campos', () => {
+    assert.deepEqual(resolvePetUsernameUpdate('nina.pet', 'nina.pet'), { ok: true, username: 'nina.pet' });
+    assert.deepEqual(resolvePetUsernameUpdate('nina.pet', 'NINA.PET'), { ok: true, username: 'nina.pet' });
+    assert.deepEqual(resolvePetUsernameUpdate('nina.pet', '@nina.pet'), { ok: true, username: 'nina.pet' });
+  });
+
+  it('8–10. updatePet ninita.pet es 409 antes de UPDATE; no crea alias', () => {
+    assert.deepEqual(resolvePetUsernameUpdate('nina.pet', 'ninita.pet'), {
+      ok: false,
+      error: PET_USERNAME_IMMUTABLE_ERROR,
+      status: 409,
     });
-    assert.deepEqual(row, {
-      oldUsername: 'nina.pet',
-      petId: 'pet-1',
-      newUsername: 'ninita.pet',
-      createdAt: 10,
-    });
-    assert.match(worker, /rememberPetUsernameAlias/);
-    assert.match(action('updatePet'), /rememberPetUsernameAlias/);
-    assert.match(worker, /INSERT OR IGNORE INTO pet_username_aliases/);
+    assert.equal(PET_USERNAME_IMMUTABLE_ERROR, 'El usuario de una mascota no se puede cambiar.');
+    const update = action('updatePet');
+    assert.match(update, /resolvePetUsernameUpdate/);
+    assert.match(update, /resolvedUsername\.status/);
+    assert.doesNotMatch(update, /rememberPetUsernameAlias/);
+    assert.doesNotMatch(worker, /aliasRowForUsernameChange/);
+    assert.ok(update.indexOf('resolvePetUsernameUpdate') < update.indexOf('UPDATE pets SET'));
+    assert.ok(update.indexOf('!resolvedUsername.ok') < update.indexOf('UPDATE pets SET'));
   });
 
-  it('2–3. /nina.pet resuelve alias y canonical es /ninita.pet', () => {
-    assert.equal(shouldCanonicalRedirectPetHandle('nina.pet', 'ninita.pet'), 'ninita.pet');
-    assert.equal(petCanonicalPath('ninita.pet'), '/ninita.pet');
-    const petProfile = readFileSync(join(root, 'screens/PetProfileScreen.tsx'), 'utf8');
-    assert.match(petProfile, /shouldCanonicalRedirectPetHandle/);
-    assert.match(petProfile, /navigation\.replace\('PetProfile'/);
-    assert.match(worker, /findPetByHandleOrAlias/);
-  });
-
-  it('4. nina.pet alias queda reservado', () => {
-    assert.match(worker, /pet_username_aliases WHERE LOWER\(old_username\) = \?/);
-    assert.match(worker, /allowPetId/);
-  });
-
-  it('5. update sin cambio de username no crea alias', () => {
-    assert.equal(
-      aliasRowForUsernameChange({
-        petId: 'pet-1',
-        previousUsername: 'nina.pet',
-        nextUsername: 'nina.pet',
-      }),
-      null
-    );
-  });
-
-  it('6. alias duplicado no se pisa (INSERT OR IGNORE)', () => {
-    assert.match(worker, /INSERT OR IGNORE INTO pet_username_aliases/);
-  });
-
-  it('7–9. migration guarda old username; segundo run idempotente; UNIQUE después', () => {
+  it('11–13. migration legacy alias; /pet/nina; URL canónica /nina.pet', () => {
     const plan = planPetHandleMigration([{ id: 'pet-a', username: 'nina' }]);
     assert.equal(plan[0].alias, 'nina');
     assert.equal(plan[0].newUsername, 'nina.pet');
     assert.equal(isPetHandleMigrationIdempotent([{ id: 'pet-a', username: 'nina' }]), true);
+    assert.match(worker, /findPetByHandleOrAlias/);
+    assert.match(worker, /pet_username_aliases WHERE LOWER\(old_username\)/);
+    assert.equal(petCanonicalPath('nina.pet'), '/nina.pet');
     const uniqueSql = readFileSync(join(root, 'migrations/005_pet_dot_handles_unique.sql'), 'utf8');
     assert.match(uniqueSql, /DESPUÉS del renombrado/);
     assert.doesNotMatch(readFileSync(join(root, 'migrations/004_pet_dot_handles.sql'), 'utf8'), /CREATE UNIQUE INDEX/);
   });
 
-  it('10. Worker no explota si falta la tabla: try/catch + ensure', () => {
+  it('14–15. CreatePost / CreateReel ownership no usa username', () => {
+    const ownership = readFileSync(join(root, 'lib/petOwnership.ts'), 'utf8');
+    assert.doesNotMatch(ownership, /username/);
+    assert.match(createPost, /petsForPublishingIdentity/);
+    assert.match(createReel, /petsForPublishingIdentity/);
+  });
+
+  it('16–18. humano/Página *.pet rechazado; duplicate 409', () => {
+    assert.match(action('register'), /PET_SUFFIX_RESERVED_ERROR/);
+    assert.match(action('createProfile'), /PET_SUFFIX_RESERVED_ERROR/);
+    assert.match(action('createPet'), /PET_TAKEN_ERROR/);
+    assert.match(action('createPet'), /409/);
+    assert.equal(isValidPublicUsername('lucas.pet'), false);
+    assert.equal(isValidPublicUsername('veterinaria.pet'), false);
+  });
+
+  it('Worker aliases solo para schema/lookup legacy, no rename', () => {
     assert.match(worker, /ensurePetHandleAliasSchema/);
-    assert.match(worker, /catch \(_\) \{\}/);
-    assert.match(worker, /CREATE TABLE IF NOT EXISTS pet_username_aliases/);
+    assert.doesNotMatch(worker, /rememberPetUsernameAlias/);
+    const petProfile = readFileSync(join(root, 'screens/PetProfileScreen.tsx'), 'utf8');
+    assert.doesNotMatch(petProfile, /shouldCanonicalRedirectPetHandle/);
   });
 });
 
