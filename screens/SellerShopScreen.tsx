@@ -165,7 +165,7 @@ export default function SellerShopScreen() {
       <View style={styles.profileHeader}>
         <Image source={{ uri: thumb(avatar, 200) }} style={styles.avatar} />
         <Text style={styles.shopName}>🏪 {seller.name}</Text>
-        <Text style={styles.username}>@{seller.username}</Text>
+        <Text style={styles.username}>{seller.username}</Text>
 
         <View style={styles.statsRow}>
           {stats?.rating != null ? (
@@ -281,7 +281,7 @@ export default function SellerShopScreen() {
                 <Image source={{ uri: thumb(revAvatar, 80) }} style={styles.reviewAvatar} />
                 <View style={{ flex: 1 }}>
                   <View style={styles.reviewTop}>
-                    <Text style={styles.reviewUser}>{item.userName}</Text>
+                    <Text style={styles.reviewUser}>{item.username}</Text>
                     <Text style={styles.reviewTime}>{formatTime(timeAgoMinutes(item.createdAt))}</Text>
                   </View>
                   <View style={styles.reviewStars}>

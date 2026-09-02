@@ -423,7 +423,7 @@ export default function PetProfileScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.ownerLabel}>Refugio de {name}</Text>
             <Text style={styles.ownerName}>
-              {shelter.name} · @{shelter.username}
+              {shelter.name} · {shelter.username}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -441,7 +441,7 @@ export default function PetProfileScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.ownerLabel}>Humano de {name}</Text>
             <Text style={styles.ownerName}>
-              {ownerName} · @{ownerUsername}
+              {ownerName} · {ownerUsername}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />

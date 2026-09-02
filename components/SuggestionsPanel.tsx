@@ -63,7 +63,7 @@ export function SuggestionsPanel() {
             {user?.name ?? ''}
           </Text>
           <Text style={styles.meHandle} numberOfLines={1}>
-            @{user?.username ?? ''}
+            {user?.username ?? ''}
           </Text>
         </View>
       </Pressable>

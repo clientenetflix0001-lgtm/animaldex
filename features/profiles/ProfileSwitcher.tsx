@@ -66,7 +66,7 @@ export default function ProfileSwitcher({ compact }: Props) {
                       {selected ? '✓ ' : ''}
                       {p.name}
                     </Text>
-                    <Text style={styles.rowUser}>@{p.username}</Text>
+                    <Text style={styles.rowUser}>{p.username}</Text>
                     <Text style={styles.rowType}>{PROFILE_TYPE_LABEL[p.type]}</Text>
                   </View>
                 </Pressable>

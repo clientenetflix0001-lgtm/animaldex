@@ -115,7 +115,7 @@ export default function ListingDetailScreen() {
     () =>
       comments.map((c) => ({
         id: c.id,
-        name: c.userName,
+        name: c.username,
         avatarUri: c.avatarUrl ?? userFallbackAvatar(c.username),
         text: c.text,
         minutesAgo: timeAgoMinutes(c.createdAt),
