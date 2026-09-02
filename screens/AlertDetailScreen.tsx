@@ -24,6 +24,7 @@ import { formatCount, formatTime } from '../lib/data';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import WantToAdoptButton from '../components/WantToAdoptButton';
+import { CommentKeyboardView } from '../components/CommentKeyboardView';
 import { adoptCtaLabel } from '../lib/adoptionContact';
 import { openAlertAdoption } from '../lib/openAlertAdoption';
 import { useGuestAccess } from '../lib/guestAccess';
