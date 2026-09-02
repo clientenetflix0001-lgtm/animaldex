@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,8 @@ import { postNavParams, sharePetProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import PetStatusAvatar from '../components/PetStatusAvatar';
+import QrLostPetModal from '../components/QrLostPetModal';
+import { shouldShowQrLostPrompt } from '../lib/qrLostPet';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
@@ -57,6 +59,7 @@ export default function PetProfileScreen() {
   const { guest, cameFromLink, requireLogin, inviteBar, closeExternal, goBackOrClose } = useGuestAccess();
 
   const petId = route.params.petId;
+  const fromQr = !!route.params.fromQr;
   const demoPet = useMemo(() => PETS.find((p) => p.id === petId), [petId]);
 
   const [realPet, setRealPet] = useState<ApiPet | null>(null);
@@ -69,6 +72,8 @@ export default function PetProfileScreen() {
   const [sharingLocation, setSharingLocation] = useState(false);
   const [locationDone, setLocationDone] = useState(false);
   const [galleryTab, setGalleryTab] = useState<'posts' | 'reels'>('posts');
+  const [qrLostOpen, setQrLostOpen] = useState(false);
+  const qrLostArmed = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -91,6 +96,21 @@ export default function PetProfileScreen() {
 
   const following = followedPets.includes(petId);
   const isMyPet = !demoPet && !!realPet && realPet.userId === user?.id;
+
+  useEffect(() => {
+    if (qrLostArmed.current) return;
+    if (
+      shouldShowQrLostPrompt({
+        fromQr,
+        careStatus: realPet?.careStatus,
+        isOwner: isMyPet,
+        loading,
+      })
+    ) {
+      qrLostArmed.current = true;
+      setQrLostOpen(true);
+    }
+  }, [fromQr, realPet?.careStatus, isMyPet, loading]);
   const availW = desktopWeb ? Math.min(width, CONTENT.page) : width;
   const tile = (availW - spacing.lg * 2 - 4) / 3;
   const openPost = useCallback(
@@ -142,13 +162,13 @@ export default function PetProfileScreen() {
   const shareMyLocation = useCallback(async () => {
     if (demoPet) {
       Alert.alert('No disponible', 'Esta mascota es una demostración y no tiene dueño real.');
-      return;
+      return false;
     }
     const internalId = realPet?.id;
     if (!internalId) {
-      if (loading) return;
+      if (loading) return false;
       Alert.alert('Espera un momento', 'Todavía estamos cargando el perfil de la mascota.');
-      return;
+      return false;
     }
     setSharingLocation(true);
     try {
@@ -158,7 +178,7 @@ export default function PetProfileScreen() {
           'Permiso no otorgado',
           'No compartimos tu ubicación porque no diste permiso. Puedes intentarlo de nuevo cuando quieras.'
         );
-        return;
+        return false;
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const result = await db.shareLocation(
@@ -176,8 +196,10 @@ export default function PetProfileScreen() {
           'El dueño aún no tiene un teléfono verificado, así que no se envió el SMS, pero tu ubicación quedó guardada.'
         );
       }
+      return true;
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo obtener tu ubicación');
+      return false;
     } finally {
       setSharingLocation(false);
     }
@@ -537,6 +559,16 @@ export default function PetProfileScreen() {
         showsVerticalScrollIndicator={false}
       />
       {inviteBar}
+      <QrLostPetModal
+        visible={qrLostOpen}
+        petName={realPet?.name}
+        sending={sharingLocation}
+        onClose={() => setQrLostOpen(false)}
+        onSendLocation={async () => {
+          const ok = await shareMyLocation();
+          if (ok) setQrLostOpen(false);
+        }}
+      />
     </View>
   );
 }

@@ -42,7 +42,7 @@ export default function TagWelcomeScreen() {
         setState('claimed');
         // Pequeña pausa para que se note el mensaje antes de redirigir.
         setTimeout(() => {
-          navigation.replace('PetProfile', { petId: res.pet!.id });
+          navigation.replace('PetProfile', { petId: res.pet!.id, fromQr: true });
         }, 700);
         return;
       }

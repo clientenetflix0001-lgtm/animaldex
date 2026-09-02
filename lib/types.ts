@@ -2,7 +2,7 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 
 export type TabProfileStackParamList = {
   TabRoot: undefined;
-  PetProfile: { petId: string };
+  PetProfile: { petId: string; fromQr?: boolean };
   PublicProfile: { profileId?: string; username?: string };
   UserProfile: { userId: string };
   AdoptionDiscovery: undefined;
@@ -23,7 +23,7 @@ export type RootStackParamList = {
   Auth: { mode?: 'login' | 'register' } | undefined;
   Tabs: NavigatorScreenParams<TabParamList> | undefined;
   Explorar: undefined;
-  PetProfile: { petId: string };
+  PetProfile: { petId: string; fromQr?: boolean };
   UserProfile: { userId: string };
   PostDetail: { postId: string; d?: string };
   VerifyPhone: undefined;
