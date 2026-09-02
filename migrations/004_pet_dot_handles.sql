@@ -2,11 +2,14 @@
 -- ============================================================
 -- LOCAL ONLY. NO ejecutar contra D1 remoto desde este cambio.
 --
--- Esta migración SOLO prepara schema de aliases de migración inicial
--- (nina → nina.pet). El username de mascota es inmutable después de crear;
+-- Esta migración SOLO prepara schema de aliases.
+-- Uso 1: migración inicial (nina → nina.pet).
+-- Uso 2: tombstone de delete (nina.pet queda reservado para siempre).
+-- El username de mascota es inmutable después de crear;
 -- no se usan aliases para renombres futuros.
 -- NO modifica pets.username.
 -- NO crea el UNIQUE index (eso es 005, DESPUÉS del renombrado).
+-- Schema suficiente: no hace falta columna extra ni migration 006.
 --
 -- Worker también puede crear esta tabla con CREATE IF NOT EXISTS
 -- (ensurePetHandleAliasSchema). Correr 004 es idempotente.

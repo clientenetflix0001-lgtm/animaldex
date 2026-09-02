@@ -53,6 +53,8 @@ import {
   isValidPetUsername,
   parsePetUsernameInput,
   petUsernameCandidates,
+  PET_DELETE_TOMBSTONE_SQL,
+  petDeleteTombstoneRows,
   resolvePetUsernameUpdate,
   suggestPetUsernameBase,
 } from '../lib/petHandles.ts';
@@ -252,7 +254,7 @@ async function usernameTaken(env, username, allowAccountId, allowProfileId, allo
   if (pets[0] && pets[0].id !== allowPetId) return true;
   try {
     const aliases = await d1(env, 'SELECT pet_id FROM pet_username_aliases WHERE LOWER(old_username) = ?', [handle]);
-    if (aliases[0] && aliases[0].pet_id !== allowPetId) return true;
+    if (aliases[0]) return true;
   } catch (_) {}
   return false;
 }
@@ -302,14 +304,13 @@ async function takenPetHandleSet(env, candidates, excludePetId) {
       candidates
     );
     for (const r of aliases) {
-      if (excludePetId && r.pet_id === excludePetId) continue;
       if (r.u) set.add(r.u);
     }
   } catch (_) {}
   return set;
 }
 
-/** Aliases de migración inicial (nina → nina.pet). No se usan para renombres futuros. */
+/** Aliases de migración inicial + tombstone de delete. No se usan para renombres. */
 async function ensurePetHandleAliasSchema(env) {
   if (env._petAliasSchemaReady) return;
   await d1(env, `CREATE TABLE IF NOT EXISTS pet_username_aliases (
@@ -2678,8 +2679,32 @@ async function handleDb(request, env) {
     if (action === 'deletePet') {
       const p = await findOwnedPet(env, body.petId, userId);
       if (!p) return json({ error: 'Esa mascota no es tuya' }, 403);
-      await d1(env, "DELETE FROM follows WHERE target_type = 'pet' AND target_id = ?", [p.id]);
-      await d1(env, 'DELETE FROM pets WHERE id = ?', [p.id]);
+      await ensurePetHandleAliasSchema(env);
+      let existingAliases = [];
+      try {
+        existingAliases = await d1(env, 'SELECT old_username FROM pet_username_aliases WHERE pet_id = ?', [p.id]);
+      } catch (_) {}
+      const tombstones = petDeleteTombstoneRows(
+        p.id,
+        p.username,
+        existingAliases.map((r) => r.old_username)
+      );
+      const reserve = tombstones.map((row) =>
+        env.DB.prepare(PET_DELETE_TOMBSTONE_SQL).bind(row.oldUsername, row.petId, row.newUsername, now)
+      );
+      const remove = [
+        env.DB.prepare("DELETE FROM follows WHERE target_type = 'pet' AND target_id = ?").bind(p.id),
+        env.DB.prepare('DELETE FROM pets WHERE id = ?').bind(p.id),
+      ];
+      if (typeof env.DB.batch === 'function') {
+        await env.DB.batch([...reserve, ...remove]);
+      } else {
+        for (const row of tombstones) {
+          await d1(env, PET_DELETE_TOMBSTONE_SQL, [row.oldUsername, row.petId, row.newUsername, now]);
+        }
+        await d1(env, "DELETE FROM follows WHERE target_type = 'pet' AND target_id = ?", [p.id]);
+        await d1(env, 'DELETE FROM pets WHERE id = ?', [p.id]);
+      }
       return json({ ok: true, petId: p.id });
     }
 

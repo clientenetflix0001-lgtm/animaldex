@@ -170,3 +170,59 @@ export function resolvePetUsernameUpdate(
   return { ok: true, username: current };
 }
 
+export const PET_DELETE_TOMBSTONE_SQL =
+  'INSERT OR IGNORE INTO pet_username_aliases (old_username, pet_id, new_username, created_at) VALUES (?, ?, ?, ?)';
+
+function petHandleKey(raw: string): string {
+  return normalizePublicUsername(raw);
+}
+
+/** Handles a reservar al borrar: username actual + aliases legacy del mismo pet. */
+export function petDeleteReservedHandles(
+  username: string | null | undefined,
+  existingAliases: readonly string[] = []
+): string[] {
+  const out: string[] = [];
+  const add = (raw: string) => {
+    const s = petHandleKey(raw);
+    if (s && !out.includes(s)) out.push(s);
+  };
+  add(String(username || ''));
+  for (const a of existingAliases) add(a);
+  return out;
+}
+
+export function petDeleteTombstoneRows(
+  petId: string,
+  username: string | null | undefined,
+  existingAliases: readonly string[] = []
+): Array<{ oldUsername: string; petId: string; newUsername: string }> {
+  const canonical = petHandleKey(String(username || ''));
+  return petDeleteReservedHandles(username, existingAliases).map((oldUsername) => ({
+    oldUsername,
+    petId,
+    newUsername: canonical || oldUsername,
+  }));
+}
+
+/** INSERT OR IGNORE: mismo pet o ausente → ok; otra mascota → no sobrescribir. */
+export function canInsertPetHandleTombstone(
+  existingPetId: string | null | undefined,
+  petId: string
+): boolean {
+  if (!existingPetId) return true;
+  return existingPetId === petId;
+}
+
+/**
+ * Tras delete el tombstone reserva el handle, pero el lookup solo
+ * resuelve si la fila de pets sigue existiendo.
+ */
+export function petHandleLookupAfterDelete(opts: {
+  liveByUsername: { id: string } | null;
+  aliasTargetPet: { id: string } | null;
+}): { id: string } | null {
+  if (opts.liveByUsername) return opts.liveByUsername;
+  return opts.aliasTargetPet;
+}
+

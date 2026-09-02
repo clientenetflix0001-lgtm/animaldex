@@ -19,6 +19,11 @@ import {
   petCanonicalPath,
   PET_TAKEN_ERROR,
   PET_USERNAME_IMMUTABLE_ERROR,
+  PET_DELETE_TOMBSTONE_SQL,
+  canInsertPetHandleTombstone,
+  petDeleteReservedHandles,
+  petDeleteTombstoneRows,
+  petHandleLookupAfterDelete,
   resolvePetUsernameUpdate,
   stripPetSuffix,
   suggestPetUsernameBase,
@@ -438,5 +443,111 @@ describe('disponibilidad endpoint y reserved bases', () => {
     const scan = resolveScannedValue('https://animaldex-web.pages.dev/nina.pet');
     assert.equal(scan.kind, 'pet');
     if (scan.kind === 'pet') assert.equal(scan.id, 'nina.pet');
+  });
+});
+
+describe('delete reserva username permanente', () => {
+  it('1–2. delete nina.pet reserva nina.pet y queda unavailable', () => {
+    const rows = petDeleteTombstoneRows('abc123', 'nina.pet', []);
+    assert.deepEqual(rows, [{ oldUsername: 'nina.pet', petId: 'abc123', newUsername: 'nina.pet' }]);
+    assert.ok(petDeleteReservedHandles('nina.pet').includes('nina.pet'));
+    assert.match(PET_DELETE_TOMBSTONE_SQL, /INSERT OR IGNORE INTO pet_username_aliases/);
+    const del = action('deletePet');
+    assert.match(del, /petDeleteTombstoneRows/);
+    assert.match(del, /PET_DELETE_TOMBSTONE_SQL/);
+    assert.match(worker, /if \(aliases\[0\]\) return true/);
+    assert.doesNotMatch(worker, /aliases\[0\] && aliases\[0\]\.pet_id !== allowPetId/);
+  });
+
+  it('3. suggestion después de delete ofrece siguiente handle', () => {
+    assert.equal(firstFreePetUsername('nina', ['nina.pet']), 'nina2.pet');
+    assert.equal(allocateNextPetUsername('nina', ['nina.pet', 'nina']), 'nina2.pet');
+    assert.match(worker, /takenPetHandleSet/);
+    assert.doesNotMatch(worker, /excludePetId && r\.pet_id === excludePetId/);
+  });
+
+  it('4. otro pet no puede registrar nina.pet', () => {
+    const create = action('createPet');
+    assert.match(create, /usernameTaken\(env, username, null, null, null\)/);
+    assert.match(create, /PET_TAKEN_ERROR/);
+    assert.match(create, /409/);
+  });
+
+  it('5–6. tombstone no se sobrescribe; delete repetido es idempotente', () => {
+    assert.equal(canInsertPetHandleTombstone(null, 'abc123'), true);
+    assert.equal(canInsertPetHandleTombstone('abc123', 'abc123'), true);
+    assert.equal(canInsertPetHandleTombstone('other-pet', 'abc123'), false);
+    assert.match(PET_DELETE_TOMBSTONE_SQL, /INSERT OR IGNORE/);
+    const del = action('deletePet');
+    assert.match(del, /INSERT OR IGNORE INTO pet_username_aliases|PET_DELETE_TOMBSTONE_SQL/);
+    const again = petDeleteTombstoneRows('abc123', 'nina.pet', ['nina.pet']);
+    assert.deepEqual(again, [{ oldUsername: 'nina.pet', petId: 'abc123', newUsername: 'nina.pet' }]);
+  });
+
+  it('7–8. borrar pet con alias legacy reserva nina y nina.pet', () => {
+    const reserved = petDeleteReservedHandles('nina.pet', ['nina']);
+    assert.deepEqual(reserved, ['nina.pet', 'nina']);
+    const rows = petDeleteTombstoneRows('abc123', 'nina.pet', ['nina']);
+    assert.deepEqual(rows, [
+      { oldUsername: 'nina.pet', petId: 'abc123', newUsername: 'nina.pet' },
+      { oldUsername: 'nina', petId: 'abc123', newUsername: 'nina.pet' },
+    ]);
+    const del = action('deletePet');
+    assert.match(del, /SELECT old_username FROM pet_username_aliases WHERE pet_id/);
+  });
+
+  it('9–10. /nina.pet y /pet/nina tras delete no resuelven otra mascota', () => {
+    assert.equal(
+      petHandleLookupAfterDelete({ liveByUsername: null, aliasTargetPet: null }),
+      null
+    );
+    assert.equal(
+      petHandleLookupAfterDelete({
+        liveByUsername: null,
+        aliasTargetPet: { id: 'other' },
+      })?.id,
+      'other'
+    );
+    assert.equal(
+      petHandleLookupAfterDelete({ liveByUsername: { id: 'live' }, aliasTargetPet: { id: 'other' } })?.id,
+      'live'
+    );
+    const lookup = worker.slice(worker.indexOf('async function findPetByHandleOrAlias'));
+    assert.match(lookup, /return rows\[0\] \|\| null/);
+    assert.match(lookup, /SELECT \* FROM pets WHERE id = \? LIMIT 1/);
+    assert.equal(petCanonicalPath('nina.pet'), '/nina.pet');
+    assert.equal(petCanonicalPath('nina'), '/pet/nina');
+  });
+
+  it('11–13. archivePet / adoptada / transferencia NO crean tombstone', () => {
+    const archive = action('archivePet');
+    assert.match(archive, /UPDATE pets SET archived_at/);
+    assert.doesNotMatch(archive, /pet_username_aliases/);
+    const update = action('updatePet');
+    assert.doesNotMatch(update, /PET_DELETE_TOMBSTONE_SQL/);
+    assert.doesNotMatch(update, /petDeleteTombstoneRows/);
+    assert.equal(worker.includes("action === 'transferPet'"), false);
+    assert.doesNotMatch(worker, /INSERT INTO pet_transfers/);
+  });
+
+  it('14–17. ownership, duplicate 409 y namespace humano/Página intactos', () => {
+    const ownership = readFileSync(join(root, 'lib/petOwnership.ts'), 'utf8');
+    assert.doesNotMatch(ownership, /username/);
+    assert.match(createPost, /petsForPublishingIdentity/);
+    assert.match(createReel, /petsForPublishingIdentity/);
+    assert.match(action('createPet'), /409/);
+    assert.match(action('register'), /PET_SUFFIX_RESERVED_ERROR/);
+    assert.match(action('createProfile'), /PET_SUFFIX_RESERVED_ERROR/);
+    assert.equal(isValidPublicUsername('lucas.pet'), false);
+    assert.match(worker, /if \(aliases\[0\]\) return true/);
+  });
+
+  it('schema 004 alcanza; delete reserva ANTES de borrar', () => {
+    assert.match(migrationSql, /tombstone de delete/);
+    assert.doesNotMatch(migrationSql, /CREATE UNIQUE INDEX/);
+    const del = action('deletePet');
+    assert.ok(del.indexOf('petDeleteTombstoneRows') < del.indexOf('DELETE FROM pets'));
+    assert.ok(del.indexOf('PET_DELETE_TOMBSTONE_SQL') < del.indexOf('DELETE FROM pets'));
+    assert.match(del, /env\.DB\.batch/);
   });
 });
