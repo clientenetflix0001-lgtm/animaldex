@@ -77,6 +77,13 @@ import {
   parseAlertResolutionType,
   parseAlertType,
 } from '../lib/alerts.ts';
+import {
+  TAG_CODE_INVALID,
+  TAG_CODE_REQUIRED,
+  TAG_CODE_TAKEN,
+  parseIncomingTagCode,
+  parseManualTagCode,
+} from '../lib/tags.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -417,6 +424,13 @@ async function ensureAlertsSchema(env) {
   try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN contact_phone TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN renewal_notified_at INTEGER').run(); } catch (_) {}
   env._alertsSchemaReady = true;
+}
+
+async function ensurePetTagsPublicCode(env) {
+  if (env._petTagsPublicCodeReady) return;
+  try { await env.DB.prepare('ALTER TABLE pet_tags ADD COLUMN public_code TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_pet_tags_public_code ON pet_tags (public_code)').run(); } catch (_) {}
+  env._petTagsPublicCodeReady = true;
 }
 
 async function ensurePushSchema(env) {
@@ -1476,6 +1490,7 @@ async function handleDb(request, env) {
     await ensureReelsSchema(env);
     await ensurePetHandleAliasSchema(env);
     await ensureAlertsSchema(env);
+    await ensurePetTagsPublicCode(env);
 
     const publicReel = await handlePublicReelAction(env, body, json, clean, request, authUser);
     if (publicReel) return publicReel;
@@ -2107,9 +2122,9 @@ async function handleDb(request, env) {
     // Público: cualquiera que escanee una chapita puede consultar su estado,
     // incluso sin haber iniciado sesión todavía (primera vez que se escanea).
     if (action === 'tagStatus') {
-      const code = Number(body.code);
-      if (!Number.isInteger(code)) return json({ error: 'Código inválido' }, 400);
-      const rows = await d1(env, 'SELECT * FROM pet_tags WHERE code = ?', [code]);
+      const code = parseIncomingTagCode(body.code);
+      if (!code) return json({ error: 'Código inválido' }, 400);
+      const rows = await d1(env, 'SELECT * FROM pet_tags WHERE CAST(code AS TEXT) = ? OR public_code = ?', [code, code]);
       if (!rows[0]) return json({ ok: true, exists: false });
       const tag = rows[0];
       if (tag.status === 'claimed' && tag.pet_id) {
@@ -2264,10 +2279,10 @@ async function handleDb(request, env) {
     // autenticado. Se usa justo después de crear la mascota en el flujo de
     // "escaneé una chapita → me registro → registro a mi mascota".
     if (action === 'claimTag') {
-      const code = Number(body.code);
+      const code = parseIncomingTagCode(body.code);
       const petId = clean(body.petId, 80);
-      if (!Number.isInteger(code)) return json({ error: 'Código inválido' }, 400);
-      const tags = await d1(env, 'SELECT * FROM pet_tags WHERE code = ?', [code]);
+      if (!code) return json({ error: 'Código inválido' }, 400);
+      const tags = await d1(env, 'SELECT * FROM pet_tags WHERE CAST(code AS TEXT) = ? OR public_code = ?', [code, code]);
       if (!tags[0]) return json({ error: 'Chapita no encontrada' }, 404);
       if (tags[0].status === 'claimed') return json({ error: 'Esta chapita ya fue asignada a una mascota' }, 409);
       const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
@@ -2275,7 +2290,7 @@ async function handleDb(request, env) {
       await d1(
         env,
         "UPDATE pet_tags SET status = 'claimed', pet_id = ?, claimed_by_user_id = ?, claimed_at = ? WHERE code = ?",
-        [petId, userId, now, code]
+        [petId, userId, now, tags[0].code]
       );
       return json({ ok: true });
     }
@@ -2287,12 +2302,27 @@ async function handleDb(request, env) {
       if (!ADMIN_USERNAMES.includes(username)) return json({ error: 'No autorizado' }, 403);
 
       if (action === 'createTag') {
+        const publicCode = parseManualTagCode(body.code);
+        if (!String(body.code ?? '').trim()) return json({ error: TAG_CODE_REQUIRED }, 400);
+        if (!publicCode) return json({ error: TAG_CODE_INVALID }, 400);
+        const existing = await d1(
+          env,
+          'SELECT code FROM pet_tags WHERE public_code = ? OR CAST(code AS TEXT) = ? LIMIT 1',
+          [publicCode, publicCode]
+        );
+        if (existing[0]) return json({ error: TAG_CODE_TAKEN }, 409);
         const maxRows = await d1(env, 'SELECT MAX(code) AS m FROM pet_tags');
         const nextCode = (maxRows[0].m || 0) + 1;
-        await d1(env, 'INSERT INTO pet_tags (code, status, created_by, created_at) VALUES (?, ?, ?, ?)', [
-          nextCode, 'unclaimed', userId, now,
-        ]);
-        return json({ ok: true, code: nextCode });
+        try {
+          await d1(env, 'INSERT INTO pet_tags (code, public_code, status, created_by, created_at) VALUES (?, ?, ?, ?, ?)', [
+            nextCode, publicCode, 'unclaimed', userId, now,
+          ]);
+        } catch (e) {
+          const msg = String(e && e.message || '');
+          if (/UNIQUE|constraint/i.test(msg)) return json({ error: TAG_CODE_TAKEN }, 409);
+          throw e;
+        }
+        return json({ ok: true, code: publicCode });
       }
 
       // listTags
@@ -2305,7 +2335,7 @@ async function handleDb(request, env) {
       return json({
         ok: true,
         tags: rows.map((r) => ({
-          code: r.code,
+          code: r.public_code || String(r.code),
           status: r.status,
           petId: r.pet_id || null,
           petName: r.pet_name || null,

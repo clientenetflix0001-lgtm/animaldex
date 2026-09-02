@@ -27,11 +27,11 @@ export type RootStackParamList = {
   UserProfile: { userId: string };
   PostDetail: { postId: string; d?: string };
   VerifyPhone: undefined;
-  AddPet: { tagCode?: number; petId?: string; profileId?: string } | undefined;
+  AddPet: { tagCode?: string; petId?: string; profileId?: string } | undefined;
   EditProfile: undefined;
   EditPublicProfile: { profileId: string };
   QRScanner: undefined;
-  TagWelcome: { code: number };
+  TagWelcome: { code: string };
   AdminTags: undefined;
   CreateAlert: undefined;
   MyAlerts: undefined;

@@ -258,7 +258,7 @@ export interface ApiSellerReview {
 }
 
 export interface ApiTag {
-  code: number;
+  code: string;
   status: 'unclaimed' | 'claimed';
   petId: string | null;
   petName: string | null;
@@ -495,14 +495,14 @@ export const db = {
   // ---------- Chapitas QR (links de invitación) ----------
   // Público: no requiere sesión (se llama antes de que el usuario se registre).
   tagStatus: (
-    code: number
+    code: string | number
   ): Promise<{ ok: boolean; exists: boolean; status?: 'unclaimed' | 'claimed'; pet?: ApiPet | null }> =>
-    call('/db', { action: 'tagStatus', code }),
+    call('/db', { action: 'tagStatus', code: String(code) }),
   // Requiere sesión: vincula la chapita a una mascota recién creada.
-  claimTag: (code: number, petId: string): Promise<{ ok: boolean }> =>
-    call('/db', { action: 'claimTag', code, petId }),
+  claimTag: (code: string | number, petId: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'claimTag', code: String(code), petId }),
   // Solo admin (lucasfuentes): genera un nuevo código y lista todos los existentes.
-  createTag: (): Promise<{ ok: boolean; code: number }> => call('/db', { action: 'createTag' }),
+  createTag: (code: string): Promise<{ ok: boolean; code: string }> => call('/db', { action: 'createTag', code }),
   listTags: (): Promise<{ ok: boolean; tags: ApiTag[] }> => call('/db', { action: 'listTags' }),
 
   // ---------- Alertas (animales perdidos/encontrados) ----------

@@ -17,7 +17,7 @@ export type ScanResolution =
   | { kind: 'user'; id: string; raw: string }
   | { kind: 'handle'; username: string; raw: string }
   | { kind: 'post'; id: string; raw: string }
-  | { kind: 'tag'; code: number; raw: string }
+  | { kind: 'tag'; code: string; raw: string }
   | { kind: 'url'; url: string; raw: string }
   | { kind: 'text'; raw: string };
 
@@ -45,13 +45,12 @@ function matchKnownPath(path: string): { kind: 'pet' | 'user' | 'handle' | 'post
 export function resolveScannedValue(rawValue: string): ScanResolution {
   const value = (rawValue || '').trim();
 
-  // 0) Chapita QR de mascota: cualquier URL con ?qr=<código numérico>,
-  //    sin importar el dominio (funciona con el dominio final del usuario
-  //    o con el de preview mientras tanto).
-  const tagMatch = value.match(/[?&]qr=(\d+)/);
+  // 0) Chapita QR de mascota: cualquier URL con ?qr=<código>,
+  //    numérico antiguo (17) o alfanumérico nuevo (AAA123).
+  const tagMatch = value.match(/[?&]qr=([A-Za-z0-9]+)/i);
   if (tagMatch) {
-    const code = Number(tagMatch[1]);
-    if (Number.isInteger(code)) return { kind: 'tag', code, raw: value };
+    const code = String(tagMatch[1] || '').toUpperCase();
+    if (code) return { kind: 'tag', code, raw: value };
   }
 
   // 1) Deep link con esquema propio de la app: animaldex://pet/xxx
