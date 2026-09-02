@@ -13,9 +13,10 @@ import { STORY_EXPIRED_MESSAGE, nextStoryIndex, prevStoryIndex } from '../lib/st
 import {
   STORY_HOLD_DELAY_MS,
   remainingProgressMs,
-  shouldIgnoreTapAfterHold,
+  shouldNavigateOnRelease,
   storyChromeInsets,
   storyProgressDurationMs,
+  storyStageInsets,
 } from '../lib/storyViewerUi';
 import { notifyStoriesChanged } from '../lib/storyRailRefresh';
 import { thumb, userFallbackAvatar } from '../lib/images';
@@ -53,6 +54,7 @@ export default function StoryViewerScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
+  const stage = storyStageInsets(insets);
   const chrome = storyChromeInsets(insets);
   const { user } = useStore();
   const [stories, setStories] = useState<ApiStory[]>([]);
@@ -63,6 +65,7 @@ export default function StoryViewerScreen() {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [error, setError] = useState('');
   const holdRef = useRef(false);
+  const downAtRef = useRef(0);
   const progress = useSharedValue(0);
 
   const params = route.params || {};
@@ -224,23 +227,29 @@ export default function StoryViewerScreen() {
     Alert.alert('Gracias', 'Recibimos el reporte.');
   }, [current]);
 
-  const onPressInTap = useCallback(() => {
+  const onZonePressIn = useCallback(() => {
     holdRef.current = false;
-  }, []);
-
-  const onHoldStart = useCallback(() => {
-    holdRef.current = true;
+    downAtRef.current = Date.now();
     setPaused(true);
   }, []);
 
-  const onHoldEnd = useCallback(() => {
+  const onZoneLongPress = useCallback(() => {
+    holdRef.current = true;
+  }, []);
+
+  const onZonePressOut = useCallback(() => {
     setPaused(false);
   }, []);
 
   const consumeHoldTap = useCallback(() => {
-    if (!shouldIgnoreTapAfterHold(holdRef.current)) return false;
+    const skip = !shouldNavigateOnRelease({
+      held: holdRef.current,
+      downAtMs: downAtRef.current,
+      nowMs: Date.now(),
+      holdDelayMs: STORY_HOLD_DELAY_MS,
+    });
     holdRef.current = false;
-    return true;
+    return skip;
   }, []);
 
   const onTapLeft = useCallback(() => {
@@ -280,67 +289,78 @@ export default function StoryViewerScreen() {
 
   return (
     <View style={styles.black}>
-      {current.mediaType === 'video' && mediaUri ? (
-        <StoryVideo uri={mediaUri} paused={frozen} />
-      ) : (
-        <Image source={{ uri: mediaUri || current.thumbnailUrl || '' }} style={StyleSheet.absoluteFill} contentFit="cover" />
-      )}
-      <LinearGradient colors={['rgba(0,0,0,0.5)', 'transparent']} style={styles.topFade} pointerEvents="none" />
-      <LinearGradient colors={['transparent', 'rgba(0,0,0,0.45)']} style={styles.bottomFade} pointerEvents="none" />
+      <View style={[styles.stage, stage]}>
+        <View style={styles.media} pointerEvents="none">
+          {current.mediaType === 'video' && mediaUri ? (
+            <StoryVideo uri={mediaUri} paused={frozen} />
+          ) : (
+            <Image
+              source={{ uri: mediaUri || current.thumbnailUrl || '' }}
+              style={styles.mediaFill}
+              contentFit="cover"
+            />
+          )}
+          <LinearGradient colors={['rgba(0,0,0,0.5)', 'transparent']} style={styles.topFade} pointerEvents="none" />
+          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.45)']} style={styles.bottomFade} pointerEvents="none" />
+        </View>
 
-      <View style={styles.taps} pointerEvents="box-none">
-        <Pressable
-          style={styles.tapLeft}
-          onPressIn={onPressInTap}
-          onPress={onTapLeft}
-          onLongPress={onHoldStart}
-          onPressOut={onHoldEnd}
-          delayLongPress={STORY_HOLD_DELAY_MS}
-          accessibilityLabel="Historia anterior"
-        />
-        <Pressable
-          style={styles.tapRight}
-          onPressIn={onPressInTap}
-          onPress={onTapRight}
-          onLongPress={onHoldStart}
-          onPressOut={onHoldEnd}
-          delayLongPress={STORY_HOLD_DELAY_MS}
-          accessibilityLabel="Historia siguiente"
-        />
-      </View>
+        <View style={styles.taps}>
+          <Pressable
+            style={styles.tapLeft}
+            onPressIn={onZonePressIn}
+            onPress={onTapLeft}
+            onLongPress={onZoneLongPress}
+            onPressOut={onZonePressOut}
+            delayLongPress={STORY_HOLD_DELAY_MS}
+            android_ripple={null}
+            accessibilityLabel="Historia anterior"
+          />
+          <Pressable
+            style={styles.tapRight}
+            onPressIn={onZonePressIn}
+            onPress={onTapRight}
+            onLongPress={onZoneLongPress}
+            onPressOut={onZonePressOut}
+            delayLongPress={STORY_HOLD_DELAY_MS}
+            android_ripple={null}
+            accessibilityLabel="Historia siguiente"
+          />
+        </View>
 
-      <View style={[styles.chrome, chrome]} pointerEvents="box-none">
-        <StoryProgress count={stories.length} index={index} progress={progress} />
-        <View style={styles.topRow}>
-          <View style={styles.identity}>
-            <Image source={{ uri: thumb(headerAvatar, 80) }} style={styles.avatar} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name} numberOfLines={1}>
-                {headerName}
-              </Text>
-              {subline ? (
-                <Text style={styles.meta} numberOfLines={1}>
-                  {subline}
+        <View style={styles.topChrome} pointerEvents="box-none">
+          <StoryProgress count={stories.length} index={index} progress={progress} />
+          <View style={styles.topRow}>
+            <View style={styles.identity}>
+              <Image source={{ uri: thumb(headerAvatar, 80) }} style={styles.avatar} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {headerName}
                 </Text>
-              ) : null}
+                {subline ? (
+                  <Text style={styles.meta} numberOfLines={1}>
+                    {subline}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            <View style={styles.topActions}>
+              {owner ? (
+                <Pressable onPress={remove} accessibilityLabel="Más opciones" hitSlop={10}>
+                  <Ionicons name="ellipsis-horizontal" size={22} color="#fff" />
+                </Pressable>
+              ) : (
+                <Pressable onPress={report} accessibilityLabel="Reportar" hitSlop={10}>
+                  <Ionicons name="flag-outline" size={20} color="#fff" />
+                </Pressable>
+              )}
+              <Pressable onPress={close} accessibilityLabel="Cerrar" hitSlop={10}>
+                <Ionicons name="close" size={26} color="#fff" />
+              </Pressable>
             </View>
           </View>
-          <View style={styles.topActions}>
-            {owner ? (
-              <Pressable onPress={remove} accessibilityLabel="Más opciones" hitSlop={10}>
-                <Ionicons name="ellipsis-horizontal" size={22} color="#fff" />
-              </Pressable>
-            ) : (
-              <Pressable onPress={report} accessibilityLabel="Reportar" hitSlop={10}>
-                <Ionicons name="flag-outline" size={20} color="#fff" />
-              </Pressable>
-            )}
-            <Pressable onPress={close} accessibilityLabel="Cerrar" hitSlop={10}>
-              <Ionicons name="close" size={26} color="#fff" />
-            </Pressable>
-          </View>
         </View>
-        <View style={styles.bottomBlock} pointerEvents="box-none">
+
+        <View style={styles.bottomChrome} pointerEvents="box-none">
           {current.caption ? <Text style={styles.caption}>{current.caption}</Text> : null}
           <Pressable style={styles.commentBtn} onPress={() => setCommentsOpen(true)} accessibilityLabel="Comentar">
             <Ionicons name="chatbubble-outline" size={20} color="#fff" />
@@ -361,12 +381,16 @@ export default function StoryViewerScreen() {
 
 const styles = StyleSheet.create({
   black: { flex: 1, backgroundColor: '#000' },
+  stage: { flex: 1, overflow: 'hidden' },
+  media: { ...StyleSheet.absoluteFillObject },
+  mediaFill: { width: '100%', height: '100%' },
   topFade: { position: 'absolute', top: 0, left: 0, right: 0, height: 140 },
   bottomFade: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 180 },
   taps: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', zIndex: 1 },
-  tapLeft: { flex: 45 },
-  tapRight: { flex: 55 },
-  chrome: { ...StyleSheet.absoluteFillObject, zIndex: 2, justifyContent: 'space-between' },
+  tapLeft: { flex: 1 },
+  tapRight: { flex: 1 },
+  topChrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 },
+  bottomChrome: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 2, paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -379,7 +403,6 @@ const styles = StyleSheet.create({
   name: { color: '#fff', fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 4 },
   meta: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 1, textShadowColor: 'rgba(0,0,0,0.45)', textShadowRadius: 3 },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  bottomBlock: { paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
   caption: { color: '#fff', fontSize: 15, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 4 },
   commentBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' },
   commentLabel: { color: '#fff', fontWeight: '600' },

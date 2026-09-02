@@ -1,7 +1,7 @@
 import { STORY_PHOTO_DURATION_MS, STORY_VIDEO_MAX_MS, type StoryMediaType } from './stories.ts';
 
-export const STORY_TAP_LEFT_RATIO = 0.45;
-export const STORY_HOLD_DELAY_MS = 160;
+export const STORY_TAP_LEFT_RATIO = 0.5;
+export const STORY_HOLD_DELAY_MS = 250;
 
 export function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -26,11 +26,34 @@ export function shouldIgnoreTapAfterHold(didHold: boolean): boolean {
   return !!didHold;
 }
 
+export function shouldNavigateOnRelease(opts: {
+  held: boolean;
+  downAtMs: number;
+  nowMs: number;
+  holdDelayMs?: number;
+}): boolean {
+  if (opts.held) return false;
+  const delay = opts.holdDelayMs ?? STORY_HOLD_DELAY_MS;
+  if (!Number.isFinite(opts.downAtMs) || !Number.isFinite(opts.nowMs)) return false;
+  return opts.nowMs - opts.downAtMs < delay;
+}
+
+export function storyStageInsets(insets: { top?: number; bottom?: number } | null | undefined) {
+  return {
+    marginTop: Math.max(0, Number(insets?.top || 0)),
+    marginBottom: Math.max(0, Number(insets?.bottom || 0)),
+  };
+}
+
 export function storyChromeInsets(insets: { top?: number; bottom?: number } | null | undefined) {
   return {
     paddingTop: Math.max(0, Number(insets?.top || 0)),
     paddingBottom: Math.max(0, Number(insets?.bottom || 0)),
   };
+}
+
+export function storyMediaUsesRootAbsoluteFill(): boolean {
+  return false;
 }
 
 export function storyProgressDurationMs(mediaType: StoryMediaType, durationMs?: number | null): number {

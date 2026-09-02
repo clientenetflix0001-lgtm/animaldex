@@ -57,10 +57,13 @@ import {
   clamp01,
   remainingProgressMs,
   shouldIgnoreTapAfterHold,
+  shouldNavigateOnRelease,
   storyChromeInsets,
+  storyMediaUsesRootAbsoluteFill,
   storyProgressDurationMs,
   storyProgressUsesInterval,
   storyProgressUsesPerFrameState,
+  storyStageInsets,
   storyTapSide,
 } from '../lib/storyViewerUi.ts';
 
@@ -85,6 +88,7 @@ const myPets = readFileSync(join(root, 'screens/MyPetsScreen.tsx'), 'utf8');
 const reelsLib = readFileSync(join(root, 'lib/reels.ts'), 'utf8');
 const progressUi = readFileSync(join(root, 'components/StoryProgress.tsx'), 'utf8');
 const store = readFileSync(join(root, 'lib/store.tsx'), 'utf8');
+const viewerUi = readFileSync(join(root, 'lib/storyViewerUi.ts'), 'utf8');
 
 const T0 = 1_700_000_000_000;
 
@@ -493,25 +497,26 @@ describe('refresh StoryRail después de publicar', () => {
 describe('safe area StoryViewer', () => {
   it('5–8. insets top\/bottom y chrome dentro del safe area', () => {
     assert.match(viewer, /useSafeAreaInsets/);
-    assert.match(viewer, /storyChromeInsets\(insets\)/);
-    assert.match(viewer, /styles\.chrome, chrome/);
+    assert.match(viewer, /storyStageInsets\(insets\)/);
+    assert.match(viewer, /styles\.stage, stage/);
+    assert.deepEqual(storyStageInsets({ top: 44, bottom: 28 }), { marginTop: 44, marginBottom: 28 });
+    assert.deepEqual(storyStageInsets(null), { marginTop: 0, marginBottom: 0 });
     assert.deepEqual(storyChromeInsets({ top: 44, bottom: 28 }), { paddingTop: 44, paddingBottom: 28 });
-    assert.deepEqual(storyChromeInsets(null), { paddingTop: 0, paddingBottom: 0 });
     const closeIdx = viewer.lastIndexOf('accessibilityLabel="Cerrar"');
-    const chromeIdx = viewer.indexOf('styles.chrome, chrome');
+    const stageIdx = viewer.indexOf('styles.stage, stage');
     const commentIdx = viewer.indexOf('accessibilityLabel="Comentar"');
-    assert.ok(chromeIdx > 0 && closeIdx > chromeIdx && commentIdx > chromeIdx);
+    assert.ok(stageIdx > 0 && closeIdx > stageIdx && commentIdx > stageIdx);
     assert.doesNotMatch(viewer, /paddingTop:\s*48|paddingBottom:\s*34/);
   });
 });
 
 describe('gestos StoryViewer', () => {
   it('9–11. long press pausa foto y video; release reanuda', () => {
-    assert.match(viewer, /onLongPress=\{onHoldStart\}/);
-    assert.match(viewer, /onPressOut=\{onHoldEnd\}/);
-    assert.match(viewer, /onPressIn=\{onPressInTap\}/);
+    assert.match(viewer, /onLongPress=\{onZoneLongPress\}/);
+    assert.match(viewer, /onPressOut=\{onZonePressOut\}/);
+    assert.match(viewer, /onPressIn=\{onZonePressIn\}/);
     assert.match(viewer, /delayLongPress=\{STORY_HOLD_DELAY_MS\}/);
-    assert.equal(STORY_HOLD_DELAY_MS, 160);
+    assert.equal(STORY_HOLD_DELAY_MS, 250);
     assert.match(viewer, /holdRef\.current = true/);
     assert.match(viewer, /setPaused\(true\)/);
     assert.match(viewer, /setPaused\(false\)/);
@@ -521,15 +526,17 @@ describe('gestos StoryViewer', () => {
   });
 
   it('12–16. tap izquierda\/derecha, X y comentarios no disparan next', () => {
-    assert.equal(STORY_TAP_LEFT_RATIO, 0.45);
+    assert.equal(STORY_TAP_LEFT_RATIO, 0.5);
     assert.equal(storyTapSide(10, 100), 'left');
+    assert.equal(storyTapSide(49, 100), 'left');
     assert.equal(storyTapSide(50, 100), 'right');
-    assert.match(viewer, /tapLeft: \{ flex: 45 \}/);
-    assert.match(viewer, /tapRight: \{ flex: 55 \}/);
+    assert.match(viewer, /tapLeft: \{ flex: 1 \}/);
+    assert.match(viewer, /tapRight: \{ flex: 1 \}/);
     assert.match(viewer, /prevStoryIndex\(index\)/);
     assert.match(viewer, /if \(prev == null\) return/);
     assert.match(viewer, /go\(nextStoryIndex\(index, stories\.length\)\)/);
     assert.match(viewer, /consumeHoldTap/);
+    assert.match(viewer, /shouldNavigateOnRelease/);
     assert.match(viewer, /zIndex: 2/);
     assert.match(viewer, /pointerEvents="box-none"/);
     assert.match(viewer, /accessibilityLabel="Cerrar"/);
@@ -585,6 +592,85 @@ describe('progreso fluido', () => {
     assert.match(viewer, /setAppActive\(state === 'active'\)/);
     assert.match(viewer, /staysActiveInBackground = false/);
     assert.match(viewer, /<StoryVideo uri=\{mediaUri\} paused=\{frozen\} \/>/);
+  });
+});
+
+describe('Samsung: media dentro de safe area + gestos 50/50', () => {
+  it('A. media container usa insets.top e insets.bottom', () => {
+    assert.match(viewer, /storyStageInsets\(insets\)/);
+    assert.match(viewer, /styles\.stage, stage/);
+    assert.deepEqual(storyStageInsets({ top: 52, bottom: 24 }), { marginTop: 52, marginBottom: 24 });
+    assert.match(viewerUi, /marginTop/);
+    assert.match(viewerUi, /marginBottom/);
+  });
+
+  it('B. media no usa absoluteFill que ignore safe area del root', () => {
+    assert.equal(storyMediaUsesRootAbsoluteFill(), false);
+    const stageAt = viewer.indexOf('<View style={[styles.stage, stage]}>');
+    assert.ok(stageAt > 0);
+    const stageBlock = viewer.slice(stageAt, viewer.indexOf('<StoryCommentsSheet'));
+    assert.match(stageBlock, /styles\.stage, stage/);
+    assert.match(stageBlock, /styles\.media/);
+    assert.match(stageBlock, /styles\.mediaFill/);
+    assert.doesNotMatch(stageBlock, /<Image[\s\S]*style=\{StyleSheet\.absoluteFill\}/);
+    assert.doesNotMatch(viewer, /styles\.chrome, chrome/);
+  });
+
+  it('C–D. tap izquierda anterior y derecha siguiente', () => {
+    assert.equal(storyTapSide(0, 200), 'left');
+    assert.equal(storyTapSide(99, 200), 'left');
+    assert.equal(storyTapSide(100, 200), 'right');
+    assert.equal(prevStoryIndex(3), 2);
+    assert.equal(nextStoryIndex(3, 5), 4);
+    assert.match(viewer, /onPress=\{onTapLeft\}/);
+    assert.match(viewer, /onPress=\{onTapRight\}/);
+  });
+
+  it('E–G. hold pausa, release reanuda, hold no navega', () => {
+    assert.match(viewer, /onZonePressIn/);
+    assert.match(viewer, /setPaused\(true\)/);
+    assert.match(viewer, /onZonePressOut/);
+    assert.match(viewer, /setPaused\(false\)/);
+    assert.equal(
+      shouldNavigateOnRelease({ held: true, downAtMs: 0, nowMs: 80, holdDelayMs: 250 }),
+      false
+    );
+    assert.equal(
+      shouldNavigateOnRelease({ held: false, downAtMs: 0, nowMs: 80, holdDelayMs: 250 }),
+      true
+    );
+    assert.equal(
+      shouldNavigateOnRelease({ held: false, downAtMs: 0, nowMs: 300, holdDelayMs: 250 }),
+      false
+    );
+    assert.match(viewer, /if \(consumeHoldTap\(\)\) return/);
+  });
+
+  it('H–I. X y Comentar no disparan navegación', () => {
+    assert.match(viewer, /topChrome/);
+    assert.match(viewer, /bottomChrome/);
+    const xBlock = viewer.slice(viewer.lastIndexOf('accessibilityLabel="Cerrar"') - 80, viewer.lastIndexOf('accessibilityLabel="Cerrar"') + 40);
+    assert.match(xBlock, /onPress=\{close\}/);
+    assert.doesNotMatch(xBlock, /onTapRight|onTapLeft/);
+    const commentBlock = viewer.slice(viewer.indexOf('accessibilityLabel="Comentar"') - 120, viewer.indexOf('accessibilityLabel="Comentar"') + 20);
+    assert.match(commentBlock, /setCommentsOpen\(true\)/);
+    assert.doesNotMatch(commentBlock, /onTapRight|onTapLeft/);
+  });
+
+  it('J–K. progreso sigue Reanimated y sin setInterval', () => {
+    assert.match(viewer, /withTiming\(1, \{ duration: remaining, easing: Easing\.linear \}/);
+    assert.match(progressUi, /useAnimatedStyle/);
+    assert.doesNotMatch(viewer, /setInterval/);
+    assert.doesNotMatch(progressUi, /setInterval/);
+    assert.equal(storyProgressUsesInterval(), false);
+  });
+
+  it('L. refresh después de publicar sigue intacto', () => {
+    assert.match(composer, /notifyStoriesChanged\(\)/);
+    assert.match(rail, /useStoriesRevision/);
+    assert.match(rail, /useFocusEffect/);
+    assert.match(rail, /\[load, storiesRevision\]/);
+    assert.equal(storyPublishInvalidatesFeedPosts(), false);
   });
 });
 
