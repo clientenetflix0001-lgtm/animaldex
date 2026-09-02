@@ -436,7 +436,7 @@ export default function PublicProfileScreen() {
           ListEmptyComponent={
             <Text style={styles.empty}>
               {pets.length === 0
-                ? 'Este refugio todavía no cargó mascotas.'
+                ? 'Esta página de Bienestar Animal todavía no cargó mascotas.'
                 : 'No hay mascotas con esos filtros.'}
             </Text>
           }

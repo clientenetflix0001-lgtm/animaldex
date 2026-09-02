@@ -120,7 +120,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
               <Pressable style={styles.option} onPress={() => pick('protector')}>
                 <Text style={styles.optionEmoji}>❤️</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.optionTitle}>Proteccionista / Refugio</Text>
+                  <Text style={styles.optionTitle}>Bienestar Animal</Text>
                   <Text style={styles.optionSub}>Hasta 2 por cuenta</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -133,7 +133,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
                 <Text style={styles.backText}>Volver</Text>
               </Pressable>
               <Text style={styles.title}>
-                {type === 'business' ? 'Nueva página empresarial' : 'Nueva página de proteccionista/refugio'}
+                {type === 'business' ? 'Nueva página empresarial' : 'Nueva página de Bienestar Animal'}
               </Text>
               <TextInput
                 value={name}

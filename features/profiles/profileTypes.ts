@@ -27,7 +27,7 @@ export const PROFILE_LIMITS: Record<ProfileType, number> = {
 export const PROFILE_TYPE_LABEL: Record<ProfileType, string> = {
   personal: 'Perfil personal',
   business: 'Página empresarial',
-  protector: 'Página de proteccionista/refugio',
+  protector: 'Página de Bienestar Animal',
 };
 
 /** Identidad administrada (empresa/refugio) = página. Cuenta/mascota = perfil. */
@@ -46,7 +46,7 @@ export function editIdentityLabel(type: ProfileType | null | undefined): string 
 export const PROFILE_TYPE_BADGE: Record<ProfileType, string | null> = {
   personal: null,
   business: '🏪 Tienda',
-  protector: '❤️ Refugio',
+  protector: '❤️ Bienestar Animal',
 };
 
 export function countByType(profiles: PublicProfile[], type: ProfileType): number {

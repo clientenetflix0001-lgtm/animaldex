@@ -169,7 +169,7 @@ describe('11–14. Perfil vs Página', () => {
 
   it('empresa y proteccionista usan Página', () => {
     assert.equal(PROFILE_TYPE_LABEL.business, 'Página empresarial');
-    assert.equal(PROFILE_TYPE_LABEL.protector, 'Página de proteccionista/refugio');
+    assert.equal(PROFILE_TYPE_LABEL.protector, 'Página de Bienestar Animal');
     assert.equal(isManagedPageType('business'), true);
     assert.equal(isManagedPageType('protector'), true);
     assert.equal(editIdentityLabel('business'), 'Editar página');
@@ -177,7 +177,7 @@ describe('11–14. Perfil vs Página', () => {
     assert.match(createSheet, /¿Qué página quieres crear\?/);
     assert.match(createSheet, /Crear página/);
     assert.match(createSheet, /Nueva página empresarial/);
-    assert.match(createSheet, /Nueva página de proteccionista\/refugio/);
+    assert.match(createSheet, /Nueva página de Bienestar Animal/);
     assert.match(switcher, /Seleccionar perfil o página/);
     assert.match(switcher, /Crear página/);
     assert.match(app, /name="EditPublicProfile"[\s\S]{0,80}title: 'Editar página'/);

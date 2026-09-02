@@ -348,7 +348,7 @@ export default function PetProfileScreen() {
               onPress={() => {
                 Alert.alert(
                   'Archivar',
-                  `¿Archivar a ${name}? El perfil se conserva, pero deja de verse en el refugio.`,
+                  `¿Archivar a ${name}? El perfil se conserva, pero deja de verse en la página de Bienestar Animal.`,
                   [
                     { text: 'Cancelar', style: 'cancel' },
                     {
@@ -412,7 +412,7 @@ export default function PetProfileScreen() {
             transition={200}
           />
           <View style={{ flex: 1 }}>
-            <Text style={styles.ownerLabel}>Refugio de {name}</Text>
+            <Text style={styles.ownerLabel}>Bienestar Animal de {name}</Text>
             <Text style={styles.ownerName}>
               {shelter.name} · {shelter.username}
             </Text>

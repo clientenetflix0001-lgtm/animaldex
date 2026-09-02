@@ -350,7 +350,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
                 <Ionicons name="add" size={28} color={colors.primary} />
               </View>
               <Text style={styles.petName}>Crear página</Text>
-              <Text style={styles.petBreed}>Tienda o refugio</Text>
+              <Text style={styles.petBreed}>Tienda o Bienestar Animal</Text>
             </Pressable>
           ) : null
         }

@@ -4,13 +4,23 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  PROFILE_TYPE_BADGE,
+  PROFILE_TYPE_LABEL,
+} from '../features/profiles/profileTypes.ts';
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const petProfile = readFileSync(join(root, 'screens/PetProfileScreen.tsx'), 'utf8');
 const userProfile = readFileSync(join(root, 'screens/UserProfileScreen.tsx'), 'utf8');
 const publicProfile = readFileSync(join(root, 'screens/PublicProfileScreen.tsx'), 'utf8');
+const createSheet = readFileSync(join(root, 'features/profiles/CreateProfileSheet.tsx'), 'utf8');
+const editPublic = readFileSync(join(root, 'screens/EditPublicProfileScreen.tsx'), 'utf8');
+const profileTypesSrc = readFileSync(join(root, 'features/profiles/profileTypes.ts'), 'utf8');
 const db = readFileSync(join(root, 'lib/db.ts'), 'utf8');
 const types = readFileSync(join(root, 'lib/types.ts'), 'utf8');
 const worker = readFileSync(join(root, 'worker/index.js'), 'utf8');
+const adoptionContact = readFileSync(join(root, 'lib/adoptionContact.ts'), 'utf8');
+const createAlert = readFileSync(join(root, 'screens/CreateAlertScreen.tsx'), 'utf8');
 
 describe('perfil mascota: encabezado compacto', () => {
   it('1. el avatar ya no usa el tamaño gigante anterior', () => {
@@ -110,12 +120,35 @@ describe('página empresa / bienestar animal: layout intacto', () => {
   });
 });
 
+describe('copy visible: Refugio → Bienestar Animal', () => {
+  it('12. las etiquetas de tipo de página dicen Bienestar Animal', () => {
+    assert.equal(PROFILE_TYPE_BADGE.protector, '❤️ Bienestar Animal');
+    assert.equal(PROFILE_TYPE_LABEL.protector, 'Página de Bienestar Animal');
+    assert.match(createSheet, />Bienestar Animal</);
+    assert.match(createSheet, /Nueva página de Bienestar Animal/);
+    assert.match(petProfile, /Bienestar Animal de \{name\}/);
+    assert.match(petProfile, /página de Bienestar Animal/);
+    assert.match(userProfile, /Tienda o Bienestar Animal/);
+    assert.match(editPublic, /Localidad de Bienestar Animal/);
+    assert.match(publicProfile, /Esta página de Bienestar Animal todavía no cargó mascotas/);
+    assert.doesNotMatch(profileTypesSrc, /❤️ Refugio/);
+    assert.doesNotMatch(createSheet, /Proteccionista \/ Refugio/);
+  });
+
+  it('13. no se cambia copy de Alertas, adopción ni texto de usuario', () => {
+    assert.match(createAlert, /Página de refugio/);
+    assert.match(adoptionContact, /Este refugio todavía no agregó un medio de contacto/);
+  });
+});
+
 describe('contratos internos intactos', () => {
-  it('11. type protector y rutas no se refactorizan', () => {
-    assert.match(worker, /type === 'protector'|type === \"protector\"|type: 'protector'/);
+  it('14. type protector y rutas no se refactorizan', () => {
+    assert.match(profileTypesSrc, /export type ProfileType = 'personal' \| 'business' \| 'protector'/);
+    assert.match(worker, /type === 'protector'/);
     assert.match(db, /profileId|profile_id/);
     assert.match(types, /PetProfile/);
     assert.doesNotMatch(db, /author_page_id/);
     assert.doesNotMatch(worker, /type = 'bienestar'/);
+    assert.doesNotMatch(profileTypesSrc, /type ProfileType = .*bienestar/);
   });
 });

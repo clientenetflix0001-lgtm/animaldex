@@ -272,7 +272,7 @@ export default function EditPublicProfileScreen() {
       <LocalityPicker
         visible={pickerVisible}
         currentProvince={province}
-        title="Localidad del refugio"
+        title="Localidad de Bienestar Animal"
         onClose={() => setPickerVisible(false)}
         onSelect={(entry) => {
           setLocality(entry.locality);
