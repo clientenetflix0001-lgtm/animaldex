@@ -100,10 +100,12 @@ describe('QR código manual', () => {
 });
 
 describe('HEADER visual', () => {
-  it('11. componente visual muestra NIMALDEX junto al logo', () => {
+  it('11. componente visual muestra [A] + nimaldex junto al logo', () => {
     assert.match(feed, /animaldex-logo-mark\.png/);
-    assert.match(feed, />Nimaldex</);
+    assert.match(feed, />nimaldex</);
+    assert.doesNotMatch(feed, />Nimaldex</);
     assert.doesNotMatch(feed, />Animaldex</);
+    assert.match(feed, /logoRow: \{ flexDirection: 'row', alignItems: 'center', gap: 1 \}/);
   });
 
   it('12. nombre general de la marca sigue siendo ANIMALDEX', () => {

@@ -342,7 +342,7 @@ export default function FeedScreen() {
             style={styles.logoMark}
             contentFit="contain"
           />
-          <Text style={styles.logo}>Nimaldex</Text>
+          <Text style={styles.logo}>nimaldex</Text>
           <Pressable
             style={styles.qrBtn}
             onPress={() => navigation.navigate('QRScanner')}
@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 1 },
   logoMark: { width: 24, height: 24 },
   logo: { fontSize: 26, fontWeight: '900', color: colors.primary, letterSpacing: -0.5 },
   qrBtn: {
