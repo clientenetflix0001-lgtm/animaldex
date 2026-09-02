@@ -38,6 +38,9 @@ import MyAlertsScreen from './screens/MyAlertsScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
 import FeedReelsSwiper from './screens/FeedReelsSwiper';
 import CreateReelScreen from './screens/CreateReelScreen';
+import CreateStoryScreen from './screens/CreateStoryScreen';
+import StoryViewerScreen from './screens/StoryViewerScreen';
+import StoryMoreBreedsScreen from './screens/StoryMoreBreedsScreen';
 import ReelViewerScreen from './screens/ReelViewerScreen';
 import MarketScreen from './screens/MarketScreen';
 import CreateListingScreen from './screens/CreateListingScreen';
@@ -532,6 +535,21 @@ function RootNavigator() {
       <Stack.Screen
         name="CreateReel"
         component={CreateReelScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreateStory"
+        component={CreateStoryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="StoryViewer"
+        component={StoryViewerScreen}
+        options={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#000' } }}
+      />
+      <Stack.Screen
+        name="StoryMoreBreeds"
+        component={StoryMoreBreedsScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

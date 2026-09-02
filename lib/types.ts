@@ -44,6 +44,18 @@ export type RootStackParamList = {
   AdoptionDiscovery: undefined;
   CreatePost: undefined;
   CreateReel: undefined;
+  CreateStory: undefined;
+  StoryViewer: {
+    source: 'self' | 'identity' | 'breed';
+    authorUserId?: string;
+    authorProfileId?: string;
+    authorProfileType?: string;
+    authorPetId?: string;
+    breedSpecies?: string;
+    breedKey?: string;
+    startStoryId?: string;
+  };
+  StoryMoreBreeds: undefined;
   ReelViewer: {
     reelId: string;
     scope?: 'profile' | 'pet' | 'user' | 'feed';

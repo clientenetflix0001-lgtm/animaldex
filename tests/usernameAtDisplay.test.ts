@@ -25,6 +25,7 @@ const sellerShop = readFileSync(join(root, 'screens/SellerShopScreen.tsx'), 'utf
 const switcher = readFileSync(join(root, 'features/profiles/ProfileSwitcher.tsx'), 'utf8');
 const sidebar = readFileSync(join(root, 'components/Sidebar.tsx'), 'utf8');
 const pages = readFileSync(join(root, 'cf-pages-worker.src.js'), 'utf8');
+const storyComments = readFileSync(join(root, 'components/StoryCommentsSheet.tsx'), 'utf8');
 
 describe('contenido: username sin @ visual', () => {
   it('1. comentario de post muestra username, no @ ni display_name', () => {
@@ -44,6 +45,8 @@ describe('contenido: username sin @ visual', () => {
     assert.doesNotMatch(listingDetail, /@\{item\.name\}/);
     assert.match(reels, /\{item\.username\}/);
     assert.doesNotMatch(reels, /@\{item\.username\}/);
+    assert.match(storyComments, /\{item\.username\}/);
+    assert.doesNotMatch(storyComments, /@\{item\.username\}/);
   });
 
   it('3–5. switcher, sidebar y selector de identidad sin @', () => {

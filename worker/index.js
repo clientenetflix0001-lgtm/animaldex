@@ -23,6 +23,12 @@ import {
   handlePublicReelAction,
   runReelCleanup,
 } from './reelsMux.js';
+import {
+  ensureStoriesSchema,
+  handleAuthStoryAction,
+  handlePublicStoryAction,
+  runStoryCleanup,
+} from './stories.js';
 import { getMuxThumbnail } from '../lib/reels.ts';
 import {
   EXPO_PUSH_BATCH_MAX,
@@ -1488,12 +1494,16 @@ async function handleDb(request, env) {
     await ensurePushSchema(env);
     await ensureLocationActorColumn(env);
     await ensureReelsSchema(env);
+    await ensureStoriesSchema(env);
     await ensurePetHandleAliasSchema(env);
     await ensureAlertsSchema(env);
     await ensurePetTagsPublicCode(env);
 
     const publicReel = await handlePublicReelAction(env, body, json, clean, request, authUser);
     if (publicReel) return publicReel;
+
+    const publicStory = await handlePublicStoryAction(env, body, json, clean, request, authUser);
+    if (publicStory) return publicStory;
 
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
@@ -2220,6 +2230,9 @@ async function handleDb(request, env) {
 
     const authReel = await handleAuthReelAction(env, body, json, clean, userId, notifyUserPush);
     if (authReel) return authReel;
+
+    const authStory = await handleAuthStoryAction(env, body, json, clean, userId, notifyUserPush);
+    if (authStory) return authStory;
 
     if (action === 'registerPushToken') {
       const expoPushToken = clean(body.expoPushToken, 200);
@@ -3334,6 +3347,11 @@ export default {
       await runReelCleanup(env, nowMs);
     } catch (e) {
       console.log('reel-cleanup', e && e.message);
+    }
+    try {
+      await runStoryCleanup(env, nowMs);
+    } catch (e) {
+      console.log('story-cleanup', e && e.message);
     }
   },
 };

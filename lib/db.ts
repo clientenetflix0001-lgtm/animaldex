@@ -156,6 +156,58 @@ export interface ApiReel {
   overlays?: import('./reelOverlays').ReelTextOverlay[];
 }
 
+export interface ApiStory {
+  id: string;
+  authorUserId: string;
+  authorProfileId?: string | null;
+  authorProfileType?: string | null;
+  authorPetId?: string | null;
+  protagonistPetId?: string | null;
+  mediaType: 'image' | 'video';
+  imageUrl?: string | null;
+  muxPlaybackId?: string | null;
+  hlsUrl?: string | null;
+  thumbnailUrl?: string | null;
+  durationMs?: number | null;
+  caption?: string;
+  status: string;
+  audience: 'normal' | 'breed' | 'both';
+  breedSpecies?: string | null;
+  breedKey?: string | null;
+  breedLabel?: string | null;
+  createdAt: number;
+  expiresAt: number;
+  username?: string | null;
+  userName?: string | null;
+  userAvatar?: string | null;
+  authorProfileName?: string | null;
+  authorProfileUsername?: string | null;
+  authorProfileAvatar?: string | null;
+  authorPetName?: string | null;
+  authorPetAvatar?: string | null;
+  protagonistName?: string | null;
+  protagonistAvatar?: string | null;
+  viewed?: boolean;
+}
+
+export interface ApiStoryRailItem {
+  kind: 'self' | 'identity' | 'breed' | 'more';
+  id: string;
+  label: string;
+  emoji?: string | null;
+  thumbUrl?: string | null;
+  hasStory: boolean;
+  hasUnseen: boolean;
+  count?: number;
+  authorUserId?: string | null;
+  authorProfileId?: string | null;
+  authorProfileType?: string | null;
+  authorPetId?: string | null;
+  breedSpecies?: string | null;
+  breedKey?: string | null;
+  breedLabel?: string | null;
+}
+
 export interface ApiComment {
   id: string;
   userId: string;
@@ -631,6 +683,56 @@ export const db = {
     call('/db', { action: 'reelComment', reelId, text }),
   deleteReel: (reelId: string): Promise<{ ok: boolean; muxDeleted?: boolean }> =>
     call('/db', { action: 'deleteReel', reelId }),
+
+  storyRail: (input?: {
+    authorProfileId?: string | null;
+    authorPetId?: string | null;
+  }): Promise<{ items: ApiStoryRailItem[] }> => call('/db', { action: 'storyRail', ...input }),
+  storyGroup: (input: {
+    source?: 'self' | 'identity';
+    authorUserId?: string | null;
+    authorProfileId?: string | null;
+    authorProfileType?: string | null;
+    authorPetId?: string | null;
+  }): Promise<{ stories: ApiStory[] }> => call('/db', { action: 'storyGroup', ...input }),
+  storyBreedFeed: (breedSpecies: string, breedKey: string): Promise<{ stories: ApiStory[] }> =>
+    call('/db', { action: 'storyBreedFeed', breedSpecies, breedKey }),
+  storyMoreBreeds: (): Promise<{
+    channels: Array<{ species: string; breedKey: string; breedLabel: string; count: number }>;
+  }> => call('/db', { action: 'storyMoreBreeds' }),
+  storyComments: (storyId: string): Promise<{ comments: ApiComment[] }> =>
+    call('/db', { action: 'storyComments', storyId }),
+  createStory: (input: {
+    imageUrl: string;
+    cfId?: string | null;
+    caption?: string;
+    audience?: 'normal' | 'breed' | 'both';
+    protagonistPetId?: string | null;
+    authorProfileId?: string | null;
+    authorPetId?: string | null;
+  }): Promise<{ storyId: string; expiresAt: number; audience: string; status: string }> =>
+    call('/db', { action: 'createStory', ...input }),
+  createStoryUpload: (input: {
+    mime: string;
+    byteSize?: number | null;
+    durationMs?: number | null;
+    caption?: string;
+    audience?: 'normal' | 'breed' | 'both';
+    protagonistPetId?: string | null;
+    authorProfileId?: string | null;
+    authorPetId?: string | null;
+  }): Promise<{ storyId: string; uploadUrl: string; expiresAt: number; audience: string; status: string }> =>
+    call('/db', { action: 'createStoryUpload', ...input }),
+  completeStoryUpload: (storyId: string): Promise<{ status: string }> =>
+    call('/db', { action: 'completeStoryUpload', storyId }),
+  deleteStory: (storyId: string): Promise<{ ok: boolean; mediaDeleted?: boolean }> =>
+    call('/db', { action: 'deleteStory', storyId }),
+  markStoryViewed: (storyId: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'markStoryViewed', storyId }),
+  createStoryComment: (storyId: string, text: string): Promise<{ id: string; createdAt: number }> =>
+    call('/db', { action: 'createStoryComment', storyId, text }),
+  reportStory: (storyId: string): Promise<{ ok: boolean; reportType: string; targetId: string }> =>
+    call('/db', { action: 'reportStory', storyId }),
 };
 
 // ---------- Helpers ----------

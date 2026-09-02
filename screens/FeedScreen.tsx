@@ -12,7 +12,7 @@ import { apiPostToPost, useStore } from '../lib/store';
 import { usePolling, useNotifications } from '../lib/realtime';
 import { postNavParams } from '../lib/share';
 import { PostCard } from '../components/PostCard';
-import { StoriesBar } from '../components/StoriesBar';
+import StoryRail from '../components/StoryRail';
 import { LoadingFooter } from '../components/LoadingFooter';
 import { SuggestionsPanel } from '../components/SuggestionsPanel';
 import { colors, spacing, radius, shadow } from '../lib/theme';
@@ -271,7 +271,7 @@ export default function FeedScreen() {
     </Pressable>
   );
 
-  const listHeader = useMemo(() => <StoriesBar onOpenPet={openPet} />, [openPet]);
+  const listHeader = useMemo(() => <StoryRail />, []);
   const listFooter = useMemo(() => <LoadingFooter />, []);
   const refreshCtrl = useMemo(
     () => (

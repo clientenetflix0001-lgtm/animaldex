@@ -41,6 +41,7 @@ import {
   sanitizeReelCommentPreview,
 } from '../lib/reelActivity.ts';
 import { displayPersonName, reelCommentPushMessage, reelLikePushMessage } from '../lib/pushPolicy.ts';
+import { applyStoryMuxWebhookEvent, isStoryId } from '../lib/stories.ts';
 
 async function d1(env, sql, params = []) {
   const res = await env.DB.prepare(sql).bind(...params).all();
@@ -121,11 +122,11 @@ async function attachReelLikes(env, rows, viewerId) {
   return rows.map((r) => reelRow(r, set.has(r.id)));
 }
 
-function muxConfigured(env) {
+export function muxConfigured(env) {
   return !!(env.MUX_TOKEN_ID && env.MUX_TOKEN_SECRET);
 }
 
-async function muxApi(env, path, method, body) {
+export async function muxApi(env, path, method, body) {
   if (!muxConfigured(env)) return { ok: false, status: 503, json: { error: 'Mux no configurado' } };
   const auth = btoa(`${env.MUX_TOKEN_ID}:${env.MUX_TOKEN_SECRET}`);
   const resp = await fetch(`https://api.mux.com${path}`, {
@@ -140,7 +141,7 @@ async function muxApi(env, path, method, body) {
   return { ok: resp.ok, status: resp.status, json };
 }
 
-async function muxDeleteAsset(env, assetId) {
+export async function muxDeleteAsset(env, assetId) {
   if (!assetId) return { skipped: true, reason: 'no_asset' };
   if (!muxCleanupEnabled(env.MUX_CLEANUP_ENABLED)) {
     return { skipped: true, reason: 'cleanup_disabled' };
@@ -222,6 +223,32 @@ export async function handleMuxWebhook(request, env, json) {
     if (seen[0]) return json({ ok: true, duplicate: true });
   }
   const reel = await findReelForMuxEvent(env, event.data || {});
+  if (!reel) {
+    const story = await findStoryRowForMuxEvent(env, event.data || {});
+    if (story) {
+      if (eventId) {
+        await d1(
+          env,
+          'INSERT OR IGNORE INTO mux_webhook_events (id, type, reel_id, created_at) VALUES (?, ?, ?, ?)',
+          [eventId, type, null, now]
+        );
+      }
+      const appliedStory = applyStoryMuxWebhookEvent(story, event);
+      if (appliedStory.skip) return json({ ok: true, skipped: appliedStory.reason || 'story_skip' });
+      const storyPatch = { ...appliedStory.patch };
+      const mapped = applyStoryWebhookPatchSql(storyPatch);
+      if (mapped.sets.length) {
+        await d1(env, `UPDATE stories SET ${mapped.sets.join(', ')} WHERE id = ?`, [...mapped.vals, story.id]);
+      }
+      if (appliedStory.requestMuxDelete && (storyPatch.mux_asset_id || story.mux_asset_id)) {
+        const del = await muxDeleteAsset(env, storyPatch.mux_asset_id || story.mux_asset_id);
+        if (!del.skipped && del.ok) {
+          await d1(env, 'UPDATE stories SET media_deleted_at = ?, cleanup_needed = 0 WHERE id = ?', [now, story.id]);
+        }
+      }
+      return json({ ok: true, story: true });
+    }
+  }
   const applied = applyMuxWebhookEvent(reel, event);
   if (eventId) {
     await d1(
@@ -246,6 +273,48 @@ export async function handleMuxWebhook(request, env, json) {
     }
   }
   return json({ ok: true });
+}
+
+async function findStoryRowForMuxEvent(env, data) {
+  const passthrough = data && (data.passthrough || (data.new_asset_settings && data.new_asset_settings.passthrough));
+  if (passthrough && isStoryId(String(passthrough))) {
+    const rows = await d1(env, 'SELECT * FROM stories WHERE id = ?', [String(passthrough)]);
+    if (rows[0]) return rows[0];
+  }
+  if (passthrough && !isStoryId(String(passthrough))) return null;
+  const uploadId = data && (data.upload_id || data.id);
+  if (uploadId) {
+    const rows = await d1(env, 'SELECT * FROM stories WHERE mux_upload_id = ?', [String(uploadId)]);
+    if (rows[0]) return rows[0];
+  }
+  const assetId = data && (data.asset_id || data.id);
+  if (assetId) {
+    const rows = await d1(env, 'SELECT * FROM stories WHERE mux_asset_id = ?', [String(assetId)]);
+    if (rows[0]) return rows[0];
+  }
+  return null;
+}
+
+function applyStoryWebhookPatchSql(patch) {
+  const map = {
+    status: 'status',
+    mux_upload_id: 'mux_upload_id',
+    mux_asset_id: 'mux_asset_id',
+    mux_playback_id: 'mux_playback_id',
+    mux_last_event_id: 'mux_last_event_id',
+    duration_ms: 'duration_ms',
+    error: 'error',
+    cleanup_needed: 'cleanup_needed',
+  };
+  const sets = [];
+  const vals = [];
+  for (const [k, col] of Object.entries(map)) {
+    if (Object.prototype.hasOwnProperty.call(patch, k)) {
+      sets.push(`${col} = ?`);
+      vals.push(patch[k]);
+    }
+  }
+  return { sets, vals };
 }
 
 export async function runReelCleanup(env, nowMs) {

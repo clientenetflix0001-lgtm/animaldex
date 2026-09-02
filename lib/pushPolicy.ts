@@ -255,6 +255,31 @@ export function reelCommentPushMessage(input: {
   };
 }
 
+export function storyCommentPushCopy(actorName: string): { title: string; body: string } {
+  const actor = String(actorName || '').trim() || 'Alguien';
+  return { title: 'Animaldex', body: `${actor} comentó tu historia` };
+}
+
+export function storyCommentPushMessage(input: {
+  token: string;
+  storyId: string;
+  actorName: string;
+}): Record<string, unknown> {
+  const copy = storyCommentPushCopy(input.actorName);
+  return {
+    to: input.token,
+    title: copy.title,
+    body: copy.body,
+    sound: 'default',
+    priority: 'default',
+    channelId: PUSH_CHANNEL_PETS,
+    data: {
+      type: 'story_comment',
+      storyId: input.storyId,
+    },
+  };
+}
+
 export function birthdayPushMessage(input: {
   token: string;
   petName: string;
