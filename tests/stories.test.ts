@@ -43,6 +43,26 @@ import { normalizeSql } from '../lib/reelsSchema.ts';
 import { colors } from '../lib/theme.ts';
 import { ADOPTION_PURPLE } from '../lib/adoptionDiscovery.ts';
 import { muxCleanupEnabled } from '../lib/reels.ts';
+import {
+  bumpStoriesRevision,
+  notifyStoriesChanged,
+  shouldRefreshStoryRail,
+  storyPublishInvalidatesFeedPosts,
+  storyPublishRequiresRelogin,
+  subscribeStoriesRevision,
+} from '../lib/storyRailRefresh.ts';
+import {
+  STORY_HOLD_DELAY_MS,
+  STORY_TAP_LEFT_RATIO,
+  clamp01,
+  remainingProgressMs,
+  shouldIgnoreTapAfterHold,
+  storyChromeInsets,
+  storyProgressDurationMs,
+  storyProgressUsesInterval,
+  storyProgressUsesPerFrameState,
+  storyTapSide,
+} from '../lib/storyViewerUi.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const worker = readFileSync(join(root, 'worker/index.js'), 'utf8');
@@ -63,6 +83,8 @@ const petStatus = readFileSync(join(root, 'components/PetStatusAvatar.tsx'), 'ut
 const petProfile = readFileSync(join(root, 'screens/PetProfileScreen.tsx'), 'utf8');
 const myPets = readFileSync(join(root, 'screens/MyPetsScreen.tsx'), 'utf8');
 const reelsLib = readFileSync(join(root, 'lib/reels.ts'), 'utf8');
+const progressUi = readFileSync(join(root, 'components/StoryProgress.tsx'), 'utf8');
+const store = readFileSync(join(root, 'lib/store.tsx'), 'utf8');
 
 const T0 = 1_700_000_000_000;
 
@@ -401,5 +423,185 @@ describe('worker / schema / seguridad', () => {
   it('AppState pausa el video', () => {
     assert.match(viewer, /AppState.addEventListener/);
     assert.match(viewer, /setPaused\(true\)/);
+  });
+});
+
+describe('refresh StoryRail después de publicar', () => {
+  it('1. CreateStory invalida StoryRail', () => {
+    assert.match(composer, /notifyStoriesChanged\(\)/);
+    assert.match(composer, /db\.createStory\(/);
+    assert.match(rail, /useStoriesRevision/);
+    assert.match(rail, /storiesRevision/);
+    assert.match(rail, /useFocusEffect/);
+    assert.match(rail, /db\.storyRail/);
+  });
+
+  it('2. foto aparece sin logout', () => {
+    assert.equal(storyPublishRequiresRelogin(), false);
+    const createIdx = composer.indexOf('await db.createStory({');
+    const notifyIdx = composer.indexOf('notifyStoriesChanged()');
+    const backIdx = composer.indexOf('navigation.goBack()');
+    assert.ok(createIdx > 0 && notifyIdx > createIdx && backIdx > notifyIdx);
+    assert.doesNotMatch(composer, /signOut|logout|reloadAsync/);
+    assert.doesNotMatch(rail, /signOut|logout/);
+  });
+
+  it('3. breed channel refresca', () => {
+    assert.match(rail, /item\.kind === 'breed'/);
+    assert.match(rail, /source: 'breed'/);
+    assert.match(rail, /\[load, storiesRevision\]/);
+  });
+
+  it('4. both refresca ambos', () => {
+    assert.match(composer, /resolvedAudience/);
+    assert.match(composer, /notifyStoriesChanged\(\)/);
+    const dest = storyDestinations(storyBreedChannel('perro', 'Caniche'));
+    assert.deepEqual(
+      dest.map((d) => d.id),
+      ['normal', 'breed', 'both']
+    );
+    assert.equal(shouldRefreshStoryRail(0, 1), true);
+    assert.equal(shouldRefreshStoryRail(2, 2), false);
+  });
+
+  it('5. no duplica rail ni recarga Feed', () => {
+    assert.match(rail, /keyExtractor=\{\(item\) => `\$\{item\.kind\}:\$\{item\.id\}`\}/);
+    assert.doesNotMatch(rail, /db\.feed/);
+    assert.doesNotMatch(rail, /db\.feedSince/);
+    assert.equal(storyPublishInvalidatesFeedPosts(), false);
+    assert.doesNotMatch(store, /notifyStoriesChanged|storiesRevision|useStoriesRevision/);
+    assert.doesNotMatch(feed, /notifyStoriesChanged|useStoriesRevision|storiesRevision/);
+    assert.match(feed, /<StoryRail/);
+    assert.match(feed, /db\.feed/);
+  });
+
+  it('6. logout\/login no es necesario', () => {
+    assert.equal(storyPublishRequiresRelogin(), false);
+    assert.equal(bumpStoriesRevision(4), 5);
+    let seen = 0;
+    const unsub = subscribeStoriesRevision((rev) => {
+      seen = rev;
+    });
+    const next = notifyStoriesChanged();
+    unsub();
+    assert.ok(next >= 1);
+    assert.equal(seen, next);
+    assert.equal(shouldRefreshStoryRail(0, next), true);
+  });
+});
+
+describe('safe area StoryViewer', () => {
+  it('5–8. insets top\/bottom y chrome dentro del safe area', () => {
+    assert.match(viewer, /useSafeAreaInsets/);
+    assert.match(viewer, /storyChromeInsets\(insets\)/);
+    assert.match(viewer, /styles\.chrome, chrome/);
+    assert.deepEqual(storyChromeInsets({ top: 44, bottom: 28 }), { paddingTop: 44, paddingBottom: 28 });
+    assert.deepEqual(storyChromeInsets(null), { paddingTop: 0, paddingBottom: 0 });
+    const closeIdx = viewer.lastIndexOf('accessibilityLabel="Cerrar"');
+    const chromeIdx = viewer.indexOf('styles.chrome, chrome');
+    const commentIdx = viewer.indexOf('accessibilityLabel="Comentar"');
+    assert.ok(chromeIdx > 0 && closeIdx > chromeIdx && commentIdx > chromeIdx);
+    assert.doesNotMatch(viewer, /paddingTop:\s*48|paddingBottom:\s*34/);
+  });
+});
+
+describe('gestos StoryViewer', () => {
+  it('9–11. long press pausa foto y video; release reanuda', () => {
+    assert.match(viewer, /onLongPress=\{onHoldStart\}/);
+    assert.match(viewer, /onPressOut=\{onHoldEnd\}/);
+    assert.match(viewer, /onPressIn=\{onPressInTap\}/);
+    assert.match(viewer, /delayLongPress=\{STORY_HOLD_DELAY_MS\}/);
+    assert.equal(STORY_HOLD_DELAY_MS, 160);
+    assert.match(viewer, /holdRef\.current = true/);
+    assert.match(viewer, /setPaused\(true\)/);
+    assert.match(viewer, /setPaused\(false\)/);
+    assert.match(viewer, /paused=\{frozen\}/);
+    assert.equal(shouldIgnoreTapAfterHold(true), true);
+    assert.equal(shouldIgnoreTapAfterHold(false), false);
+  });
+
+  it('12–16. tap izquierda\/derecha, X y comentarios no disparan next', () => {
+    assert.equal(STORY_TAP_LEFT_RATIO, 0.45);
+    assert.equal(storyTapSide(10, 100), 'left');
+    assert.equal(storyTapSide(50, 100), 'right');
+    assert.match(viewer, /tapLeft: \{ flex: 45 \}/);
+    assert.match(viewer, /tapRight: \{ flex: 55 \}/);
+    assert.match(viewer, /prevStoryIndex\(index\)/);
+    assert.match(viewer, /if \(prev == null\) return/);
+    assert.match(viewer, /go\(nextStoryIndex\(index, stories\.length\)\)/);
+    assert.match(viewer, /consumeHoldTap/);
+    assert.match(viewer, /zIndex: 2/);
+    assert.match(viewer, /pointerEvents="box-none"/);
+    assert.match(viewer, /accessibilityLabel="Cerrar"/);
+    assert.match(viewer, /setCommentsOpen\(true\)/);
+    assert.equal(prevStoryIndex(0), null);
+    assert.equal(nextStoryIndex(0, 1), null);
+  });
+});
+
+describe('overlay inmersivo', () => {
+  it('17–20. author, caption y comentarios sobre la media', () => {
+    assert.match(viewer, /StyleSheet\.absoluteFill/);
+    assert.match(viewer, /LinearGradient/);
+    assert.match(viewer, /rgba\(0,0,0,0\.5\)/);
+    assert.match(viewer, /rgba\(0,0,0,0\.45\)/);
+    assert.match(viewer, /styles\.name/);
+    assert.match(viewer, /styles\.caption/);
+    assert.match(viewer, /styles\.commentBtn/);
+    assert.match(viewer, /<StoryCommentsSheet/);
+    assert.match(comments, /zIndex: 3/);
+    assert.doesNotMatch(viewer, /backgroundColor: '#fff'/);
+    assert.doesNotMatch(viewer, /backgroundColor: '#ffffff'/);
+    assert.match(viewer, /textShadowColor/);
+  });
+});
+
+describe('progreso fluido', () => {
+  it('21–25. foto linear en UI thread, sin interval ni setState por frame', () => {
+    assert.equal(storyProgressUsesInterval(), false);
+    assert.equal(storyProgressUsesPerFrameState(), false);
+    assert.equal(storyProgressDurationMs('image'), STORY_PHOTO_DURATION_MS);
+    assert.equal(remainingProgressMs(0.4, 5000), 3000);
+    assert.equal(remainingProgressMs(0, 5000), 5000);
+    assert.equal(remainingProgressMs(1, 5000), 0);
+    assert.equal(clamp01(1.4), 1);
+    assert.match(viewer, /withTiming\(1, \{ duration: remaining, easing: Easing\.linear \}/);
+    assert.match(viewer, /cancelAnimation\(progress\)/);
+    assert.match(viewer, /useSharedValue/);
+    assert.doesNotMatch(viewer, /setInterval/);
+    assert.doesNotMatch(viewer, /setProgress/);
+    assert.doesNotMatch(progressUi, /setInterval/);
+    assert.doesNotMatch(progressUi, /setProgress/);
+    assert.match(progressUi, /useAnimatedStyle/);
+    assert.match(progressUi, /SharedValue/);
+  });
+
+  it('26–28. video coherente, comments y background pausan', () => {
+    assert.equal(storyProgressDurationMs('video', 8000), 8000);
+    assert.equal(storyProgressDurationMs('video', 20000), STORY_VIDEO_MAX_MS);
+    assert.match(viewer, /frozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
+    assert.match(viewer, /setCommentsOpen\(false\)/);
+    assert.match(viewer, /AppState.addEventListener/);
+    assert.match(viewer, /setAppActive\(state === 'active'\)/);
+    assert.match(viewer, /staysActiveInBackground = false/);
+    assert.match(viewer, /<StoryVideo uri=\{mediaUri\} paused=\{frozen\} \/>/);
+  });
+});
+
+describe('regresión Stories viewer\/refresh', () => {
+  it('29–37. expiración, breed, delete, comments, Feed, Reels, QR, PetStatus', () => {
+    assert.equal(STORY_TTL_MS, 24 * 60 * 60 * 1000);
+    assert.match(viewer, /STORY_EXPIRED_MESSAGE/);
+    assert.equal(storyVisibleInPublicFeed({ status: 'ready', expiresAt: T0 + STORY_TTL_MS }, T0), true);
+    assert.match(rail, /kind === 'breed'/);
+    assert.match(composer, /STORY_PRIVACY_BREED/);
+    assert.match(viewer, /deleteStory/);
+    assert.match(viewer, /notifyStoriesChanged/);
+    assert.match(comments, /createStoryComment|Escribí un comentario/);
+    assert.match(feed, /PostCard/);
+    assert.match(app, /name="Reels"/);
+    assert.match(app, /name="QRScanner"/);
+    assert.match(petStatus, /petStatusRingColors/);
+    assert.doesNotMatch(rail, /PetStatusAvatar/);
   });
 });
