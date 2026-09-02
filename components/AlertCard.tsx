@@ -9,7 +9,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { ApiAlert, timeAgoMinutes } from '../lib/db';
-import { ALERT_TYPES, speciesEmoji, speciesLabel } from '../lib/alerts';
+import { alertBadgeColor, alertBadgeText, alertContextLine, isAlertResolved } from '../lib/alerts';
 import { shareAlert } from '../lib/share';
 import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { formatCount, formatTime } from '../lib/data';
@@ -22,7 +22,8 @@ interface Props {
 }
 
 function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
-  const typeConfig = ALERT_TYPES[alert.type] ?? ALERT_TYPES.lost;
+  const resolved = isAlertResolved(alert);
+  const badgeColor = alertBadgeColor(alert);
   const heartScale = useSharedValue(1);
   const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heartScale.value }] }));
 
@@ -50,9 +51,9 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
   return (
     <View style={styles.card}>
       {/* Badge de tipo de alerta */}
-      <View style={[styles.badgeRow, { backgroundColor: `${typeConfig.color}14` }]}>
-        <Text style={[styles.badgeText, { color: typeConfig.color }]}>
-          {typeConfig.emoji} {speciesLabel(alert.species).toUpperCase()} {typeConfig.label}
+      <View style={[styles.badgeRow, { backgroundColor: `${badgeColor}14` }]}>
+        <Text style={[styles.badgeText, { color: badgeColor }]}>
+          {alertBadgeText(alert)}
         </Text>
       </View>
 
@@ -62,7 +63,7 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
             <Text style={styles.petName}>
-              {alert.petName ? alert.petName : speciesLabel(alert.species)} {speciesEmoji(alert.species)}
+              {alertContextLine(alert)}
             </Text>
           </View>
           <View style={styles.locRow}>
@@ -104,10 +105,16 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
 
         <View style={{ flex: 1 }} />
 
-        <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
-          <Ionicons name="paw" size={15} color="#fff" />
-          <Text style={styles.difundirText}>DIFUNDIR</Text>
-        </Pressable>
+        {resolved ? (
+          <Pressable onPress={handleShare} disabled={sharing} hitSlop={8} accessibilityLabel="Compartir">
+            <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
+          </Pressable>
+        ) : (
+          <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
+            <Ionicons name="paw" size={15} color="#fff" />
+            <Text style={styles.difundirText}>DIFUNDIR</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Descripción */}

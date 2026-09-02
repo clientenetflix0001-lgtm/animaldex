@@ -169,7 +169,7 @@ export interface ApiComment {
 export interface ApiAlert {
   id: string;
   userId: string;
-  type: 'lost' | 'found';
+  type: 'lost' | 'sighting' | 'found' | 'adoption';
   status: 'active' | 'resolved';
   petName: string | null;
   species: string;
@@ -183,6 +183,11 @@ export interface ApiAlert {
   lon: number | null;
   eventDate: number | null;
   createdAt: number;
+  renewedAt?: number | null;
+  bumpedAt?: number | null;
+  resolvedAt?: number | null;
+  resolutionType?: 'found' | 'reunited' | 'adopted' | null;
+  sex?: 'macho' | 'hembra' | null;
   likeCount: number;
   commentCount: number;
   isLiked: boolean;
@@ -506,7 +511,7 @@ export const db = {
   alertComments: (alertId: string): Promise<{ comments: ApiComment[] }> =>
     call('/db', { action: 'alertComments', alertId }),
   createAlert: (alert: {
-    type: 'lost' | 'found';
+    type: 'lost' | 'sighting' | 'found' | 'adoption';
     petName?: string;
     species: string;
     breed?: string;
@@ -517,7 +522,16 @@ export const db = {
     lat?: number | null;
     lon?: number | null;
     eventDate?: number;
+    sex?: 'macho' | 'hembra' | null;
   }): Promise<{ alert: ApiAlert }> => call('/db', { action: 'createAlert', ...alert }),
+  myAlerts: (tab: 'active' | 'resolved', before?: number, limit = 20): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
+    call('/db', { action: 'myAlerts', tab, before, limit }),
+  resolveAlert: (alertId: string, resolutionType?: string): Promise<{ alert: ApiAlert }> =>
+    call('/db', { action: 'resolveAlert', alertId, resolutionType }),
+  renewAlert: (alertId: string): Promise<{ alert: ApiAlert }> =>
+    call('/db', { action: 'renewAlert', alertId }),
+  deleteAlert: (alertId: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'deleteAlert', alertId }),
   alertLike: (alertId: string, value: boolean): Promise<{ likeCount: number }> =>
     call('/db', { action: 'alertLike', alertId, value }),
   alertComment: (alertId: string, text: string): Promise<{ id: string; createdAt: number }> =>

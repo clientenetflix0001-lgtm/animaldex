@@ -18,12 +18,13 @@ import { useRoute, RouteProp } from '@react-navigation/native';
 import { db, ApiAlert, ApiComment, timeAgoMinutes } from '../lib/db';
 import { useStore } from '../lib/store';
 import { shareAlert } from '../lib/share';
-import { ALERT_TYPES, speciesEmoji, speciesLabel } from '../lib/alerts';
+import { alertBadgeColor, alertBadgeText, alertContextLine, isAlertResolved } from '../lib/alerts';
 import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { formatCount, formatTime } from '../lib/data';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
-import { CommentKeyboardView } from '../components/CommentKeyboardView';
+import WantToAdoptButton from '../components/WantToAdoptButton';
+import { adoptCtaLabel } from '../lib/adoptionContact';
 import { useGuestAccess } from '../lib/guestAccess';
 
 type Rt = RouteProp<RootStackParamList, 'AlertDetail'>;
@@ -134,23 +135,22 @@ export default function AlertDetailScreen() {
     );
   }
 
-  const typeConfig = ALERT_TYPES[alert.type] ?? ALERT_TYPES.lost;
   const avatar = alert.userAvatar ?? userFallbackAvatar(alert.username ?? 'usuario');
+  const resolved = isAlertResolved(alert);
+  const badgeColor = alertBadgeColor(alert);
 
   const header = (
     <View>
-      <View style={[styles.badgeRow, { backgroundColor: `${typeConfig.color}14` }]}>
-        <Text style={[styles.badgeText, { color: typeConfig.color }]}>
-          {typeConfig.emoji} {speciesLabel(alert.species).toUpperCase()} {typeConfig.label}
+      <View style={[styles.badgeRow, { backgroundColor: `${badgeColor}14` }]}>
+        <Text style={[styles.badgeText, { color: badgeColor }]}>
+          {alertBadgeText(alert)}
         </Text>
       </View>
 
       <View style={styles.userRow}>
         <Image source={{ uri: thumb(avatar, 100) }} style={styles.avatar} transition={200} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.petName}>
-            {alert.petName ? alert.petName : speciesLabel(alert.species)} {speciesEmoji(alert.species)}
-          </Text>
+          <Text style={styles.petName}>{alertContextLine(alert)}</Text>
           <View style={styles.locRow}>
             <Ionicons name="location" size={12} color={colors.textMuted} />
             <Text style={styles.locText}>{alert.locality}</Text>
@@ -181,11 +181,23 @@ export default function AlertDetailScreen() {
           <Text style={styles.actionCount}>{formatCount(alert.commentCount)}</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
-        <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
-          <Ionicons name="paw" size={15} color="#fff" />
-          <Text style={styles.difundirText}>DIFUNDIR</Text>
-        </Pressable>
+        {resolved ? (
+          <Pressable onPress={handleShare} disabled={sharing} hitSlop={8} accessibilityLabel="Compartir">
+            <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
+          </Pressable>
+        ) : (
+          <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
+            <Ionicons name="paw" size={15} color="#fff" />
+            <Text style={styles.difundirText}>DIFUNDIR</Text>
+          </Pressable>
+        )}
       </View>
+
+      {alert.type === 'adoption' && !resolved ? (
+        <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
+          <WantToAdoptButton label={adoptCtaLabel(alert.sex)} size="block" onPress={handleShare} />
+        </View>
+      ) : null}
 
       <Text style={styles.description}>{alert.description}</Text>
       {alert.username && <Text style={styles.postedBy}>Publicado por {alert.username}</Text>}

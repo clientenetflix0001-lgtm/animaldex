@@ -216,6 +216,7 @@ export async function sharePost(post: Post): Promise<void> {
 // del sistema (WhatsApp, Estado de WhatsApp, Facebook, Instagram, copiar
 // enlace, etc.) con un link directo a la alerta dentro de Animaldex.
 import type { ApiAlert, ApiListing, ApiReel } from './db';
+import { alertShareMeta } from './alerts';
 import { REEL_SHARE_MESSAGE, reelSharePayload, reelShareUrl } from './reels';
 
 export function alertShareUrl(alertId: string): string {
@@ -223,12 +224,9 @@ export function alertShareUrl(alertId: string): string {
 }
 
 export async function shareAlert(alert: ApiAlert): Promise<void> {
-  const typeLabel = alert.type === 'found' ? 'ENCONTRADO' : 'PERDIDO';
-  const name = alert.petName ? ` ${alert.petName}` : '';
-  const title = `🚨 ${typeLabel}${name} · Animaldex`;
-  const text = `${alert.description}\n📍 ${alert.locality}`;
+  const meta = alertShareMeta(alert);
   const url = alertShareUrl(alert.id);
-  await shareLink(title, text, url);
+  await shareLink(meta.title, meta.description, url);
 }
 
 // ---------- Mercado: compartir una publicación (producto/servicio) ----------

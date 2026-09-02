@@ -34,6 +34,7 @@ import TagWelcomeScreen from './screens/TagWelcomeScreen';
 import AdminTagsScreen from './screens/AdminTagsScreen';
 import AlertsScreen from './screens/AlertsScreen';
 import CreateAlertScreen from './screens/CreateAlertScreen';
+import MyAlertsScreen from './screens/MyAlertsScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
 import FeedReelsSwiper from './screens/FeedReelsSwiper';
 import CreateReelScreen from './screens/CreateReelScreen';
@@ -261,6 +262,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       QRScanner: 'escanear',
       AdminTags: 'admin/chapitas',
       CreateAlert: 'crear-alerta',
+      MyAlerts: 'mis-alertas',
       AlertDetail: 'a/:alertId',
       CreateListing: 'vender',
       ListingDetail: 'm/:listingId',
@@ -501,6 +503,11 @@ function RootNavigator() {
         name="CreateAlert"
         component={CreateAlertScreen}
         options={{ title: 'Crear alerta', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="MyAlerts"
+        component={MyAlertsScreen}
+        options={{ title: 'Mis alertas', ...screenHeaderOptions }}
       />
       <Stack.Screen
         name="AlertDetail"

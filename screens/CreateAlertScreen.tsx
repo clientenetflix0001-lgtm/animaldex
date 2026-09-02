@@ -27,12 +27,14 @@ import { LocalityPicker } from '../components/LocalityPicker';
 import {
   ALERT_SPECIES,
   ALERT_TYPES,
+  ALERT_TYPE_IDS,
   AlertType,
   todayDateString,
   yesterdayDateString,
   isValidDateString,
   dateStringToTimestamp,
 } from '../lib/alerts';
+import { PET_SEXES } from '../lib/petFields';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 
@@ -44,6 +46,7 @@ export default function CreateAlertScreen() {
   const [type, setType] = useState<AlertType>('lost');
   const [species, setSpecies] = useState('perro');
   const [petName, setPetName] = useState('');
+  const [sex, setSex] = useState<'macho' | 'hembra' | null>(null);
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -143,6 +146,7 @@ export default function CreateAlertScreen() {
         type,
         species,
         petName: petName.trim() || undefined,
+        sex: type === 'adoption' ? sex : undefined,
         description: description.trim(),
         image,
         locality,
@@ -157,7 +161,7 @@ export default function CreateAlertScreen() {
     } finally {
       setSaving(false);
     }
-  }, [image, description, locality, province, lat, lon, type, species, petName, dateText, navigation]);
+  }, [image, description, locality, province, lat, lon, type, species, petName, sex, dateText, navigation]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -166,7 +170,7 @@ export default function CreateAlertScreen() {
           {/* Tipo de alerta */}
           <Text style={styles.label}>Tipo de alerta *</Text>
           <View style={styles.typeRow}>
-            {(Object.keys(ALERT_TYPES) as AlertType[]).map((t) => {
+            {ALERT_TYPE_IDS.map((t) => {
               const cfg = ALERT_TYPES[t];
               const active = type === t;
               return (
@@ -176,7 +180,7 @@ export default function CreateAlertScreen() {
                   onPress={() => setType(t)}
                 >
                   <Text style={[styles.typeBtnText, active && { color: '#fff' }]}>
-                    {cfg.emoji} Animal {cfg.shortLabel.toLowerCase()}
+                    {cfg.emoji} {cfg.createLabel}
                   </Text>
                 </Pressable>
               );
@@ -227,6 +231,23 @@ export default function CreateAlertScreen() {
             onChangeText={setPetName}
             maxLength={40}
           />
+
+          {type === 'adoption' ? (
+            <>
+              <Text style={styles.label}>Sexo (opcional)</Text>
+              <View style={styles.typeRow}>
+                {PET_SEXES.map((s) => (
+                  <Pressable
+                    key={s.id}
+                    style={[styles.typeBtn, sex === s.id && styles.speciesChipActive]}
+                    onPress={() => setSex(s.id)}
+                  >
+                    <Text style={[styles.typeBtnText, sex === s.id && { color: '#fff' }]}>{s.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : null}
 
           {/* Descripción */}
           <Text style={styles.label}>Descripción *</Text>

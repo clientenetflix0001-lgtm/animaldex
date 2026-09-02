@@ -278,7 +278,7 @@ async function buildOgMeta(request, env, url) {
     'marketplace', 'mercado', 'admin', 'api', 'crear', 'mascotas', 'actividad', 'perfil', 'explorar',
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
-    'editar-perfil-publico', 'crear-alerta', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
+    'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
     'well-known',
   ]);
 
@@ -308,15 +308,49 @@ async function buildOgMeta(request, env, url) {
     }
   } else if (alertMatch) {
     const id = decodeURIComponent(alertMatch[1]);
-    const rows = await d1Query(env, 'SELECT * FROM alerts WHERE id = ?', [id]);
+    const rows = await d1Query(
+      env,
+      `SELECT a.*, u.username AS username
+       FROM alerts a LEFT JOIN users u ON u.id = a.user_id
+       WHERE a.id = ?`,
+      [id]
+    );
     if (rows[0]) {
       const a = rows[0];
-      const typeLabel = a.type === 'found' ? 'ENCONTRADO' : 'PERDIDO';
-      const speciesLabel = { perro: 'Perro', gato: 'Gato', conejo: 'Conejo', loro: 'Ave', hámster: 'Hámster' }[a.species] || 'Animal';
-      const name = a.pet_name ? ` ${a.pet_name}` : '';
+      const resolved = !!(a.resolved_at || a.status === 'resolved');
+      const name = a.pet_name ? String(a.pet_name).trim() : '';
+      const user = String(a.username || a.user_name || 'alguien').replace(/^@/, '');
+      const loc = a.locality || '';
+      const sex = String(a.sex || '').toLowerCase();
+      const adopted = sex === 'hembra' ? 'ya fue adoptada' : sex === 'macho' ? 'ya fue adoptado' : 'ya fue adoptado/a';
+      let title = `🚨 MASCOTA · Animaldex`;
+      let description = `${a.description || ''} · 📍 ${loc}`.trim();
+      if (resolved) {
+        if (a.type === 'lost') {
+          title = name ? `✅ ${name} ya apareció` : '✅ Ya apareció';
+          description = `La alerta de ${user} fue resuelta.${name ? ` ${name} volvió a casa.` : ''}`;
+        } else if (a.type === 'adoption') {
+          title = name ? `💜 ${name} ${adopted}` : `💜 ${adopted}`;
+          description = `Esta publicación de adopción de ${user} ya fue resuelta.`;
+        } else {
+          title = '💚 Esta mascota encontró a su familia';
+          description = `La alerta publicada por ${user} fue resuelta.`;
+        }
+      } else if (a.type === 'lost') {
+        title = name ? `🚨 Ayudá a encontrar a ${name}` : '🚨 Ayudá a encontrar a esta mascota';
+      } else if (a.type === 'sighting') {
+        title = loc ? `👀 Mascota avistada en ${loc}` : '👀 Mascota avistada';
+      } else if (a.type === 'found') {
+        title = loc ? `💚 Mascota encontrada en ${loc}` : '💚 Mascota encontrada';
+      } else if (a.type === 'adoption') {
+        title = name ? `💜 ${name} está en adopción` : '💜 Mascota en adopción';
+      } else {
+        const typeLabel = a.type === 'found' ? 'ENCONTRADO' : 'PERDIDO';
+        title = `🚨 ${typeLabel}${name ? ' ' + name : ''} · Animaldex`;
+      }
       meta = {
-        title: `🚨 ${speciesLabel.toUpperCase()} ${typeLabel}${name} · Animaldex`,
-        description: `${a.description || ''} · 📍 ${a.locality}`.trim(),
+        title,
+        description,
         image: a.image,
         url: `${origin}/a/${a.id}`,
       };

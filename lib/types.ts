@@ -34,6 +34,7 @@ export type RootStackParamList = {
   TagWelcome: { code: number };
   AdminTags: undefined;
   CreateAlert: undefined;
+  MyAlerts: undefined;
   AlertDetail: { alertId: string };
   CreateListing: undefined;
   ListingDetail: { listingId: string };

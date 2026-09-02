@@ -62,6 +62,16 @@ import {
   ADOPTION_CONTACT_REQUIRED,
   parseProtectorAdoptionContact,
 } from '../lib/adoptionContact.ts';
+import {
+  ALERT_ALREADY_RESOLVED,
+  ALERT_RENEW_MS,
+  ALERT_RESOLVE_OWNER_ERROR,
+  ALERT_RESOLVE_TYPE_ERROR,
+  ALERT_RESOLVED_NOT_RENEWABLE,
+  allowedResolutionForType,
+  parseAlertResolutionType,
+  parseAlertType,
+} from '../lib/alerts.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -246,7 +256,7 @@ const RESERVED_PUBLIC_USERNAMES = new Set([
   'marketplace', 'mercado', 'admin', 'api', 'crear', 'mascotas', 'actividad', 'perfil', 'explorar',
   'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
   'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
-  'editar-perfil-publico', 'crear-alerta', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
+  'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
   'well-known',
 ]);
 
@@ -389,6 +399,15 @@ async function ensureActivityEventsSchema(env) {
   await d1(env, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_events_key ON activity_events (idempotency_key)');
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_activity_events_user ON activity_events (user_id, created_at DESC)');
   env._activityEventsReady = true;
+}
+
+async function ensureAlertsSchema(env) {
+  if (env._alertsSchemaReady) return;
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN resolved_at INTEGER').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN resolution_type TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN renewed_at INTEGER').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN sex TEXT').run(); } catch (_) {}
+  env._alertsSchemaReady = true;
 }
 
 async function ensurePushSchema(env) {
@@ -1266,11 +1285,12 @@ const POST_SELECT = `
 // ============================================================
 
 function alertRow(r, viewerLiked) {
+  const renewedAt = r.renewed_at || r.created_at;
   return {
     id: r.id,
     userId: r.user_id,
-    type: r.type, // 'lost' | 'found' (futuro: 'sighting', 'reunited')
-    status: r.status, // 'active' (futuro: 'resolved')
+    type: r.type,
+    status: r.resolved_at || r.status === 'resolved' ? 'resolved' : (r.status || 'active'),
     petName: r.pet_name || null,
     species: r.species,
     breed: r.breed || '',
@@ -1283,6 +1303,11 @@ function alertRow(r, viewerLiked) {
     lon: r.lon ?? null,
     eventDate: r.event_date ?? null,
     createdAt: r.created_at,
+    renewedAt,
+    bumpedAt: renewedAt,
+    resolvedAt: r.resolved_at || null,
+    resolutionType: r.resolution_type || null,
+    sex: r.sex || null,
     likeCount: r.like_count || 0,
     commentCount: r.comment_count || 0,
     isLiked: !!viewerLiked,
@@ -1393,6 +1418,7 @@ async function handleDb(request, env) {
     await ensureLocationActorColumn(env);
     await ensureReelsSchema(env);
     await ensurePetHandleAliasSchema(env);
+    await ensureAlertsSchema(env);
 
     const publicReel = await handlePublicReelAction(env, body, json, clean, request, authUser);
     if (publicReel) return publicReel;
@@ -1813,7 +1839,12 @@ async function handleDb(request, env) {
       const viewerId = await authUser(request, env, body);
       const rows = await d1(
         env,
-        `${ALERT_SELECT} WHERE LOWER(a.locality) = LOWER(?) AND a.created_at < ? ORDER BY a.created_at DESC LIMIT ?`,
+        `${ALERT_SELECT} WHERE LOWER(a.locality) = LOWER(?)
+           AND (a.status IS NULL OR a.status = 'active')
+           AND a.resolved_at IS NULL
+           AND COALESCE(a.renewed_at, a.created_at) < ?
+         ORDER BY COALESCE(a.renewed_at, a.created_at) DESC
+         LIMIT ?`,
         [locality, before, limit + 1]
       );
       const hasMore = rows.length > limit;
@@ -2255,7 +2286,7 @@ async function handleDb(request, env) {
     // ---------- Alertas: escrituras (requieren sesión) ----------
 
     if (action === 'createAlert') {
-      const type = body.type === 'found' ? 'found' : 'lost';
+      const type = parseAlertType(body.type) || 'lost';
       const petName = clean(body.petName, 40);
       const species = clean(body.species, 20) || 'perro';
       const breed = clean(body.breed, 60);
@@ -2267,6 +2298,8 @@ async function handleDb(request, env) {
       const lat = body.lat != null && Number.isFinite(Number(body.lat)) ? Number(body.lat) : null;
       const lon = body.lon != null && Number.isFinite(Number(body.lon)) ? Number(body.lon) : null;
       const eventDate = body.eventDate != null && Number.isFinite(Number(body.eventDate)) ? Number(body.eventDate) : now;
+      const sexParsed = parsePetSex(body.sex);
+      const sex = sexParsed.ok ? sexParsed.value : null;
 
       if (!image) return json({ error: 'Falta la foto del animal' }, 400);
       if (image.startsWith('data:')) return json({ error: 'La imagen debe subirse primero a Cloudflare' }, 400);
@@ -2276,13 +2309,87 @@ async function handleDb(request, env) {
       const id = `alert-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(
         env,
-        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at)
-         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now]
+        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at, renewed_at, sex)
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now, now, sex]
       );
       const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [id]);
       const [alert] = await attachLikedFlags(env, rows, userId);
       return json({ ok: true, alert });
+    }
+
+    if (action === 'myAlerts') {
+      const tab = clean(body.tab, 20) === 'resolved' ? 'resolved' : 'active';
+      const before = Number(body.before) || now + 1000;
+      const limit = Math.min(Number(body.limit) || 20, 40);
+      const conditions = tab === 'resolved'
+        ? "(a.status = 'resolved' OR a.resolved_at IS NOT NULL)"
+        : "(a.status IS NULL OR a.status = 'active') AND a.resolved_at IS NULL";
+      const rows = await d1(
+        env,
+        `${ALERT_SELECT} WHERE a.user_id = ? AND ${conditions}
+           AND COALESCE(a.renewed_at, a.created_at, a.resolved_at) < ?
+         ORDER BY COALESCE(a.resolved_at, a.renewed_at, a.created_at) DESC
+         LIMIT ?`,
+        [userId, before, limit + 1]
+      );
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const alerts = await attachLikedFlags(env, page, userId);
+      return json({ ok: true, alerts, hasMore });
+    }
+
+    if (action === 'resolveAlert') {
+      const alertId = clean(body.alertId, 80);
+      if (!alertId) return json({ error: 'Falta la alerta' }, 400);
+      const owned = await d1(env, 'SELECT * FROM alerts WHERE id = ?', [alertId]);
+      if (!owned[0]) return json({ error: 'Alerta no encontrada' }, 404);
+      if (owned[0].user_id !== userId) return json({ error: ALERT_RESOLVE_OWNER_ERROR }, 403);
+      if (owned[0].resolved_at || owned[0].status === 'resolved') {
+        return json({ error: ALERT_ALREADY_RESOLVED }, 400);
+      }
+      const allowed = allowedResolutionForType(owned[0].type);
+      if (!allowed) return json({ error: ALERT_RESOLVE_TYPE_ERROR }, 400);
+      const requested = parseAlertResolutionType(body.resolutionType);
+      if (requested && requested !== allowed) return json({ error: ALERT_RESOLVE_TYPE_ERROR }, 400);
+      await d1(
+        env,
+        "UPDATE alerts SET status = 'resolved', resolved_at = ?, resolution_type = ? WHERE id = ?",
+        [now, allowed, alertId]
+      );
+      const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [alertId]);
+      const [alert] = await attachLikedFlags(env, rows, userId);
+      return json({ ok: true, alert });
+    }
+
+    if (action === 'renewAlert') {
+      const alertId = clean(body.alertId, 80);
+      if (!alertId) return json({ error: 'Falta la alerta' }, 400);
+      const owned = await d1(env, 'SELECT * FROM alerts WHERE id = ?', [alertId]);
+      if (!owned[0]) return json({ error: 'Alerta no encontrada' }, 404);
+      if (owned[0].user_id !== userId) return json({ error: 'Esa alerta no es tuya' }, 403);
+      if (owned[0].resolved_at || owned[0].status === 'resolved') {
+        return json({ error: ALERT_RESOLVED_NOT_RENEWABLE }, 400);
+      }
+      const last = owned[0].renewed_at || owned[0].created_at;
+      if (now - last < ALERT_RENEW_MS) {
+        return json({ error: 'Todavía no pasaron 7 días desde la última renovación.' }, 400);
+      }
+      await d1(env, 'UPDATE alerts SET renewed_at = ? WHERE id = ?', [now, alertId]);
+      const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [alertId]);
+      const [alert] = await attachLikedFlags(env, rows, userId);
+      return json({ ok: true, alert });
+    }
+
+    if (action === 'deleteAlert') {
+      const alertId = clean(body.alertId, 80);
+      if (!alertId) return json({ error: 'Falta la alerta' }, 400);
+      const owned = await d1(env, 'SELECT id FROM alerts WHERE id = ? AND user_id = ?', [alertId, userId]);
+      if (!owned[0]) return json({ error: 'Esa alerta no es tuya' }, 403);
+      await d1(env, 'DELETE FROM alert_likes WHERE alert_id = ?', [alertId]);
+      await d1(env, 'DELETE FROM alert_comments WHERE alert_id = ?', [alertId]);
+      await d1(env, 'DELETE FROM alerts WHERE id = ?', [alertId]);
+      return json({ ok: true });
     }
 
     if (action === 'alertLike') {
