@@ -28,8 +28,9 @@ describe('perfil mascota: encabezado compacto', () => {
     assert.doesNotMatch(petProfile, /availW \* 0\.62/);
     assert.doesNotMatch(petProfile, /avatarSection/);
     assert.doesNotMatch(petProfile, /width: AVATAR/);
-    assert.match(petProfile, /avatarPress: \{ width: 84, height: 84/);
-    assert.match(petProfile, /avatar: \{\s*width: 84,\s*height: 84,\s*borderRadius: 42/);
+    assert.match(petProfile, /<PetStatusAvatar/);
+    assert.match(petProfile, /size=\{84\}/);
+    assert.match(petProfile, /avatarPress: \{ flexShrink: 0 \}/);
   });
 
   it('2. la estructura es información + avatar', () => {

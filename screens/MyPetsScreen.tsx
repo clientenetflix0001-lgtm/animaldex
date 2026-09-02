@@ -1,13 +1,13 @@
 import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useStore } from '../lib/store';
 import { thumb } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import WantToAdoptButton from '../components/WantToAdoptButton';
+import PetStatusAvatar from '../components/PetStatusAvatar';
 import {
   ADD_PET_ROUTE,
   ADOPT_ROUTE,
@@ -68,7 +68,11 @@ export default function MyPetsScreen() {
           accessibilityRole="button"
           accessibilityLabel={item.handle}
         >
-          <Image source={{ uri: thumb(item.avatarUri, 200) }} style={styles.avatar} transition={250} />
+          <PetStatusAvatar
+            uri={thumb(item.avatarUri, 200)}
+            size={72}
+            status={personalPets.find((p) => p.id === item.key)?.careStatus}
+          />
           <Text style={styles.handle} numberOfLines={1}>
             {item.handle}
           </Text>

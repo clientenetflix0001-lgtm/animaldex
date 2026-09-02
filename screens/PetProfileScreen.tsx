@@ -31,6 +31,7 @@ import { useStore, apiPostToPost } from '../lib/store';
 import { postNavParams, sharePetProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
+import PetStatusAvatar from '../components/PetStatusAvatar';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
@@ -292,25 +293,25 @@ export default function PetProfileScreen() {
           style={styles.avatarPress}
           accessibilityLabel={isMyPet ? 'Cambiar foto de perfil' : undefined}
         >
-          <Image
-            source={{ uri: thumb(avatarUri, 200) }}
-            style={styles.avatar}
-            contentFit="cover"
-            transition={300}
-          />
-          {uploadingPhoto && (
-            <View style={styles.avatarOverlay}>
-              <ActivityIndicator color="#fff" size="small" />
+          <PetStatusAvatar
+            uri={thumb(avatarUri, 200)}
+            size={84}
+            status={realPet?.careStatus}
+          >
+            {uploadingPhoto && (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color="#fff" size="small" />
+              </View>
+            )}
+            <View style={styles.speciesBadge}>
+              <Text style={styles.speciesEmoji}>{emoji}</Text>
             </View>
-          )}
-          <View style={styles.speciesBadge}>
-            <Text style={styles.speciesEmoji}>{emoji}</Text>
-          </View>
-          {isMyPet && !uploadingPhoto && (
-            <View style={styles.cameraBadge}>
-              <Ionicons name="camera" size={12} color="#fff" />
-            </View>
-          )}
+            {isMyPet && !uploadingPhoto && (
+              <View style={styles.cameraBadge}>
+                <Ionicons name="camera" size={12} color="#fff" />
+              </View>
+            )}
+          </PetStatusAvatar>
         </Pressable>
       </View>
 
@@ -575,15 +576,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   identityCopy: { flex: 1, minWidth: 0, flexShrink: 1 },
-  avatarPress: { width: 84, height: 84, flexShrink: 0 },
-  avatar: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    borderWidth: 3,
-    borderColor: colors.primarysoft,
-    backgroundColor: colors.border,
-  },
+  avatarPress: { flexShrink: 0 },
   avatarOverlay: {
     position: 'absolute',
     top: 0,

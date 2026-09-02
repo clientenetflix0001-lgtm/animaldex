@@ -21,6 +21,7 @@ import { postNavParams, sharePublicProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import WantToAdoptButton from '../components/WantToAdoptButton';
+import PetStatusAvatar from '../components/PetStatusAvatar';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
@@ -46,6 +47,7 @@ interface DisplayPet {
   breed: string;
   avatarUri: string;
   username?: string;
+  careStatus?: string | null;
 }
 
 export default function UserProfileScreen({ userId, showBack = false }: Props) {
@@ -164,6 +166,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         breed: p.breed || p.species,
         avatarUri: p.avatarUrl ?? petFallbackAvatar(p.id),
         username: p.username ?? undefined,
+        careStatus: p.careStatus,
       }));
 
   const deletedSet = new Set(deletedPostIds);
@@ -322,7 +325,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
               style={styles.petCard}
               onPress={() => navigation.navigate('PetProfile', { petId: item.username || item.id })}
             >
-              <Image source={{ uri: thumb(item.avatarUri, 150) }} style={styles.petImg} transition={250} />
+              <PetStatusAvatar uri={thumb(item.avatarUri, 150)} size={60} status={item.careStatus} />
               <Text style={styles.petName}>
                 {item.username ? item.username : item.name} {item.emoji}
               </Text>
