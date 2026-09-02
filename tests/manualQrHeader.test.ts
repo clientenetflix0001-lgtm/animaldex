@@ -105,7 +105,7 @@ describe('HEADER visual', () => {
     assert.match(feed, />nimaldex</);
     assert.doesNotMatch(feed, />Nimaldex</);
     assert.doesNotMatch(feed, />Animaldex</);
-    assert.match(feed, /logoRow: \{ flexDirection: 'row', alignItems: 'center', gap: 1 \}/);
+    assert.match(feed, /logoRow: \{ flexDirection: 'row', alignItems: 'center', gap: 0 \}/);
   });
 
   it('12. nombre general de la marca sigue siendo ANIMALDEX', () => {

@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 1 },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
   logoMark: { width: 24, height: 24 },
   logo: { fontSize: 26, fontWeight: '900', color: colors.primary, letterSpacing: -0.5 },
   qrBtn: {
