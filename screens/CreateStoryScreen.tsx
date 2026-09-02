@@ -35,6 +35,7 @@ import {
 } from '../lib/stories';
 import { fileToUpload } from '../lib/reelTrim';
 import { normalizeLocalFileUri } from '../lib/reelUri';
+import { notifyStoriesChanged } from '../lib/storyRailRefresh';
 
 async function loadTrimNative() {
   try {
@@ -238,6 +239,7 @@ export default function CreateStoryScreen() {
         if (!put.ok) throw new Error('No se pudo subir el video');
         await db.completeStoryUpload(created.storyId);
       }
+      notifyStoriesChanged();
       navigation.goBack();
     } catch (e: any) {
       Alert.alert('No se pudo publicar', e?.message || 'Intentá de nuevo.');

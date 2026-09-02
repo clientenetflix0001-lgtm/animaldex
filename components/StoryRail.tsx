@@ -1,17 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { db, type ApiStoryRailItem } from '../lib/db';
 import { useStore } from '../lib/store';
 import { useProfiles } from '../features/profiles';
 import { spacing } from '../lib/theme';
 import { storyRingVariant } from '../lib/stories';
+import { useStoriesRevision } from '../lib/useStoriesRevision';
 import StoryCircle from './StoryCircle';
 
 export default function StoryRail() {
   const navigation = useNavigation<any>();
   const { user } = useStore();
   const { activeProfileId } = useProfiles();
+  const storiesRevision = useStoriesRevision();
   const [items, setItems] = useState<ApiStoryRailItem[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -20,7 +22,6 @@ export default function StoryRail() {
       setItems([]);
       return;
     }
-    setLoading(true);
     try {
       const res = await db.storyRail({ authorProfileId: activeProfileId });
       setItems(res.items || []);
@@ -32,8 +33,15 @@ export default function StoryRail() {
   }, [user, activeProfileId]);
 
   useEffect(() => {
+    setLoading(true);
     load();
-  }, [load]);
+  }, [load, storiesRevision]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const openCreate = useCallback(() => {
     navigation.navigate('CreateStory');
