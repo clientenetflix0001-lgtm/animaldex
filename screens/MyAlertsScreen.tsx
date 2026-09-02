@@ -16,14 +16,15 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiAlert } from '../lib/db';
 import {
-  ALERT_TYPES,
   alertBadgeColor,
-  alertBadgeText,
-  alertContextLine,
+  alertListTime,
+  alertRenewalUi,
   alertResolveActionLabel,
   alertResolveConfirm,
   allowedResolutionForType,
   isAlertResolved,
+  myAlertPrimaryLabel,
+  myAlertSecondaryLine,
   timestampToDateString,
 } from '../lib/alerts';
 import { thumb } from '../lib/images';
@@ -126,17 +127,19 @@ export default function MyAlertsScreen() {
     const resolved = isAlertResolved(item);
     const badgeColor = alertBadgeColor(item);
     const busy = busyId === item.id;
+    const renewUi = alertRenewalUi(item);
     return (
       <View style={styles.card}>
         <Pressable style={styles.row} onPress={() => navigation.navigate('AlertDetail', { alertId: item.id })}>
           <Image source={{ uri: thumb(item.image, 200) }} style={styles.thumb} />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.badge, { color: badgeColor }]}>{alertBadgeText(item)}</Text>
-            <Text style={styles.context} numberOfLines={2}>{alertContextLine(item)}</Text>
+            <Text style={[styles.badge, { color: badgeColor }]}>{myAlertPrimaryLabel(item)}</Text>
+            <Text style={styles.context} numberOfLines={1}>{myAlertSecondaryLine(item)}</Text>
+            <Text style={styles.meta} numberOfLines={1}>{item.locality}</Text>
             {resolved && item.resolvedAt ? (
               <Text style={styles.meta}>Resuelta · {timestampToDateString(item.resolvedAt)}</Text>
             ) : (
-              <Text style={styles.meta}>{ALERT_TYPES[item.type]?.shortLabel || item.type}</Text>
+              <Text style={styles.meta}>{alertListTime(item.createdAt)}</Text>
             )}
           </View>
           <Pressable
@@ -149,8 +152,12 @@ export default function MyAlertsScreen() {
         </Pressable>
         {!resolved ? (
           <View style={styles.actions}>
-            <Pressable style={styles.renewBtn} onPress={() => renew(item)} disabled={busy}>
-              <Text style={styles.renewText}>Renovar publicación</Text>
+            <Pressable
+              style={[styles.renewBtn, !renewUi.canRenew && styles.renewBtnOff]}
+              onPress={() => { if (renewUi.canRenew) renew(item); }}
+              disabled={busy || !renewUi.canRenew}
+            >
+              <Text style={[styles.renewText, !renewUi.canRenew && styles.renewTextOff]}>{renewUi.label}</Text>
             </Pressable>
             <Pressable style={styles.resolveBtn} onPress={() => confirmResolve(item)} disabled={busy}>
               {busy ? (
@@ -235,6 +242,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   renewText: { fontWeight: '800', fontSize: 13, color: colors.text },
+  renewBtnOff: { backgroundColor: colors.bg },
+  renewTextOff: { color: colors.textMuted, fontWeight: '700' },
   resolveBtn: {
     backgroundColor: colors.primary,
     borderRadius: radius.full,

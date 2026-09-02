@@ -188,6 +188,7 @@ export interface ApiAlert {
   resolvedAt?: number | null;
   resolutionType?: 'found' | 'reunited' | 'adopted' | null;
   sex?: 'macho' | 'hembra' | null;
+  authorProfileId?: string | null;
   likeCount: number;
   commentCount: number;
   isLiked: boolean;
@@ -523,6 +524,9 @@ export const db = {
     lon?: number | null;
     eventDate?: number;
     sex?: 'macho' | 'hembra' | null;
+    authorProfileId?: string | null;
+    contactWhatsapp?: string | null;
+    contactPhone?: string | null;
   }): Promise<{ alert: ApiAlert }> => call('/db', { action: 'createAlert', ...alert }),
   myAlerts: (tab: 'active' | 'resolved', before?: number, limit = 20): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
     call('/db', { action: 'myAlerts', tab, before, limit }),
@@ -536,6 +540,13 @@ export const db = {
     call('/db', { action: 'alertLike', alertId, value }),
   alertComment: (alertId: string, text: string): Promise<{ id: string; createdAt: number }> =>
     call('/db', { action: 'alertComment', alertId, text }),
+  alertAdoptionContact: (alertId: string): Promise<{
+    alertId: string;
+    petName: string | null;
+    shelterProfileId: string | null;
+    adoptionWhatsapp: string | null;
+    adoptionPhone: string | null;
+  }> => call('/db', { action: 'alertAdoptionContact', alertId }),
 
   // ---------- Mercado (productos y servicios) ----------
   listingsFeed: (params: {

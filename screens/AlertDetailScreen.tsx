@@ -18,13 +18,14 @@ import { useRoute, RouteProp } from '@react-navigation/native';
 import { db, ApiAlert, ApiComment, timeAgoMinutes } from '../lib/db';
 import { useStore } from '../lib/store';
 import { shareAlert } from '../lib/share';
-import { alertBadgeColor, alertBadgeText, alertContextLine, isAlertResolved } from '../lib/alerts';
+import { alertBadgeColor, alertBadgeText, alertContextLine, alertFoundSafeNote, isAlertResolved } from '../lib/alerts';
 import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { formatCount, formatTime } from '../lib/data';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import WantToAdoptButton from '../components/WantToAdoptButton';
 import { adoptCtaLabel } from '../lib/adoptionContact';
+import { openAlertAdoption } from '../lib/openAlertAdoption';
 import { useGuestAccess } from '../lib/guestAccess';
 
 type Rt = RouteProp<RootStackParamList, 'AlertDetail'>;
@@ -41,6 +42,7 @@ export default function AlertDetailScreen() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [adopting, setAdopting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -78,6 +80,16 @@ export default function AlertDetailScreen() {
       setSharing(false);
     }
   }, [alert, sharing]);
+
+  const handleAdopt = useCallback(async () => {
+    if (!alert || adopting) return;
+    setAdopting(true);
+    try {
+      await openAlertAdoption(alert);
+    } finally {
+      setAdopting(false);
+    }
+  }, [alert, adopting]);
 
   const send = useCallback(async () => {
     if (guest) { requireLogin(); return; }
@@ -155,6 +167,9 @@ export default function AlertDetailScreen() {
             <Ionicons name="location" size={12} color={colors.textMuted} />
             <Text style={styles.locText}>{alert.locality}</Text>
           </View>
+          {alertFoundSafeNote(alert) ? (
+            <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text>
+          ) : null}
         </View>
         <Text style={styles.time}>{formatTime(timeAgoMinutes(alert.createdAt))}</Text>
       </View>
@@ -185,6 +200,8 @@ export default function AlertDetailScreen() {
           <Pressable onPress={handleShare} disabled={sharing} hitSlop={8} accessibilityLabel="Compartir">
             <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
           </Pressable>
+        ) : alert.type === 'adoption' && !resolved ? (
+          <WantToAdoptButton label={adoptCtaLabel(alert.sex)} onPress={handleAdopt} />
         ) : (
           <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
             <Ionicons name="paw" size={15} color="#fff" />
@@ -192,12 +209,6 @@ export default function AlertDetailScreen() {
           </Pressable>
         )}
       </View>
-
-      {alert.type === 'adoption' && !resolved ? (
-        <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
-          <WantToAdoptButton label={adoptCtaLabel(alert.sex)} size="block" onPress={handleShare} />
-        </View>
-      ) : null}
 
       <Text style={styles.description}>{alert.description}</Text>
       {alert.username && <Text style={styles.postedBy}>Publicado por {alert.username}</Text>}
@@ -311,6 +322,7 @@ const styles = StyleSheet.create({
   petName: { fontWeight: '700', fontSize: 15, color: colors.text },
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   locText: { fontSize: 12, color: colors.textMuted },
+  safeNote: { fontSize: 11, color: '#2EA65A', fontWeight: '700', marginTop: 3 },
   time: { fontSize: 11, color: colors.textMuted },
   image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   actions: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.lg },

@@ -226,7 +226,7 @@ export function alertShareUrl(alertId: string): string {
 export async function shareAlert(alert: ApiAlert): Promise<void> {
   const meta = alertShareMeta(alert);
   const url = alertShareUrl(alert.id);
-  await shareLink(meta.title, meta.description, url);
+  await shareLink(meta.title, meta.shareText || meta.title, url);
 }
 
 // ---------- Mercado: compartir una publicación (producto/servicio) ----------

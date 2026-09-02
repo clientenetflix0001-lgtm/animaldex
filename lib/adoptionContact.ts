@@ -103,13 +103,18 @@ export function resolveAdoptionOpenAction(opts: {
   phone?: string | null;
   petName: string;
   petHandleOrId?: string | null;
+  inquiryUrl?: string | null;
 }): AdoptionOpenAction {
   const expected = String(opts.expectedShelterProfileId || '').trim();
   const got = String(opts.shelterProfileId || '').trim();
   if (expected && got && expected !== got) {
     return { kind: 'none', message: ADOPTION_CONTACT_MISSING };
   }
-  const message = adoptionInquiryMessage(opts.petName, opts.petHandleOrId);
+  const name = String(opts.petName || '').trim() || 'esta mascota';
+  const customUrl = String(opts.inquiryUrl || '').trim();
+  const message = customUrl
+    ? `Hola, vi a ${name} en Animaldex y quisiera consultar por su adopción.\n${customUrl}`
+    : adoptionInquiryMessage(opts.petName, opts.petHandleOrId);
   const wa = buildWhatsAppUrl(opts.whatsapp, message);
   if (wa) {
     return { kind: 'whatsapp', url: wa, phone: normalizeAdoptionPhone(opts.whatsapp) || '' };

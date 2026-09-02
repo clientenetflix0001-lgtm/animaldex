@@ -25,10 +25,12 @@ import { uploadImage } from '../lib/api';
 import { detectCurrentLocality, withProvinceFallback } from '../lib/geo';
 import { LocalityPicker } from '../components/LocalityPicker';
 import {
+  ALERT_CREATE_PRIMARY,
+  ALERT_SIGHTING_SUBCHOICES,
   ALERT_SPECIES,
-  ALERT_TYPES,
-  ALERT_TYPE_IDS,
+  AlertCreatePrimaryId,
   AlertType,
+  alertTypeFromCreatePrimary,
   todayDateString,
   yesterdayDateString,
   isValidDateString,
@@ -37,13 +39,17 @@ import {
 import { PET_SEXES } from '../lib/petFields';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
+import { useProfiles } from '../features/profiles';
+import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib/adoptionContact';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function CreateAlertScreen() {
   const navigation = useNavigation<Nav>();
+  const { activeProfile } = useProfiles();
 
-  const [type, setType] = useState<AlertType>('lost');
+  const [primary, setPrimary] = useState<AlertCreatePrimaryId>('lost');
+  const [seenKind, setSeenKind] = useState<'sighting' | 'found' | null>(null);
   const [species, setSpecies] = useState('perro');
   const [petName, setPetName] = useState('');
   const [sex, setSex] = useState<'macho' | 'hembra' | null>(null);
@@ -51,6 +57,8 @@ export default function CreateAlertScreen() {
   const [image, setImage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [contactWhatsapp, setContactWhatsapp] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
 
   const [locality, setLocality] = useState<string | null>(null);
   const [province, setProvince] = useState<string | null>(null);
@@ -60,6 +68,10 @@ export default function CreateAlertScreen() {
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const [dateText, setDateText] = useState(todayDateString());
+
+  const type: AlertType | null = alertTypeFromCreatePrimary(primary, seenKind);
+  const isProtectorAdoption = type === 'adoption' && activeProfile?.type === 'protector';
+  const needsPersonalContact = type === 'adoption' && !isProtectorAdoption;
 
   // Ubicación por defecto = ubicación actual del usuario (representa
   // dónde se perdió/encontró el animal, no necesariamente su domicilio).
@@ -122,6 +134,11 @@ export default function CreateAlertScreen() {
   );
 
   const publish = useCallback(async () => {
+    const resolvedType = alertTypeFromCreatePrimary(primary, seenKind);
+    if (!resolvedType) {
+      Alert.alert('¿Qué pasó?', 'Elegí si la viste o si la encontraste y está con vos.');
+      return;
+    }
     if (!image) {
       Alert.alert('Falta la foto', 'Agrega una foto del animal.');
       return;
@@ -139,14 +156,27 @@ export default function CreateAlertScreen() {
       return;
     }
 
+    const protector = resolvedType === 'adoption' && activeProfile?.type === 'protector';
+    let contactWhatsappNorm: string | null | undefined;
+    let contactPhoneNorm: string | null | undefined;
+    if (resolvedType === 'adoption' && !protector) {
+      const parsed = parseProtectorAdoptionContact('protector', contactWhatsapp, contactPhone);
+      if (!parsed.ok) {
+        Alert.alert('Falta un contacto', parsed.error || ADOPTION_CONTACT_REQUIRED);
+        return;
+      }
+      contactWhatsappNorm = parsed.whatsapp;
+      contactPhoneNorm = parsed.phone;
+    }
+
     setSaving(true);
     try {
       const eventDate = dateText.trim() ? dateStringToTimestamp(dateText.trim()) ?? undefined : undefined;
       const { alert } = await db.createAlert({
-        type,
+        type: resolvedType,
         species,
         petName: petName.trim() || undefined,
-        sex: type === 'adoption' ? sex : undefined,
+        sex: resolvedType === 'adoption' ? sex : undefined,
         description: description.trim(),
         image,
         locality,
@@ -154,6 +184,9 @@ export default function CreateAlertScreen() {
         lat,
         lon,
         eventDate,
+        authorProfileId: resolvedType === 'adoption' ? activeProfile?.id : undefined,
+        contactWhatsapp: contactWhatsappNorm,
+        contactPhone: contactPhoneNorm,
       });
       navigation.replace('AlertDetail', { alertId: alert.id });
     } catch (e: any) {
@@ -161,7 +194,7 @@ export default function CreateAlertScreen() {
     } finally {
       setSaving(false);
     }
-  }, [image, description, locality, province, lat, lon, type, species, petName, sex, dateText, navigation]);
+  }, [image, description, locality, province, lat, lon, primary, seenKind, species, petName, sex, dateText, navigation, activeProfile, contactWhatsapp, contactPhone]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -170,22 +203,44 @@ export default function CreateAlertScreen() {
           {/* Tipo de alerta */}
           <Text style={styles.label}>Tipo de alerta *</Text>
           <View style={styles.typeRow}>
-            {ALERT_TYPE_IDS.map((t) => {
-              const cfg = ALERT_TYPES[t];
-              const active = type === t;
+            {ALERT_CREATE_PRIMARY.map((opt) => {
+              const active = primary === opt.id;
               return (
                 <Pressable
-                  key={t}
-                  style={[styles.typeBtn, active && { backgroundColor: cfg.color, borderColor: cfg.color }]}
-                  onPress={() => setType(t)}
+                  key={opt.id}
+                  style={[styles.typeBtn, active && { backgroundColor: opt.color, borderColor: opt.color }]}
+                  onPress={() => {
+                    setPrimary(opt.id);
+                    if (opt.id !== 'seen-or-found') setSeenKind(null);
+                  }}
                 >
                   <Text style={[styles.typeBtnText, active && { color: '#fff' }]}>
-                    {cfg.emoji} {cfg.createLabel}
+                    {opt.emoji} {opt.label}
                   </Text>
                 </Pressable>
               );
             })}
           </View>
+
+          {primary === 'seen-or-found' ? (
+            <>
+              <Text style={styles.subLabel}>¿Qué pasó?</Text>
+              <View style={styles.subRow}>
+                {ALERT_SIGHTING_SUBCHOICES.map((opt) => {
+                  const active = seenKind === opt.type;
+                  return (
+                    <Pressable
+                      key={opt.type}
+                      style={[styles.subBtn, active && styles.subBtnActive]}
+                      onPress={() => setSeenKind(opt.type)}
+                    >
+                      <Text style={[styles.subBtnText, active && styles.subBtnTextActive]}>{opt.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
 
           {/* Foto */}
           <Text style={styles.label}>Foto *</Text>
@@ -246,6 +301,36 @@ export default function CreateAlertScreen() {
                   </Pressable>
                 ))}
               </View>
+              {isProtectorAdoption ? (
+                <Text style={styles.help}>
+                  Las solicitudes usarán el WhatsApp o teléfono de tu Página de refugio.
+                </Text>
+              ) : null}
+              {needsPersonalContact ? (
+                <>
+                  <Text style={styles.label}>Contacto para adopción *</Text>
+                  <Text style={styles.help}>Agregá al menos un WhatsApp o teléfono. No se muestra en el feed.</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={contactWhatsapp}
+                    onChangeText={setContactWhatsapp}
+                    keyboardType="phone-pad"
+                    maxLength={30}
+                    placeholder="WhatsApp"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <View style={{ height: spacing.sm }} />
+                  <TextInput
+                    style={styles.input}
+                    value={contactPhone}
+                    onChangeText={setContactPhone}
+                    keyboardType="phone-pad"
+                    maxLength={30}
+                    placeholder="Teléfono"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </>
+              ) : null}
             </>
           ) : null}
 
@@ -336,6 +421,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   typeBtnText: { fontWeight: '700', fontSize: 14, color: colors.text, textAlign: 'center' },
+  subLabel: { fontWeight: '700', fontSize: 13, color: colors.text, marginTop: spacing.md, marginBottom: spacing.sm },
+  subRow: { flexDirection: 'row', gap: spacing.sm },
+  subBtn: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm,
+  },
+  subBtnActive: { backgroundColor: '#2EA65A', borderColor: '#2EA65A' },
+  subBtnText: { fontWeight: '700', fontSize: 12.5, color: colors.text, textAlign: 'center' },
+  subBtnTextActive: { color: '#fff' },
+  help: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.sm, lineHeight: 17 },
   photoWrap: { marginTop: spacing.xs },
   photo: { width: '100%', height: 200, borderRadius: radius.md },
   photoEmpty: {

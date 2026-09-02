@@ -9,11 +9,14 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { ApiAlert, timeAgoMinutes } from '../lib/db';
-import { alertBadgeColor, alertBadgeText, alertContextLine, isAlertResolved } from '../lib/alerts';
+import { alertBadgeColor, alertBadgeText, alertContextLine, alertFoundSafeNote, isAlertResolved } from '../lib/alerts';
 import { shareAlert } from '../lib/share';
 import { thumb, large, userFallbackAvatar } from '../lib/images';
 import { formatCount, formatTime } from '../lib/data';
 import { colors, radius, shadow, spacing } from '../lib/theme';
+import { adoptCtaLabel } from '../lib/adoptionContact';
+import { openAlertAdoption } from '../lib/openAlertAdoption';
+import WantToAdoptButton from './WantToAdoptButton';
 
 interface Props {
   alert: ApiAlert;
@@ -35,6 +38,7 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
   }, [alert.id, alert.isLiked, onToggleLike, heartScale]);
 
   const [sharing, setSharing] = useState(false);
+  const [adopting, setAdopting] = useState(false);
   const handleShare = useCallback(async () => {
     if (sharing) return;
     setSharing(true);
@@ -44,6 +48,16 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
       setSharing(false);
     }
   }, [alert, sharing]);
+
+  const handleAdopt = useCallback(async () => {
+    if (adopting) return;
+    setAdopting(true);
+    try {
+      await openAlertAdoption(alert);
+    } finally {
+      setAdopting(false);
+    }
+  }, [alert, adopting]);
 
   const avatar = alert.userAvatar ?? userFallbackAvatar(alert.username ?? 'usuario');
   const minutesAgo = timeAgoMinutes(alert.createdAt);
@@ -72,6 +86,9 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
               {alert.locality}
             </Text>
           </View>
+          {alertFoundSafeNote(alert) ? (
+            <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text>
+          ) : null}
         </View>
         <Text style={styles.time}>{formatTime(minutesAgo)}</Text>
       </View>
@@ -109,6 +126,8 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
           <Pressable onPress={handleShare} disabled={sharing} hitSlop={8} accessibilityLabel="Compartir">
             <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
           </Pressable>
+        ) : alert.type === 'adoption' && !resolved ? (
+          <WantToAdoptButton label={adoptCtaLabel(alert.sex)} onPress={handleAdopt} />
         ) : (
           <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
             <Ionicons name="paw" size={15} color="#fff" />
@@ -163,6 +182,7 @@ const styles = StyleSheet.create({
   petName: { fontWeight: '700', fontSize: 15, color: colors.text },
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   locText: { fontSize: 12, color: colors.textMuted, flexShrink: 1 },
+  safeNote: { fontSize: 11, color: '#2EA65A', fontWeight: '700', marginTop: 3 },
   time: { fontSize: 11, color: colors.textMuted },
   image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   actions: {

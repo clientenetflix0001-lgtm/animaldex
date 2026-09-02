@@ -168,20 +168,16 @@ export default function AlertsScreen() {
 
   const header = (
     <View style={styles.headerBlock}>
-      <View style={styles.titleRow}>
-        <Text style={styles.title}>🚨 ALERTAS</Text>
-        <View style={styles.titleActions}>
-          {user ? (
-            <Pressable style={styles.mineBtn} onPress={() => navigation.navigate('MyAlerts')}>
-              <Text style={styles.mineBtnText}>Mis alertas</Text>
-            </Pressable>
-          ) : null}
-          <Pressable style={styles.createBtn} onPress={() => navigation.navigate('CreateAlert')}>
-            <Ionicons name="add" size={16} color="#fff" />
-            <Text style={styles.createBtnText}>Crear alerta</Text>
-          </Pressable>
-        </View>
-      </View>
+      <Text style={styles.title}>🚨 ALERTAS</Text>
+      <Pressable style={styles.createBtn} onPress={() => navigation.navigate('CreateAlert')}>
+        <Ionicons name="add" size={16} color="#fff" />
+        <Text style={styles.createBtnText}>Crear alerta</Text>
+      </Pressable>
+      {user ? (
+        <Pressable style={styles.mineBtn} onPress={() => navigation.navigate('MyAlerts')}>
+          <Text style={styles.mineBtnText}>Mis alertas</Text>
+        </Pressable>
+      ) : null}
 
       <Pressable style={styles.localityPill} onPress={() => setPickerVisible(true)}>
         <Ionicons name="location" size={15} color={colors.primary} />
@@ -289,21 +285,17 @@ const styles = StyleSheet.create({
   desktopWrap: { width: '100%', maxWidth: CONTENT.feed, paddingTop: spacing.xl },
   mobileWrap: { width: '100%' },
   headerBlock: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 22, fontWeight: '900', color: colors.text, letterSpacing: -0.3 },
-  titleActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   mineBtn: {
-    borderRadius: radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 2,
   },
-  mineBtnText: { color: colors.text, fontWeight: '800', fontSize: 12.5 },
+  mineBtnText: { color: colors.textMuted, fontWeight: '700', fontSize: 13 },
   createBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     gap: 4,
     backgroundColor: colors.primary,
     borderRadius: radius.full,

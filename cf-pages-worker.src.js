@@ -321,8 +321,18 @@ async function buildOgMeta(request, env, url) {
       const name = a.pet_name ? String(a.pet_name).trim() : '';
       const user = String(a.username || a.user_name || 'alguien').replace(/^@/, '');
       const loc = a.locality || '';
+      const inLoc = loc ? ` en ${loc}` : '';
       const sex = String(a.sex || '').toLowerCase();
       const adopted = sex === 'hembra' ? 'ya fue adoptada' : sex === 'macho' ? 'ya fue adoptado' : 'ya fue adoptado/a';
+      const speciesId = String(a.species || '').toLowerCase();
+      const noun =
+        speciesId === 'perro' ? 'perro' :
+        speciesId === 'gato' ? 'gato' :
+        speciesId === 'conejo' ? 'conejo' :
+        speciesId === 'loro' ? 'ave' :
+        speciesId === 'hámster' || speciesId === 'hamster' ? 'hámster' :
+        'mascota';
+      const indef = (noun === 'mascota' || noun === 'ave' ? 'una ' : 'un ') + noun;
       let title = `🚨 MASCOTA · Animaldex`;
       let description = `${a.description || ''} · 📍 ${loc}`.trim();
       if (resolved) {
@@ -337,16 +347,24 @@ async function buildOgMeta(request, env, url) {
           description = `La alerta publicada por ${user} fue resuelta.`;
         }
       } else if (a.type === 'lost') {
-        title = name ? `🚨 Ayudá a encontrar a ${name}` : '🚨 Ayudá a encontrar a esta mascota';
+        title = name
+          ? `🚨 Ayudá a ${user} a encontrar a ${name}`
+          : `🚨 Ayudá a ${user} a encontrar a su ${noun}`;
+        description = `Se perdió su ${noun}${inLoc}. Compartí esta publicación para ayudar a que vuelva a casa.`;
       } else if (a.type === 'sighting') {
-        title = loc ? `👀 Mascota avistada en ${loc}` : '👀 Mascota avistada';
+        title = `👀 ${user} vio ${indef}${inLoc}`;
+        description = '¿Lo reconocés? Ayudanos a encontrar a su familia compartiendo esta publicación.';
       } else if (a.type === 'found') {
-        title = loc ? `💚 Mascota encontrada en ${loc}` : '💚 Mascota encontrada';
+        title = `🟢 ${user} encontró ${indef}${inLoc}`;
+        description = 'El animal está resguardado. Compartí esta publicación para ayudar a encontrar a su familia.';
       } else if (a.type === 'adoption') {
-        title = name ? `💜 ${name} está en adopción` : '💜 Mascota en adopción';
-      } else {
-        const typeLabel = a.type === 'found' ? 'ENCONTRADO' : 'PERDIDO';
-        title = `🚨 ${typeLabel}${name ? ' ' + name : ''} · Animaldex`;
+        if (name) {
+          title = `💜 ${name} está buscando una familia`;
+          description = `${user} publicó a ${name} en adopción${inLoc}. Conocé su historia y ayudala/o a encontrar una familia.`;
+        } else {
+          title = `💜 ${user} publicó una mascota en adopción`;
+          description = `${user} publicó una mascota en adopción${inLoc}. Conocé su historia y ayudala/o a encontrar una familia.`;
+        }
       }
       meta = {
         title,

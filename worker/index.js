@@ -29,6 +29,8 @@ import {
   EXPO_PUSH_RECEIPTS_URL,
   EXPO_PUSH_SEND_URL,
   assignPushToken,
+  alertRenewalPushIdempotencyKey,
+  alertRenewalPushMessage,
   birthdayPushIdempotencyKey,
   birthdayPushMessage,
   displayPersonName,
@@ -68,6 +70,9 @@ import {
   ALERT_RESOLVE_OWNER_ERROR,
   ALERT_RESOLVE_TYPE_ERROR,
   ALERT_RESOLVED_NOT_RENEWABLE,
+  alertNeedsRenewalNotice,
+  alertRenewalPushCopy,
+  alertRenewalPushType,
   allowedResolutionForType,
   parseAlertResolutionType,
   parseAlertType,
@@ -407,6 +412,10 @@ async function ensureAlertsSchema(env) {
   try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN resolution_type TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN renewed_at INTEGER').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN sex TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN author_profile_id TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN contact_whatsapp TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN contact_phone TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN renewal_notified_at INTEGER').run(); } catch (_) {}
   env._alertsSchemaReady = true;
 }
 
@@ -656,6 +665,53 @@ async function runPersonalPetBirthdays(env, nowMs = Date.now()) {
     }
   }
   return { considered: rows.length, inserted, skipped, date: `${today.year}-${monthDay}` };
+}
+
+async function runAlertRenewalReminders(env, nowMs = Date.now()) {
+  await ensureAlertsSchema(env);
+  await ensurePushSchema(env);
+  const dueBefore = nowMs - ALERT_RENEW_MS;
+  let rows = [];
+  try {
+    rows = await d1(
+      env,
+      `SELECT id, user_id, type, pet_name, species, created_at, renewed_at, renewal_notified_at, resolved_at, status
+         FROM alerts
+        WHERE (status IS NULL OR status = 'active')
+          AND resolved_at IS NULL
+          AND COALESCE(renewed_at, created_at) <= ?
+          AND (renewal_notified_at IS NULL OR renewal_notified_at < COALESCE(renewed_at, created_at))
+        LIMIT 40`,
+      [dueBefore]
+    );
+  } catch (_) {
+    return { considered: 0, notified: 0 };
+  }
+
+  let notified = 0;
+  for (const row of rows) {
+    try {
+      if (!alertNeedsRenewalNotice(row, nowMs)) continue;
+      const bump = Number(row.renewed_at || row.created_at || 0);
+      const copy = alertRenewalPushCopy(row);
+      await notifyUserPush(env, {
+        userId: row.user_id,
+        type: alertRenewalPushType(row.type),
+        idempotencyKey: alertRenewalPushIdempotencyKey(row.id, bump),
+        nowMs,
+        buildMessage: (token) =>
+          alertRenewalPushMessage({
+            token,
+            title: copy.title,
+            body: copy.body,
+            alertId: row.id,
+          }),
+      });
+      await d1(env, 'UPDATE alerts SET renewal_notified_at = ? WHERE id = ?', [nowMs, row.id]);
+      notified += 1;
+    } catch (_) {}
+  }
+  return { considered: rows.length, notified };
 }
 
 async function ensurePersonalProfile(env, userId) {
@@ -1308,6 +1364,7 @@ function alertRow(r, viewerLiked) {
     resolvedAt: r.resolved_at || null,
     resolutionType: r.resolution_type || null,
     sex: r.sex || null,
+    authorProfileId: r.author_profile_id || null,
     likeCount: r.like_count || 0,
     commentCount: r.comment_count || 0,
     isLiked: !!viewerLiked,
@@ -1880,6 +1937,39 @@ async function handleDb(request, env) {
       });
     }
 
+    if (action === 'alertAdoptionContact') {
+      const alertId = clean(body.alertId, 80);
+      if (!alertId) return json({ error: 'Falta la alerta' }, 400);
+      const rows = await d1(env, 'SELECT * FROM alerts WHERE id = ?', [alertId]);
+      if (!rows[0]) return json({ error: 'Alerta no encontrada' }, 404);
+      if (rows[0].type !== 'adoption') return json({ error: 'Esta alerta no es de adopción' }, 400);
+      const alert = rows[0];
+      let shelterProfileId = null;
+      let adoptionWhatsapp = alert.contact_whatsapp || null;
+      let adoptionPhone = alert.contact_phone || null;
+      const profileId = alert.author_profile_id;
+      if (profileId) {
+        const prs = await d1(
+          env,
+          "SELECT id, type, adoption_whatsapp, adoption_phone FROM profiles WHERE id = ? AND type = 'protector' LIMIT 1",
+          [profileId]
+        );
+        if (prs[0]) {
+          shelterProfileId = prs[0].id;
+          adoptionWhatsapp = prs[0].adoption_whatsapp || null;
+          adoptionPhone = prs[0].adoption_phone || null;
+        }
+      }
+      return json({
+        ok: true,
+        alertId: alert.id,
+        petName: alert.pet_name || null,
+        shelterProfileId,
+        adoptionWhatsapp,
+        adoptionPhone,
+      });
+    }
+
     // ---------- Mercado (productos y servicios) ----------
     // Lectura pública; sesión opcional (isFavorited correcto si hay token).
     // `section` ajusta el orden/filtro: 'nearby' (localidad), 'featured'
@@ -2306,12 +2396,38 @@ async function handleDb(request, env) {
       if (!description) return json({ error: 'Agrega una descripción' }, 400);
       if (!locality) return json({ error: 'Falta la localidad del hecho' }, 400);
 
+      let authorProfileId = null;
+      let contactWhatsapp = null;
+      let contactPhone = null;
+      if (type === 'adoption') {
+        const profileId = clean(body.authorProfileId, 80);
+        if (profileId) {
+          const prs = await d1(env, 'SELECT * FROM profiles WHERE id = ? AND account_id = ? LIMIT 1', [profileId, userId]);
+          if (!prs[0]) return json({ error: 'Página no encontrada' }, 400);
+          authorProfileId = prs[0].id;
+          if (prs[0].type === 'protector') {
+            const parsed = parseProtectorAdoptionContact('protector', prs[0].adoption_whatsapp, prs[0].adoption_phone);
+            if (!parsed.ok) return json({ error: parsed.error || ADOPTION_CONTACT_REQUIRED }, 400);
+          } else {
+            const parsed = parseProtectorAdoptionContact('protector', body.contactWhatsapp, body.contactPhone);
+            if (!parsed.ok) return json({ error: parsed.error || ADOPTION_CONTACT_REQUIRED }, 400);
+            contactWhatsapp = parsed.whatsapp;
+            contactPhone = parsed.phone;
+          }
+        } else {
+          const parsed = parseProtectorAdoptionContact('protector', body.contactWhatsapp, body.contactPhone);
+          if (!parsed.ok) return json({ error: parsed.error || ADOPTION_CONTACT_REQUIRED }, 400);
+          contactWhatsapp = parsed.whatsapp;
+          contactPhone = parsed.phone;
+        }
+      }
+
       const id = `alert-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(
         env,
-        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at, renewed_at, sex)
-         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now, now, sex]
+        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at, renewed_at, sex, author_profile_id, contact_whatsapp, contact_phone)
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now, now, sex, authorProfileId, contactWhatsapp, contactPhone]
       );
       const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [id]);
       const [alert] = await attachLikedFlags(env, rows, userId);
@@ -2375,7 +2491,7 @@ async function handleDb(request, env) {
       if (now - last < ALERT_RENEW_MS) {
         return json({ error: 'Todavía no pasaron 7 días desde la última renovación.' }, 400);
       }
-      await d1(env, 'UPDATE alerts SET renewed_at = ? WHERE id = ?', [now, alertId]);
+      await d1(env, 'UPDATE alerts SET renewed_at = ?, renewal_notified_at = NULL WHERE id = ?', [now, alertId]);
       const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [alertId]);
       const [alert] = await attachLikedFlags(env, rows, userId);
       return json({ ok: true, alert });
@@ -3173,6 +3289,11 @@ export default {
       await runPersonalPetBirthdays(env, nowMs);
     } catch (e) {
       console.log('pet-birthday-cron', e && e.message);
+    }
+    try {
+      await runAlertRenewalReminders(env, nowMs);
+    } catch (e) {
+      console.log('alert-renew-cron', e && e.message);
     }
     try {
       await processPushReceipts(env, nowMs);

@@ -74,6 +74,10 @@ export function birthdayPushIdempotencyKey(petId: string, year: number): string 
   return `push:birthday:${petId}:${year}`;
 }
 
+export function alertRenewalPushIdempotencyKey(alertId: string, bumpAt: number): string {
+  return `push:alert-renew:${alertId}:${bumpAt}`;
+}
+
 export function mergeNotificationPrefs(row: Partial<Record<NotificationPrefKey, unknown>> | null | undefined) {
   const out = { ...DEFAULT_NOTIFICATION_PREFS };
   (Object.keys(DEFAULT_NOTIFICATION_PREFS) as NotificationPrefKey[]).forEach((key) => {
@@ -84,7 +88,7 @@ export function mergeNotificationPrefs(row: Partial<Record<NotificationPrefKey, 
   return out;
 }
 
-export type PushEventType = 'location' | 'birthday' | 'like' | 'comment' | 'reel_like' | 'reel_comment';
+export type PushEventType = 'location' | 'birthday' | 'like' | 'comment' | 'reel_like' | 'reel_comment' | 'lost_pet' | 'adoption';
 
 /**
  * Reels reutiliza las prefs existentes `like` / `comment` (opción A).
@@ -95,6 +99,8 @@ export function prefAllows(prefs: ReturnType<typeof mergeNotificationPrefs>, typ
   if (type === 'birthday') return prefs.birthday;
   if (type === 'like' || type === 'reel_like') return prefs.like;
   if (type === 'comment' || type === 'reel_comment') return prefs.comment;
+  if (type === 'lost_pet') return prefs.lost_pet;
+  if (type === 'adoption') return prefs.adoption;
   return false;
 }
 
@@ -275,6 +281,27 @@ export function birthdayPushMessage(input: {
   };
 }
 
+export function alertRenewalPushMessage(input: {
+  token: string;
+  title: string;
+  body: string;
+  alertId: string;
+}): Record<string, unknown> {
+  return {
+    to: input.token,
+    title: input.title,
+    body: input.body,
+    sound: 'default',
+    priority: 'default',
+    channelId: PUSH_CHANNEL_REMINDERS,
+    data: {
+      type: 'alert_renew',
+      alertId: input.alertId,
+      url: `/a/${input.alertId}`,
+    },
+  };
+}
+
 export function payloadHasSensitiveLocation(payload: Record<string, unknown>): boolean {
   const text = `${payload.title || ''} ${payload.body || ''}`;
   const data = (payload.data && typeof payload.data === 'object' ? payload.data : {}) as Record<string, unknown>;
@@ -327,13 +354,15 @@ export type PushData = {
   shareId?: string;
   url?: string;
   reelId?: string;
+  alertId?: string;
 };
 
 export type PushNavTarget = {
-  kind: 'pet' | 'activity' | 'reel' | 'none';
+  kind: 'pet' | 'activity' | 'reel' | 'alert' | 'none';
   petId?: string;
   shareId?: string;
   reelId?: string;
+  alertId?: string;
 };
 
 function asPushField(value: unknown): string | undefined {
@@ -365,12 +394,24 @@ export function normalizePushData(raw: unknown): PushData {
     shareId: asPushField(inner.shareId),
     url: asPushField(inner.url),
     reelId: asPushField(inner.reelId),
+    alertId: asPushField(inner.alertId),
   };
 }
 
 function reelIdFromPushUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
   const m = String(url).match(/\/r\/([^/?#]+)/);
+  if (!m) return undefined;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
+function alertIdFromPushUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const m = String(url).match(/\/a\/([^/?#]+)/);
   if (!m) return undefined;
   try {
     return decodeURIComponent(m[1]);
@@ -392,6 +433,10 @@ export function parsePushNav(data: unknown): PushNavTarget {
   }
   if (d.type === 'location' || d.url === '/actividad') {
     return { kind: 'activity', petId: d.petId, shareId: d.shareId };
+  }
+  const alertId = d.alertId || alertIdFromPushUrl(d.url);
+  if (d.type === 'alert_renew' || alertId) {
+    if (alertId) return { kind: 'alert', alertId };
   }
   return { kind: 'none' };
 }
@@ -418,6 +463,7 @@ export function pushNavDestination(
   | { name: 'PetProfile'; params: { petId: string } }
   | { name: 'Tabs'; params: { screen: 'Actividad' } }
   | { name: 'ReelViewer'; params: { reelId: string } }
+  | { name: 'AlertDetail'; params: { alertId: string } }
   | null {
   const nav = parsePushNav(data);
   if (nav.kind === 'pet' && nav.petId) {
@@ -428,6 +474,9 @@ export function pushNavDestination(
   }
   if (nav.kind === 'reel' && nav.reelId) {
     return { name: 'ReelViewer', params: { reelId: nav.reelId } };
+  }
+  if (nav.kind === 'alert' && nav.alertId) {
+    return { name: 'AlertDetail', params: { alertId: nav.alertId } };
   }
   return null;
 }
