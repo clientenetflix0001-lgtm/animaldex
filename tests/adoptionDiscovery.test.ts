@@ -69,6 +69,7 @@ function pet(overrides: Partial<{
     shelterProfileId: overrides.profileId ?? 'shelter-1',
     shelterName: 'APAN Salta',
     shelterUsername: 'apansalta',
+    shelterAvatar: null,
     shelterLocation: 'Calle 123',
     shelterLocality: 'Salta Capital',
     createdAt: overrides.createdAt ?? 100,

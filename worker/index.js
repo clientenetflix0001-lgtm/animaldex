@@ -58,6 +58,10 @@ import {
   resolvePetUsernameUpdate,
   suggestPetUsernameBase,
 } from '../lib/petHandles.ts';
+import {
+  ADOPTION_CONTACT_REQUIRED,
+  parseProtectorAdoptionContact,
+} from '../lib/adoptionContact.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -159,8 +163,8 @@ async function authUser(request, env, body) {
 }
 
 
-function profileRow(r) {
-  return {
+function profileRow(r, opts = {}) {
+  const row = {
     id: r.id,
     accountId: r.account_id,
     type: r.type,
@@ -173,6 +177,11 @@ function profileRow(r) {
     phone: r.phone || '',
     createdAt: r.created_at,
   };
+  if (opts.includeAdoptionContact) {
+    row.adoptionWhatsapp = r.adoption_whatsapp || null;
+    row.adoptionPhone = r.adoption_phone || null;
+  }
+  return row;
 }
 
 async function ensureProfilesSchema(env) {
@@ -206,6 +215,8 @@ async function ensureProfilesSchema(env) {
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN location TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN phone TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN locality TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN adoption_whatsapp TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN adoption_phone TEXT').run(); } catch (_) {}
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_profile ON pets (profile_id)');
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_birth_date ON pets (birth_date)');
   // Historial de adopciones completadas. Una fila = una transferencia real del
@@ -1483,7 +1494,7 @@ async function handleDb(request, env) {
       const recoveringN = recovering[0]?.n || 0;
       return json({
         ok: true,
-        profile: profileRow(pr),
+        profile: profileRow(pr, { includeAdoptionContact: viewerId === pr.account_id }),
         pets: pets.map(petRow),
         transferredPets: transferred.map(petRow),
         stats: {
@@ -1672,7 +1683,7 @@ async function handleDb(request, env) {
       const rows = await d1(
         env,
         `SELECT p.*, pr.id AS shelter_id, pr.name AS shelter_name, pr.username AS shelter_username,
-                pr.location AS shelter_location, pr.locality AS shelter_locality
+                pr.avatar_url AS shelter_avatar, pr.location AS shelter_location, pr.locality AS shelter_locality
          FROM pets p
          INNER JOIN profiles pr ON pr.id = p.profile_id AND pr.type = 'protector'
          WHERE ${conditions.join(' AND ')}
@@ -1690,10 +1701,37 @@ async function handleDb(request, env) {
           shelterId: r.shelter_id,
           shelterName: r.shelter_name,
           shelterUsername: r.shelter_username,
+          shelterAvatar: r.shelter_avatar || null,
           shelterLocation: r.shelter_location || null,
           shelterLocality: r.shelter_locality || null,
         })),
         hasMore,
+      });
+    }
+
+    if (action === 'adoptionContact') {
+      const petId = clean(body.petId, 80);
+      if (!petId) return json({ error: 'Falta la mascota' }, 400);
+      const pets = await d1(
+        env,
+        'SELECT id, profile_id, name, username FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1',
+        [petId, petId]
+      );
+      if (!pets[0] || !pets[0].profile_id) return json({ error: 'Mascota no encontrada' }, 404);
+      const prs = await d1(
+        env,
+        "SELECT id, type, adoption_whatsapp, adoption_phone FROM profiles WHERE id = ? AND type = 'protector' LIMIT 1",
+        [pets[0].profile_id]
+      );
+      if (!prs[0]) return json({ error: 'Esta mascota no pertenece a un refugio' }, 404);
+      return json({
+        ok: true,
+        petId: pets[0].id,
+        petName: pets[0].name,
+        petUsername: pets[0].username || null,
+        shelterProfileId: prs[0].id,
+        adoptionWhatsapp: prs[0].adoption_whatsapp || null,
+        adoptionPhone: prs[0].adoption_phone || null,
       });
     }
 
@@ -2419,7 +2457,7 @@ async function handleDb(request, env) {
     if (action === 'listProfiles') {
       await ensurePersonalProfile(env, userId);
       const rows = await d1(env, 'SELECT * FROM profiles WHERE account_id = ? ORDER BY created_at ASC', [userId]);
-      return json({ ok: true, profiles: rows.map(profileRow) });
+      return json({ ok: true, profiles: rows.map((r) => profileRow(r)) });
     }
 
     if (action === 'createProfile') {
@@ -2456,14 +2494,16 @@ async function handleDb(request, env) {
       if (await usernameTaken(env, username, null)) {
         return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
       }
+      const contact = parseProtectorAdoptionContact(type, body.adoptionWhatsapp, body.adoptionPhone);
+      if (!contact.ok) return json({ error: contact.error || ADOPTION_CONTACT_REQUIRED }, 400);
       const id = `prf-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(
         env,
-        'INSERT INTO profiles (id, account_id, type, name, username, avatar_url, bio, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, userId, type, name, username, avatar, bio, now]
+        'INSERT INTO profiles (id, account_id, type, name, username, avatar_url, bio, created_at, adoption_whatsapp, adoption_phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, userId, type, name, username, avatar, bio, now, contact.whatsapp, contact.phone]
       );
       const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [id]);
-      return json({ ok: true, profile: profileRow(rows[0]) });
+      return json({ ok: true, profile: profileRow(rows[0], { includeAdoptionContact: true }) });
     }
 
     if (action === 'updatePublicProfile') {
@@ -2495,13 +2535,19 @@ async function handleDb(request, env) {
       if (await usernameTaken(env, username, userId, profileId)) {
         return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
       }
+      const contact = parseProtectorAdoptionContact(
+        owned[0].type,
+        body.adoptionWhatsapp !== undefined ? body.adoptionWhatsapp : owned[0].adoption_whatsapp,
+        body.adoptionPhone !== undefined ? body.adoptionPhone : owned[0].adoption_phone
+      );
+      if (!contact.ok) return json({ error: contact.error }, 400);
       await d1(
         env,
-        'UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, locality = ?, phone = ?, avatar_url = COALESCE(?, avatar_url) WHERE id = ?',
-        [name, username, bio, location, locality, phone, avatar, profileId]
+        'UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, locality = ?, phone = ?, avatar_url = COALESCE(?, avatar_url), adoption_whatsapp = ?, adoption_phone = ? WHERE id = ?',
+        [name, username, bio, location, locality, phone, avatar, contact.whatsapp, contact.phone, profileId]
       );
       const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId]);
-      return json({ ok: true, profile: profileRow(rows[0]) });
+      return json({ ok: true, profile: profileRow(rows[0], { includeAdoptionContact: true }) });
     }
 
     if (action === 'updatePost') {

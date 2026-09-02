@@ -23,6 +23,7 @@ import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
 import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
+import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib/adoptionContact';
 import { LocalityPicker } from '../components/LocalityPicker';
 import type { ProfileType } from '../features/profiles/profileTypes';
 
@@ -39,6 +40,8 @@ export default function EditPublicProfileScreen() {
   const [profileType, setProfileType] = useState<ProfileType | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [phone, setPhone] = useState('');
+  const [adoptionWhatsapp, setAdoptionWhatsapp] = useState('');
+  const [adoptionPhone, setAdoptionPhone] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,6 +57,8 @@ export default function EditPublicProfileScreen() {
         setLocality(profile.locality || null);
         setProfileType(profile.type || null);
         setPhone(profile.phone || '');
+        setAdoptionWhatsapp(profile.adoptionWhatsapp || '');
+        setAdoptionPhone(profile.adoptionPhone || '');
         setAvatarUrl(profile.avatar);
       })
       .catch((e) => Alert.alert('Error', e?.message || 'No se pudo cargar la página'))
@@ -107,6 +112,13 @@ export default function EditPublicProfileScreen() {
       );
       return;
     }
+    if (profileType === 'protector') {
+      const contact = parseProtectorAdoptionContact(profileType, adoptionWhatsapp, adoptionPhone);
+      if (!contact.ok) {
+        Alert.alert('Falta un contacto', contact.error || ADOPTION_CONTACT_REQUIRED);
+        return;
+      }
+    }
     setSaving(true);
     try {
       await db.updatePublicProfile({
@@ -118,6 +130,8 @@ export default function EditPublicProfileScreen() {
         locality: profileType === 'protector' ? locality : undefined,
         phone: phone.trim(),
         avatar: avatarUrl,
+        adoptionWhatsapp: profileType === 'protector' ? adoptionWhatsapp.trim() : undefined,
+        adoptionPhone: profileType === 'protector' ? adoptionPhone.trim() : undefined,
       });
       await refreshProfiles();
       navigation.goBack();
@@ -126,7 +140,7 @@ export default function EditPublicProfileScreen() {
     } finally {
       setSaving(false);
     }
-  }, [profileId, name, username, bio, location, locality, profileType, phone, avatarUrl, refreshProfiles, navigation]);
+  }, [profileId, name, username, bio, location, locality, profileType, phone, adoptionWhatsapp, adoptionPhone, avatarUrl, refreshProfiles, navigation]);
 
   if (loading) {
     return (
@@ -212,6 +226,30 @@ export default function EditPublicProfileScreen() {
 
           {profileType === 'protector' ? (
             <>
+              <Text style={styles.sectionTitle}>SOLICITUDES DE ADOPCIÓN</Text>
+              <Text style={styles.help}>
+                Agregá al menos un medio de contacto para recibir solicitudes de adopción.
+              </Text>
+              <Text style={styles.label}>WhatsApp</Text>
+              <TextInput
+                style={styles.input}
+                value={adoptionWhatsapp}
+                onChangeText={setAdoptionWhatsapp}
+                keyboardType="phone-pad"
+                maxLength={30}
+                placeholder="Número de WhatsApp"
+                placeholderTextColor={colors.textMuted}
+              />
+              <Text style={styles.label}>Teléfono</Text>
+              <TextInput
+                style={styles.input}
+                value={adoptionPhone}
+                onChangeText={setAdoptionPhone}
+                keyboardType="phone-pad"
+                maxLength={30}
+                placeholder="Número de teléfono"
+                placeholderTextColor={colors.textMuted}
+              />
               <Text style={styles.label}>Localidad</Text>
               <Pressable style={styles.locationBox} onPress={() => setPickerVisible(true)}>
                 <Ionicons name="location" size={18} color={colors.primary} />
@@ -273,6 +311,14 @@ const styles = StyleSheet.create({
   },
   avatarHint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.sm },
   label: { fontWeight: '700', fontSize: 14, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.sm },
+  sectionTitle: {
+    fontWeight: '800',
+    fontSize: 13,
+    letterSpacing: 0.6,
+    color: colors.text,
+    marginTop: spacing.xl,
+  },
+  help: { fontSize: 12, color: colors.textMuted, marginTop: 6, lineHeight: 17 },
   input: {
     backgroundColor: colors.card,
     borderRadius: radius.md,

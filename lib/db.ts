@@ -338,11 +338,20 @@ export const db = {
         shelterId?: string | null;
         shelterName?: string | null;
         shelterUsername?: string | null;
+        shelterAvatar?: string | null;
         shelterLocation?: string | null;
       }
     >;
     hasMore: boolean;
   }> => call('/db', { action: 'adoptionFeed', ...params }),
+  adoptionContact: (petId: string): Promise<{
+    petId: string;
+    petName: string;
+    petUsername: string | null;
+    shelterProfileId: string;
+    adoptionWhatsapp: string | null;
+    adoptionPhone: string | null;
+  }> => call('/db', { action: 'adoptionContact', petId }),
   comments: (postId: string): Promise<{ comments: ApiComment[] }> =>
     call('/db', { action: 'comments', postId }),
   myState: (): Promise<{ state: { likedPosts: string[]; savedPosts: string[]; followedPets: string[]; followedUsers: string[]; myPets: ApiPet[] } }> =>
@@ -394,6 +403,8 @@ export const db = {
     username: string;
     bio?: string;
     avatar?: string | null;
+    adoptionWhatsapp?: string | null;
+    adoptionPhone?: string | null;
   }): Promise<{ profile: import('../features/profiles/profileTypes').PublicProfile }> =>
     call('/db', { action: 'createProfile', ...input }),
   checkProfileUsername: (username: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>
@@ -407,6 +418,8 @@ export const db = {
     locality?: string | null;
     phone?: string;
     avatar?: string | null;
+    adoptionWhatsapp?: string | null;
+    adoptionPhone?: string | null;
   }): Promise<{ profile: import('../features/profiles/profileTypes').PublicProfile }> =>
     call('/db', { action: 'updatePublicProfile', ...input }),
   updatePost: (postId: string, caption: string): Promise<{ caption: string }> =>

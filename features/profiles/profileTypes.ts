@@ -12,6 +12,9 @@ export interface PublicProfile {
   phone?: string;
   /** Localidad normalizada (mismo catálogo que Alertas/Mercado). Independiente de `location`. */
   locality?: string | null;
+  /** Solo owner / listProfiles. No va en APIs públicas generales. */
+  adoptionWhatsapp?: string | null;
+  adoptionPhone?: string | null;
   createdAt: number;
 }
 

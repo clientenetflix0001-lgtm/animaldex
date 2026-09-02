@@ -51,6 +51,46 @@ export const ADOPTION_SEX_FILTERS: { id: AdoptionSexFilter; label: string }[] = 
   { id: 'hembra', label: 'Hembra' },
 ];
 
+export type AdoptionFilterKey = 'species' | 'size' | 'sex';
+
+/** Menú de especie: "Todos" (no "Todas") + emojis. */
+export const ADOPTION_SPECIES_MENU: { id: AdoptionSpeciesFilter; label: string }[] = [
+  { id: 'todos', label: 'Todos' },
+  { id: 'perro', label: '🐶 Perros' },
+  { id: 'gato', label: '🐱 Gatos' },
+  { id: 'otro', label: 'Otros' },
+];
+
+export function adoptionTriggerLabel(key: AdoptionFilterKey, value: string): string {
+  if (key === 'species') {
+    if (value === 'todos') return 'Mascota';
+    if (value === 'perro') return 'Perros';
+    if (value === 'gato') return 'Gatos';
+    return 'Otros';
+  }
+  if (key === 'size') {
+    if (value === 'todos') return 'Porte';
+    return ADOPTION_SIZE_FILTERS.find((f) => f.id === value)?.label || 'Porte';
+  }
+  if (value === 'todos') return 'Sexo';
+  return ADOPTION_SEX_FILTERS.find((f) => f.id === value)?.label || 'Sexo';
+}
+
+export function nextOpenAdoptionFilter(
+  current: AdoptionFilterKey | null,
+  tapped: AdoptionFilterKey
+): AdoptionFilterKey | null {
+  return current === tapped ? null : tapped;
+}
+
+export function adoptionFilterMenu(
+  key: AdoptionFilterKey
+): { id: string; label: string }[] {
+  if (key === 'species') return ADOPTION_SPECIES_MENU;
+  if (key === 'size') return ADOPTION_SIZE_FILTERS;
+  return ADOPTION_SEX_FILTERS;
+}
+
 /** Insets de la UI inmersiva. El tab bar de Animaldex ya consume `bottom`. */
 export function adoptionImmersiveInsets(
   insets: { top: number; bottom: number },
@@ -91,6 +131,7 @@ export interface AdoptionCard {
   shelterProfileId: string | null;
   shelterName: string | null;
   shelterUsername: string | null;
+  shelterAvatar: string | null;
   shelterLocation: string | null;
   shelterLocality: string | null;
   createdAt: number;
@@ -136,6 +177,7 @@ export interface ApiAdoptionItem extends AdoptionPetInput {
   shelterId?: string | null;
   shelterName?: string | null;
   shelterUsername?: string | null;
+  shelterAvatar?: string | null;
   shelterLocation?: string | null;
   shelterLocality?: string | null;
 }
@@ -154,6 +196,7 @@ export function adoptionCardFromProtectorPet(
     id?: string | null;
     name?: string | null;
     username?: string | null;
+    avatar?: string | null;
     location?: string | null;
     locality?: string | null;
   } | null
@@ -179,6 +222,7 @@ export function adoptionCardFromProtectorPet(
     shelterProfileId: shelterId,
     shelterName: (pet as ApiAdoptionItem).shelterName || shelter?.name || null,
     shelterUsername: (pet as ApiAdoptionItem).shelterUsername || shelter?.username || null,
+    shelterAvatar: (pet as ApiAdoptionItem).shelterAvatar || shelter?.avatar || null,
     shelterLocation: (pet as ApiAdoptionItem).shelterLocation || shelter?.location || null,
     shelterLocality: (pet as ApiAdoptionItem).shelterLocality || shelter?.locality || null,
     createdAt: pet.createdAt,
