@@ -342,7 +342,7 @@ export default function FeedScreen() {
             style={styles.logoMark}
             contentFit="contain"
           />
-          <Text style={styles.logo}>Animaldex</Text>
+          <Text style={styles.logo}>Nimaldex</Text>
           <Pressable
             style={styles.qrBtn}
             onPress={() => navigation.navigate('QRScanner')}
