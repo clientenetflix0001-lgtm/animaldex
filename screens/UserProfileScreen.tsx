@@ -473,7 +473,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
   desktopList: {
     width: '100%',
     maxWidth: CONTENT.page,

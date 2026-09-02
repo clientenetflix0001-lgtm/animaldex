@@ -211,9 +211,6 @@ export default function PetProfileScreen() {
     : realOwner?.avatarUrl ?? userFallbackAvatar(ownerUsername || 'dueño');
   const ownerId = demoPet ? getOwner(demoPet).id : realOwner?.id;
 
-  // Avatar 3x: antes 96px → ahora ~288px (limitado por el ancho en móviles chicos)
-  const AVATAR = Math.min(288, availW * 0.62);
-
   // Borrados/ediciones propias aplicadas de forma incremental
   const deletedSet = new Set(deletedPostIds);
   const shownPosts = posts
@@ -243,26 +240,67 @@ export default function PetProfileScreen() {
         </View>
       </SafeAreaView>
 
-      {/* Avatar gigante */}
-      <View style={styles.avatarSection}>
+      {/* Identidad: información + avatar compacto */}
+      <View style={styles.identityRow}>
+        <View style={styles.identityCopy}>
+          <Text style={styles.petName} numberOfLines={2}>
+            {name}
+          </Text>
+          {!!petHandle && (
+            <Text style={styles.petHandle} numberOfLines={1} ellipsizeMode="tail">
+              @{petHandle}
+            </Text>
+          )}
+          <View style={styles.chipsRow}>
+            {!!statusText && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{statusText}</Text>
+              </View>
+            )}
+            {speciesLabel !== '' && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{speciesLabel}</Text>
+              </View>
+            )}
+            {breed !== '' && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{breed}</Text>
+              </View>
+            )}
+            {age !== '' && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{age}</Text>
+              </View>
+            )}
+            {sizeText !== '' && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{sizeText}</Text>
+              </View>
+            )}
+            {neuteredText !== '' && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{neuteredText}</Text>
+              </View>
+            )}
+          </View>
+          {!!waitText && <Text style={styles.waitText}>{waitText}</Text>}
+          {bio !== '' && <Text style={styles.bio}>{bio}</Text>}
+        </View>
         <Pressable
           onPress={isMyPet ? changePetPhoto : undefined}
           disabled={!isMyPet || uploadingPhoto}
-          style={{ alignSelf: 'center' }}
+          style={styles.avatarPress}
+          accessibilityLabel={isMyPet ? 'Cambiar foto de perfil' : undefined}
         >
           <Image
-            source={{ uri: thumb(avatarUri, 600) }}
-            style={[
-              styles.avatar,
-              { width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2 },
-            ]}
+            source={{ uri: thumb(avatarUri, 200) }}
+            style={styles.avatar}
             contentFit="cover"
             transition={300}
           />
           {uploadingPhoto && (
-            <View style={[styles.avatarOverlay, { borderRadius: AVATAR / 2 }]}>
-              <ActivityIndicator color="#fff" size="large" />
-              <Text style={styles.avatarOverlayText}>Subiendo...</Text>
+            <View style={styles.avatarOverlay}>
+              <ActivityIndicator color="#fff" size="small" />
             </View>
           )}
           <View style={styles.speciesBadge}>
@@ -270,57 +308,10 @@ export default function PetProfileScreen() {
           </View>
           {isMyPet && !uploadingPhoto && (
             <View style={styles.cameraBadge}>
-              <Ionicons name="camera" size={18} color="#fff" />
+              <Ionicons name="camera" size={12} color="#fff" />
             </View>
           )}
         </Pressable>
-        {isMyPet && (
-          <Pressable onPress={changePetPhoto} disabled={uploadingPhoto}>
-            <Text style={styles.changePhotoLink}>
-              {uploadingPhoto ? 'Subiendo foto...' : 'Cambiar foto de perfil'}
-            </Text>
-          </Pressable>
-        )}
-      </View>
-
-      {/* Identity */}
-      <View style={styles.identity}>
-        <Text style={styles.petName}>{name}</Text>
-        {!!petHandle && <Text style={styles.petHandle}>@{petHandle}</Text>}
-        <View style={styles.chipsRow}>
-          {!!statusText && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{statusText}</Text>
-            </View>
-          )}
-          {speciesLabel !== '' && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{speciesLabel}</Text>
-            </View>
-          )}
-          {breed !== '' && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{breed}</Text>
-            </View>
-          )}
-          {age !== '' && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{age}</Text>
-            </View>
-          )}
-          {sizeText !== '' && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{sizeText}</Text>
-            </View>
-          )}
-          {neuteredText !== '' && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{neuteredText}</Text>
-            </View>
-          )}
-        </View>
-        {!!waitText && <Text style={styles.waitText}>{waitText}</Text>}
-        {bio !== '' && <Text style={styles.bio}>{bio}</Text>}
       </View>
 
       {/* Stats */}
@@ -550,7 +541,7 @@ export default function PetProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
   desktopList: {
     width: '100%',
     maxWidth: CONTENT.page,
@@ -576,9 +567,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   topTitle: { flex: 1, textAlign: 'center', fontWeight: '800', fontSize: 17, color: colors.text },
-  avatarSection: { alignItems: 'center', marginTop: spacing.md, gap: spacing.md },
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    gap: spacing.md,
+  },
+  identityCopy: { flex: 1, minWidth: 0, flexShrink: 1 },
+  avatarPress: { width: 84, height: 84, flexShrink: 0 },
   avatar: {
-    borderWidth: 5,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 3,
     borderColor: colors.primarysoft,
     backgroundColor: colors.border,
   },
@@ -588,43 +590,40 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    borderRadius: 42,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
   },
-  avatarOverlayText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   speciesBadge: {
     position: 'absolute',
-    bottom: 12,
-    right: 12,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    bottom: -2,
+    right: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadow.card,
   },
-  speciesEmoji: { fontSize: 22 },
+  speciesEmoji: { fontSize: 13 },
   cameraBadge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    top: -2,
+    right: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: colors.bg,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
-  changePhotoLink: { color: colors.primary, fontWeight: '700', fontSize: 14 },
-  identity: { alignItems: 'center', marginTop: spacing.lg, paddingHorizontal: spacing.xl },
-  petName: { fontSize: 28, fontWeight: '900', color: colors.text },
-  petHandle: { fontSize: 18, fontWeight: '800', color: colors.primary, marginTop: 4 },
-  chipsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap', justifyContent: 'center' },
+  petName: { fontSize: 22, fontWeight: '900', color: colors.text },
+  petHandle: { fontSize: 14, fontWeight: '800', color: colors.primary, marginTop: 2 },
+  chipsRow: { flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap', justifyContent: 'flex-start' },
   chip: {
     backgroundColor: colors.secondarySoft,
     paddingHorizontal: 12,
@@ -635,8 +634,8 @@ const styles = StyleSheet.create({
   bio: {
     fontSize: 14,
     color: colors.text,
-    textAlign: 'center',
-    marginTop: spacing.md,
+    textAlign: 'left',
+    marginTop: spacing.sm,
     lineHeight: 20,
   },
   waitText: {
@@ -666,13 +665,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     borderRadius: radius.md,
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.md,
     ...shadow.card,
   },
   statDivider: { width: 1, height: 28, backgroundColor: colors.border },
-  followRow: { flexDirection: 'row', paddingHorizontal: spacing.lg, marginTop: spacing.lg },
+  followRow: { flexDirection: 'row', paddingHorizontal: spacing.lg, marginTop: spacing.md },
   ownerCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -717,8 +716,8 @@ const styles = StyleSheet.create({
   galleryTabs: {
     flexDirection: 'row',
     marginHorizontal: spacing.sm,
-    marginTop: spacing.xl,
-    marginBottom: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
