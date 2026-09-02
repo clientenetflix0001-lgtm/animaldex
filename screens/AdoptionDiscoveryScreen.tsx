@@ -394,7 +394,6 @@ const styles = StyleSheet.create({
     gap: 6,
     maxWidth: '100%',
   },
-  chipRow: { flexDirection: 'row', gap: 6, paddingRight: spacing.sm },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 5,

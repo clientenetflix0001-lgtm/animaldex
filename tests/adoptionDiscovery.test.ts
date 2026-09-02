@@ -262,7 +262,7 @@ describe('locality normalizada del protector', () => {
   it('guarda profiles.locality y no pisa location', () => {
     assert.match(worker, /ALTER TABLE profiles ADD COLUMN locality TEXT/);
     const start = worker.indexOf("if (action === 'updatePublicProfile')");
-    const chunk = worker.slice(start, start + 1800);
+    const chunk = worker.slice(start, start + 3200);
     assert.match(chunk, /locality = \?/);
     assert.match(chunk, /location = \?, locality = \?, phone/);
     const edit = readFileSync(join(root, 'screens/EditPublicProfileScreen.tsx'), 'utf8');

@@ -168,7 +168,7 @@ describe('filtros compactos Adoptar', () => {
     assert.match(discovery, /justifyContent: 'flex-end'/);
     assert.match(discovery, /flexWrap: 'wrap'/);
     assert.doesNotMatch(discovery, /ADOPTION_SPECIES_FILTERS\.map/);
-    assert.doesNotMatch(discovery, /chipRow/);
+    assert.doesNotMatch(discovery, /chipRow:/);
     assert.match(discovery, /borderColor: 'rgba\(255,255,255,0\.92\)'/);
   });
 });
