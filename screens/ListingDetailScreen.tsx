@@ -256,7 +256,7 @@ export default function ListingDetailScreen() {
         >
           <Image source={{ uri: thumb(avatar, 100) }} style={styles.sellerAvatar} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.sellerName}>@{listing.username ?? 'usuario'}</Text>
+            <Text style={styles.sellerName}>{listing.username ?? 'usuario'}</Text>
             <Text style={styles.sellerSub}>Ver mini-tienda</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />

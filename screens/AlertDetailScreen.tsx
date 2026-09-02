@@ -188,7 +188,7 @@ export default function AlertDetailScreen() {
       </View>
 
       <Text style={styles.description}>{alert.description}</Text>
-      {alert.username && <Text style={styles.postedBy}>Publicado por @{alert.username}</Text>}
+      {alert.username && <Text style={styles.postedBy}>Publicado por {alert.username}</Text>}
 
       <Text style={styles.commentsTitle}>
         Comentarios {displayComments.length > 0 ? `(${displayComments.length})` : ''}

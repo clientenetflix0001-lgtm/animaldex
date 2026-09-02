@@ -116,7 +116,7 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
       ) : null}
 
       {alert.userName && (
-        <Text style={styles.postedBy}>Publicado por @{alert.username}</Text>
+        <Text style={styles.postedBy}>Publicado por {alert.username}</Text>
       )}
     </View>
   );

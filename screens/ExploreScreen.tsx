@@ -188,7 +188,7 @@ export default function ExploreScreen() {
                   />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.petRowName}>{item.user.name}</Text>
-                    <Text style={styles.petRowSub}>@{item.user.username} · Usuario</Text>
+                    <Text style={styles.petRowSub}>{item.user.username} · Usuario</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                 </Pressable>
@@ -210,7 +210,7 @@ export default function ExploreScreen() {
                       {item.pet.name} {item.pet.emoji}
                     </Text>
                     <Text style={styles.petRowSub}>
-                      {item.pet.username ? `@${item.pet.username} · ` : ''}
+                      {item.pet.username ? `${item.pet.username} · ` : ''}
                       {item.pet.breed || item.pet.species} · Comunidad
                     </Text>
                   </View>

@@ -324,7 +324,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
             >
               <Image source={{ uri: thumb(item.avatarUri, 150) }} style={styles.petImg} transition={250} />
               <Text style={styles.petName}>
-                {item.username ? `@${item.username}` : item.name} {item.emoji}
+                {item.username ? item.username : item.name} {item.emoji}
               </Text>
               <Text style={styles.petBreed} numberOfLines={1}>
                 {item.breed}

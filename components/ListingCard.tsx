@@ -89,7 +89,7 @@ function ListingCardInner({ listing, onPress, onToggleFavorite, viewerLat, viewe
         <View style={styles.sellerRow}>
           <Image source={{ uri: thumb(avatar, 60) }} style={styles.sellerAvatar} />
           <Text style={styles.sellerName} numberOfLines={1}>
-            @{listing.username ?? 'usuario'}
+            {listing.username ?? 'usuario'}
           </Text>
         </View>
       </View>

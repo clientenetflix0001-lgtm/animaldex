@@ -34,7 +34,7 @@ export function petCardAgeLabel(
 
 export function petCardHandle(pet: MyPetsGridPet): string {
   const username = String(pet.username || '').trim();
-  if (username) return `@${username.replace(/^@/, '')}`;
+  if (username) return username.replace(/^@/, '');
   const name = String(pet.name || '').trim();
   return name || 'Mascota';
 }
