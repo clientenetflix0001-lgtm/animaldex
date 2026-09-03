@@ -35,9 +35,12 @@ import {
 import {
   STORY_GESTURE_DEBUG_ACTION_MS,
   STORY_GESTURE_DEBUG_SOLID,
+  STORY_GESTURE_DEBUG_TOUCH_FILL,
+  formatStoryDebugBox,
   formatStoryGestureDebugAction,
   storyGestureDebugEnabled,
   storyGestureDebugPhaseIndex,
+  type StoryDebugBox,
 } from '../lib/storyGestureDebug';
 import { notifyStoriesChanged } from '../lib/storyRailRefresh';
 import { thumb, userFallbackAvatar } from '../lib/images';
@@ -100,6 +103,10 @@ export default function StoryViewerScreen() {
   const commentsOpenRef = useRef(false);
   const debugActionClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debugAction, setDebugAction] = useState('NONE');
+  const [stageBox, setStageBox] = useState<StoryDebugBox | null>(null);
+  const [touchBox, setTouchBox] = useState<StoryDebugBox | null>(null);
+  const [rawTap, setRawTap] = useState(false);
+  const [rawPress, setRawPress] = useState(false);
   const progress = useSharedValue(0);
   const debugDx = useSharedValue(0);
   const debugDy = useSharedValue(0);
@@ -313,7 +320,7 @@ export default function StoryViewerScreen() {
 
   useEffect(() => {
     if (!debugOn) return;
-    console.log('[Animaldex Stories] GESTURE-V5 DEBUG', {
+    console.log('[Animaldex Stories] GESTURE-V6 HITTEST', {
       updateId: Updates.updateId,
       runtimeVersion: Updates.runtimeVersion,
       channel: Updates.channel,
@@ -359,6 +366,17 @@ export default function StoryViewerScreen() {
     [commentsOpen, debugDx, debugDy, debugDown, debugPhase, finishTouch]
   );
 
+  const debugTap = useMemo(
+    () =>
+      Gesture.Tap()
+        .runOnJS(true)
+        .onEnd(() => {
+          setRawTap(true);
+        }),
+    []
+  );
+  const detectorGesture = debugOn ? debugTap : storyPan;
+
   if (loading) {
     return (
       <View style={styles.black}>
@@ -385,7 +403,10 @@ export default function StoryViewerScreen() {
   return (
     <View style={styles.black}>
       <StatusBar style="light" backgroundColor="transparent" translucent />
-      <View style={[styles.stage, stage]}>
+      <View
+        style={[styles.stage, stage]}
+        onLayout={(event) => setStageBox(event.nativeEvent.layout)}
+      >
         <View style={styles.media} pointerEvents="none">
           {debugOn && STORY_GESTURE_DEBUG_SOLID ? (
             <View style={[styles.mediaFill, styles.debugSolid]} />
@@ -403,12 +424,23 @@ export default function StoryViewerScreen() {
           <LinearGradient colors={['transparent', 'rgba(0,0,0,0.45)']} style={styles.bottomFade} pointerEvents="none" />
         </View>
 
-        <GestureDetector gesture={storyPan}>
+        <GestureDetector gesture={detectorGesture}>
           <View
-            style={styles.touchLayer}
+            style={[styles.touchLayer, debugOn && styles.touchLayerDebug]}
             collapsable={false}
             accessibilityLabel="Controles de historia"
-          />
+            onLayout={(event) => setTouchBox(event.nativeEvent.layout)}
+          >
+            {debugOn ? (
+              <Pressable
+                style={styles.rawPressChip}
+                onPressIn={() => setRawPress(true)}
+                accessibilityLabel="RAW PRESS"
+              >
+                <Text style={styles.rawPressLabel}>RAW PRESS</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </GestureDetector>
         <StoryGestureDebugHud
           visible={debugOn}
@@ -427,6 +459,10 @@ export default function StoryViewerScreen() {
           debugProgress={progress}
           debugPhase={debugPhase}
           debugDown={debugDown}
+          stageBox={formatStoryDebugBox(stageBox)}
+          touchBox={formatStoryDebugBox(touchBox)}
+          rawTap={rawTap}
+          rawPress={rawPress}
         />
 
         <View style={[styles.topChrome, { paddingTop: chromeTop }]} pointerEvents="box-none">
@@ -493,6 +529,24 @@ const styles = StyleSheet.create({
     zIndex: 1,
     elevation: 4,
     backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  touchLayerDebug: {
+    backgroundColor: STORY_GESTURE_DEBUG_TOUCH_FILL,
+  },
+  rawPressChip: {
+    minWidth: 120,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,0,0.85)',
+    borderRadius: 8,
+  },
+  rawPressLabel: {
+    color: '#111',
+    fontWeight: '800',
+    fontSize: 13,
+    textAlign: 'center',
   },
   topChrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2, elevation: 8 },
   bottomChrome: {

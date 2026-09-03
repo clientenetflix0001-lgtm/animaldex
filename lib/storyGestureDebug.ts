@@ -1,14 +1,28 @@
 import type { StoryGestureAction } from './storyViewerUi.ts';
 
 /** Marca temporal de esta ronda de diagnóstico. Solo Preview/DEV. */
-export const STORY_GESTURE_DEBUG_MARK = 'GESTURE-V5 DEBUG';
+export const STORY_GESTURE_DEBUG_MARK = 'GESTURE-V6 HITTEST';
 
 /**
- * Prueba posterior: si true (y debug activo), reemplaza foto/video por una View sólida.
+ * Reemplaza foto/video por una View sólida para descartar expo-image / VideoView.
  * Conserva GestureDetector, progreso, chrome y navegación.
- * Default false: no activa la superficie sólida.
+ * TEMPORAL: true solo para esta ronda de hit-test.
  */
-export const STORY_GESTURE_DEBUG_SOLID = false;
+export const STORY_GESTURE_DEBUG_SOLID = true;
+
+export const STORY_GESTURE_DEBUG_TOUCH_FILL = 'rgba(255,0,0,0.15)';
+
+export type StoryDebugBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export function formatStoryDebugBox(box: StoryDebugBox | null | undefined): string {
+  if (!box || !Number.isFinite(box.width) || !Number.isFinite(box.height)) return 'unmeasured';
+  return `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)}`;
+}
 
 export const STORY_GESTURE_DEBUG_ACTION_MS = 1000;
 

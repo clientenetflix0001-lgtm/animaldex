@@ -75,6 +75,8 @@ import {
   STORY_GESTURE_DEBUG_ACTION_MS,
   STORY_GESTURE_DEBUG_MARK,
   STORY_GESTURE_DEBUG_SOLID,
+  STORY_GESTURE_DEBUG_TOUCH_FILL,
+  formatStoryDebugBox,
   abbreviateUpdateId,
   formatStoryGestureDebugAction,
   storyGestureDebugEnabled,
@@ -539,7 +541,7 @@ describe('gestos StoryViewer', () => {
     assert.match(viewer, /\.minDistance\(0\)/);
     assert.match(viewer, /\.onBegin\(/);
     assert.match(viewer, /\.onFinalize\(/);
-    assert.match(viewer, /<GestureDetector gesture=\{storyPan\}>/);
+    assert.match(viewer, /<GestureDetector gesture=\{detectorGesture\}>/);
     assert.match(viewer, /classifyStorySwipe/);
     assert.match(viewer, /setPaused\(true\)/);
     assert.match(viewer, /setPaused\(false\)/);
@@ -728,9 +730,9 @@ describe('GestureDetector StoryViewer A–K', () => {
     assert.doesNotMatch(viewer.slice(viewer.indexOf('onFinalize'), viewer.indexOf('onFinalize') + 280), /progress\.value = 0/);
   });
 
-  it('marca temporal GESTURE-V5 DEBUG y log preview de expo-updates', () => {
-    assert.equal(STORY_GESTURE_DEBUG_MARK, 'GESTURE-V5 DEBUG');
-    assert.match(viewer, /GESTURE-V5 DEBUG/);
+  it('marca temporal GESTURE-V6 HITTEST y log preview de expo-updates', () => {
+    assert.equal(STORY_GESTURE_DEBUG_MARK, 'GESTURE-V6 HITTEST');
+    assert.match(viewer, /GESTURE-V6 HITTEST/);
     assert.match(gestureHud, /pointerEvents="none"/);
     assert.match(viewer, /Updates\.updateId/);
     assert.match(viewer, /Updates\.runtimeVersion/);
@@ -754,7 +756,7 @@ describe('telemetría visual Stories (Preview/DEV)', () => {
   it('HUD no bloquea gestos y no toca producto/backend', () => {
     assert.equal(storyGestureDebugTouchesProductLogic(), false);
     assert.equal(storyGestureDebugTouchesBackend(), false);
-    assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
+    assert.equal(STORY_GESTURE_DEBUG_SOLID, true);
     assert.equal(STORY_GESTURE_DEBUG_ACTION_MS, 1000);
     assert.match(gestureHud, /pointerEvents="none"/);
     assert.match(gestureHud, /zIndex: 30/);
@@ -780,8 +782,8 @@ describe('telemetría visual Stories (Preview/DEV)', () => {
     assert.match(viewer, /debugProgress=\{progress\}/);
   });
 
-  it('superficie sólida apagada; Gesture hijo es View nativa', () => {
-    assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
+  it('superficie sólida activa; Gesture hijo es View nativa', () => {
+    assert.equal(STORY_GESTURE_DEBUG_SOLID, true);
     assert.match(viewer, /debugOn && STORY_GESTURE_DEBUG_SOLID/);
     const detector = viewer.slice(viewer.indexOf('<GestureDetector'), viewer.indexOf('</GestureDetector>'));
     assert.match(detector, /<View/);
@@ -803,6 +805,50 @@ describe('telemetría visual Stories (Preview/DEV)', () => {
   });
 });
 
+describe('hit-test Stories GESTURE-V6', () => {
+  it('superficie sólida y touchLayer visible', () => {
+    assert.equal(STORY_GESTURE_DEBUG_SOLID, true);
+    assert.equal(STORY_GESTURE_DEBUG_TOUCH_FILL, 'rgba(255,0,0,0.15)');
+    assert.match(viewer, /styles\.touchLayerDebug/);
+    assert.match(viewer, /STORY_GESTURE_DEBUG_TOUCH_FILL/);
+    assert.match(viewer, /debugOn && STORY_GESTURE_DEBUG_SOLID/);
+    assert.match(viewer, /styles\.debugSolid/);
+  });
+
+  it('onLayout reporta STAGE y TOUCH; HUD no captura', () => {
+    assert.equal(formatStoryDebugBox({ x: 0, y: 0, width: 360, height: 700 }), '0,0 360x700');
+    assert.equal(formatStoryDebugBox(null), 'unmeasured');
+    assert.match(viewer, /setStageBox\(event\.nativeEvent\.layout\)/);
+    assert.match(viewer, /setTouchBox\(event\.nativeEvent\.layout\)/);
+    assert.match(gestureHud, /STAGE:/);
+    assert.match(gestureHud, /TOUCH:/);
+    assert.match(gestureHud, /pointerEvents="none"/);
+  });
+
+  it('Gesture.Tap crudo y Pressable RAW PRESS no navegan', () => {
+    assert.match(viewer, /Gesture\.Tap\(\)/);
+    assert.match(viewer, /setRawTap\(true\)/);
+    assert.match(viewer, /setRawPress\(true\)/);
+    assert.match(viewer, /detectorGesture = debugOn \? debugTap : storyPan/);
+    assert.match(gestureHud, /RAW TAP:/);
+    assert.match(gestureHud, /RAW PRESS:/);
+    const tapBlock = viewer.slice(viewer.indexOf('Gesture.Tap()'), viewer.indexOf('detectorGesture'));
+    assert.doesNotMatch(tapBlock, /setPaused|finishTouch|go\(/);
+    const pressBlock = viewer.slice(viewer.indexOf('accessibilityLabel="RAW PRESS"'), viewer.indexOf('accessibilityLabel="RAW PRESS"') + 180);
+    assert.doesNotMatch(pressBlock, /go\(|setCommentsOpen|setPaused/);
+  });
+
+  it('chrome box-none; media pointerEvents none; HUD no es fullscreen auto', () => {
+    assert.match(viewer, /styles\.topChrome, \{ paddingTop: chromeTop \}\]\} pointerEvents="box-none"/);
+    assert.match(viewer, /styles\.bottomChrome\} pointerEvents="box-none"/);
+    assert.match(viewer, /styles\.media\} pointerEvents="none"/);
+    assert.match(viewer, /styles\.topFade\} pointerEvents="none"/);
+    assert.match(viewer, /styles\.bottomFade\} pointerEvents="none"/);
+    assert.doesNotMatch(app, /name="StoryViewer"[\s\S]*gestureEnabled:\s*true/);
+    assert.match(app, /name="StoryViewer"[\s\S]*headerShown: false, animation: 'fade'/);
+  });
+});
+
 describe('Samsung: media, responder y comentarios', () => {
   it('A. bottom inset en stage; top inset en chrome', () => {
     assert.match(viewer, /storyStageInsets\(insets\)/);
@@ -815,7 +861,7 @@ describe('Samsung: media, responder y comentarios', () => {
   it('B. media no usa absoluteFill de la raíz; GestureDetector cubre el stage', () => {
     assert.equal(storyMediaUsesRootAbsoluteFill(), false);
     assert.match(viewer, /styles\.touchLayer/);
-    assert.match(viewer, /<GestureDetector gesture=\{storyPan\}>/);
+    assert.match(viewer, /<GestureDetector gesture=\{detectorGesture\}>/);
     assert.match(viewer, /pointerEvents="none"/);
     assert.match(viewer, /elevation: 4/);
     assert.doesNotMatch(viewer, /tapLeft|tapRight|onZonePressIn|PanResponder/);

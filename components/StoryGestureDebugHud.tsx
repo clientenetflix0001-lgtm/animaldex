@@ -22,6 +22,10 @@ type Props = {
   debugProgress: SharedValue<number>;
   debugPhase: SharedValue<number>;
   debugDown: SharedValue<number>;
+  stageBox: string;
+  touchBox: string;
+  rawTap: boolean;
+  rawPress: boolean;
 };
 
 export default function StoryGestureDebugHud({
@@ -41,6 +45,10 @@ export default function StoryGestureDebugHud({
   debugProgress,
   debugPhase,
   debugDown,
+  stageBox,
+  touchBox,
+  rawTap,
+  rawPress,
 }: Props) {
   const liveProps = useAnimatedProps(() => {
     const names = ['IDLE', 'BEGAN', 'ACTIVE', 'END', 'CANCEL'];
@@ -94,6 +102,18 @@ export default function StoryGestureDebugHud({
       </Text>
       <Text pointerEvents="none" style={styles.line}>
         STORY: {storyIndex + 1}/{Math.max(storyCount, 1)}
+      </Text>
+      <Text pointerEvents="none" style={styles.line}>
+        STAGE: {stageBox}
+      </Text>
+      <Text pointerEvents="none" style={styles.line}>
+        TOUCH: {touchBox}
+      </Text>
+      <Text pointerEvents="none" style={styles.line}>
+        RAW TAP: {rawTap ? 'YES' : 'NO'}
+      </Text>
+      <Text pointerEvents="none" style={styles.line}>
+        RAW PRESS: {rawPress ? 'YES' : 'NO'}
       </Text>
     </View>
   );
