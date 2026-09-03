@@ -8,16 +8,17 @@ import {
   AppState,
   Alert,
   Platform,
-  PanResponder,
   StatusBar as RNStatusBar,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Easing, cancelAnimation, runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import { db, type ApiStory } from '../lib/db';
 import { useStore } from '../lib/store';
@@ -292,23 +293,29 @@ export default function StoryViewerScreen() {
     [go]
   );
 
-  const panResponder = useMemo(
+  useEffect(() => {
+    if (!__DEV__ && Updates.channel !== 'preview') return;
+    console.log('[Animaldex Stories] GESTURE-V4', {
+      updateId: Updates.updateId,
+      runtimeVersion: Updates.runtimeVersion,
+      channel: Updates.channel,
+      isEmbeddedLaunch: Updates.isEmbeddedLaunch,
+    });
+  }, []);
+
+  const storyPan = useMemo(
     () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => !commentsOpenRef.current,
-        onMoveShouldSetPanResponder: () => !commentsOpenRef.current,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: () => {
+      Gesture.Pan()
+        .minDistance(0)
+        .enabled(!commentsOpen)
+        .runOnJS(true)
+        .onBegin(() => {
           setPaused(true);
-        },
-        onPanResponderRelease: (_, gesture) => {
-          finishTouch(gesture.dx, gesture.dy);
-        },
-        onPanResponderTerminate: () => {
-          setPaused(false);
-        },
-      }),
-    [finishTouch]
+        })
+        .onFinalize((event) => {
+          finishTouch(event.translationX, event.translationY);
+        }),
+    [commentsOpen, finishTouch]
   );
 
   if (loading) {
@@ -353,12 +360,16 @@ export default function StoryViewerScreen() {
           <LinearGradient colors={['transparent', 'rgba(0,0,0,0.45)']} style={styles.bottomFade} pointerEvents="none" />
         </View>
 
-        <View
-          style={styles.touchLayer}
-          collapsable={false}
-          accessibilityLabel="Controles de historia"
-          {...panResponder.panHandlers}
-        />
+        <GestureDetector gesture={storyPan}>
+          <View
+            style={styles.touchLayer}
+            collapsable={false}
+            accessibilityLabel="Controles de historia"
+          />
+        </GestureDetector>
+        <Text pointerEvents="none" style={[styles.gestureDebug, { top: chromeTop + 4 }]}>
+          GESTURE-V4
+        </Text>
 
         <View style={[styles.topChrome, { paddingTop: chromeTop }]} pointerEvents="box-none">
           <StoryProgress count={stories.length} index={index} progress={progress} />
@@ -454,4 +465,13 @@ const styles = StyleSheet.create({
   commentLabel: { color: '#fff', fontWeight: '600' },
   error: { color: '#fff', textAlign: 'center', padding: 24 },
   closeBtn: { alignSelf: 'center', padding: 12 },
+  gestureDebug: {
+    position: 'absolute',
+    left: 10,
+    zIndex: 6,
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
 });
