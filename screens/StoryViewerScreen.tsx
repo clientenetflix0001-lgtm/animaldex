@@ -1,5 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, AppState, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ActivityIndicator,
+  AppState,
+  Alert,
+  Platform,
+  StatusBar as RNStatusBar,
+} from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,12 +21,13 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import Animated, { Easing, cancelAnimation, runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 import { db, type ApiStory } from '../lib/db';
 import { useStore } from '../lib/store';
-import { STORY_EXPIRED_MESSAGE, nextStoryIndex, prevStoryIndex } from '../lib/stories';
+import { STORY_EXPIRED_MESSAGE, nextStoryIndex } from '../lib/stories';
 import {
-  STORY_HOLD_DELAY_MS,
+  applyStoryGesture,
+  classifyStoryGesture,
   remainingProgressMs,
-  shouldNavigateOnRelease,
   storyChromeInsets,
+  storyChromeTopInset,
   storyProgressDurationMs,
   storyStageInsets,
 } from '../lib/storyViewerUi';
@@ -47,7 +60,15 @@ function StoryVideo({ uri, paused }: { uri: string; paused: boolean }) {
       } catch {}
     };
   }, [player]);
-  return <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} />;
+  return (
+    <VideoView
+      player={player}
+      style={StyleSheet.absoluteFill}
+      contentFit="cover"
+      nativeControls={false}
+      pointerEvents="none"
+    />
+  );
 }
 
 export default function StoryViewerScreen() {
@@ -56,6 +77,7 @@ export default function StoryViewerScreen() {
   const insets = useSafeAreaInsets();
   const stage = storyStageInsets(insets);
   const chrome = storyChromeInsets(insets);
+  const chromeTop = storyChromeTopInset(insets);
   const { user } = useStore();
   const [stories, setStories] = useState<ApiStory[]>([]);
   const [index, setIndex] = useState(0);
@@ -64,8 +86,8 @@ export default function StoryViewerScreen() {
   const [loading, setLoading] = useState(true);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [error, setError] = useState('');
-  const holdRef = useRef(false);
-  const downAtRef = useRef(0);
+  const touchRef = useRef<{ startX: number; startY: number; startMs: number } | null>(null);
+  const stageWidthRef = useRef(1);
   const progress = useSharedValue(0);
 
   const params = route.params || {};
@@ -171,6 +193,18 @@ export default function StoryViewerScreen() {
     return () => sub.remove();
   }, []);
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    RNStatusBar.setBarStyle('light-content', true);
+    RNStatusBar.setBackgroundColor('transparent', true);
+    RNStatusBar.setTranslucent(true);
+    return () => {
+      RNStatusBar.setBarStyle('dark-content', true);
+      RNStatusBar.setBackgroundColor('#ffffff', true);
+      RNStatusBar.setTranslucent(true);
+    };
+  }, []);
+
   const headerName = useMemo(() => {
     if (!current) return '';
     return current.username || current.authorPetName || current.authorProfileUsername || current.userName || 'Historia';
@@ -227,42 +261,52 @@ export default function StoryViewerScreen() {
     Alert.alert('Gracias', 'Recibimos el reporte.');
   }, [current]);
 
-  const onZonePressIn = useCallback(() => {
-    holdRef.current = false;
-    downAtRef.current = Date.now();
-    setPaused(true);
-  }, []);
+  const onTouchStart = useCallback(
+    (event: GestureResponderEvent) => {
+      if (commentsOpen) return;
+      const { locationX, locationY } = event.nativeEvent;
+      touchRef.current = { startX: locationX, startY: locationY, startMs: Date.now() };
+      setPaused(true);
+    },
+    [commentsOpen]
+  );
 
-  const onZoneLongPress = useCallback(() => {
-    holdRef.current = true;
-  }, []);
-
-  const onZonePressOut = useCallback(() => {
-    setPaused(false);
-  }, []);
-
-  const consumeHoldTap = useCallback(() => {
-    const skip = !shouldNavigateOnRelease({
-      held: holdRef.current,
-      downAtMs: downAtRef.current,
-      nowMs: Date.now(),
-      holdDelayMs: STORY_HOLD_DELAY_MS,
-    });
-    holdRef.current = false;
-    return skip;
-  }, []);
-
-  const onTapLeft = useCallback(() => {
-    if (consumeHoldTap()) return;
-    const prev = prevStoryIndex(index);
-    if (prev == null) return;
-    go(prev);
-  }, [consumeHoldTap, go, index]);
-
-  const onTapRight = useCallback(() => {
-    if (consumeHoldTap()) return;
-    go(nextStoryIndex(index, stories.length));
-  }, [consumeHoldTap, go, index, stories.length]);
+  const onTouchEnd = useCallback(
+    (event: GestureResponderEvent) => {
+      const start = touchRef.current;
+      touchRef.current = null;
+      if (!start || commentsOpen) {
+        setPaused(false);
+        return;
+      }
+      const result = applyStoryGesture(
+        classifyStoryGesture({
+          startX: start.startX,
+          startY: start.startY,
+          endX: event.nativeEvent.locationX,
+          endY: event.nativeEvent.locationY,
+          startMs: start.startMs,
+          endMs: Date.now(),
+          width: stageWidthRef.current,
+          commentsOpen,
+        }),
+        index,
+        stories.length
+      );
+      if (result.action === 'previous' || result.action === 'next') {
+        setPaused(false);
+        go(result.nextIndex);
+        return;
+      }
+      if (result.action === 'close') {
+        setPaused(false);
+        go(null);
+        return;
+      }
+      setPaused(false);
+    },
+    [commentsOpen, go, index, stories.length]
+  );
 
   if (loading) {
     return (
@@ -289,7 +333,13 @@ export default function StoryViewerScreen() {
 
   return (
     <View style={styles.black}>
-      <View style={[styles.stage, stage]}>
+      <StatusBar style="light" backgroundColor="transparent" translucent />
+      <View
+        style={[styles.stage, stage]}
+        onLayout={(event) => {
+          stageWidthRef.current = event.nativeEvent.layout.width || 1;
+        }}
+      >
         <View style={styles.media} pointerEvents="none">
           {current.mediaType === 'video' && mediaUri ? (
             <StoryVideo uri={mediaUri} paused={frozen} />
@@ -298,39 +348,32 @@ export default function StoryViewerScreen() {
               source={{ uri: mediaUri || current.thumbnailUrl || '' }}
               style={styles.mediaFill}
               contentFit="cover"
+              pointerEvents="none"
             />
           )}
           <LinearGradient colors={['rgba(0,0,0,0.5)', 'transparent']} style={styles.topFade} pointerEvents="none" />
           <LinearGradient colors={['transparent', 'rgba(0,0,0,0.45)']} style={styles.bottomFade} pointerEvents="none" />
         </View>
 
-        <View style={styles.taps}>
-          <Pressable
-            style={styles.tapLeft}
-            onPressIn={onZonePressIn}
-            onPress={onTapLeft}
-            onLongPress={onZoneLongPress}
-            onPressOut={onZonePressOut}
-            delayLongPress={STORY_HOLD_DELAY_MS}
-            android_ripple={null}
-            accessibilityLabel="Historia anterior"
-          />
-          <Pressable
-            style={styles.tapRight}
-            onPressIn={onZonePressIn}
-            onPress={onTapRight}
-            onLongPress={onZoneLongPress}
-            onPressOut={onZonePressOut}
-            delayLongPress={STORY_HOLD_DELAY_MS}
-            android_ripple={null}
-            accessibilityLabel="Historia siguiente"
-          />
-        </View>
+        <View
+          style={styles.touchLayer}
+          collapsable={false}
+          onStartShouldSetResponder={() => !commentsOpen}
+          onMoveShouldSetResponder={() => !commentsOpen}
+          onResponderTerminationRequest={() => false}
+          onResponderGrant={onTouchStart}
+          onResponderRelease={onTouchEnd}
+          onResponderTerminate={() => {
+            touchRef.current = null;
+            setPaused(false);
+          }}
+          accessibilityLabel="Controles de historia"
+        />
 
-        <View style={styles.topChrome} pointerEvents="box-none">
+        <View style={[styles.topChrome, { paddingTop: chromeTop }]} pointerEvents="box-none">
           <StoryProgress count={stories.length} index={index} progress={progress} />
           <View style={styles.topRow}>
-            <View style={styles.identity}>
+            <View style={styles.identity} pointerEvents="none">
               <Image source={{ uri: thumb(headerAvatar, 80) }} style={styles.avatar} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name} numberOfLines={1}>
@@ -361,7 +404,7 @@ export default function StoryViewerScreen() {
         </View>
 
         <View style={styles.bottomChrome} pointerEvents="box-none">
-          {current.caption ? <Text style={styles.caption}>{current.caption}</Text> : null}
+          {current.caption ? <Text style={styles.caption} pointerEvents="none">{current.caption}</Text> : null}
           <Pressable style={styles.commentBtn} onPress={() => setCommentsOpen(true)} accessibilityLabel="Comentar">
             <Ionicons name="chatbubble-outline" size={20} color="#fff" />
             <Text style={styles.commentLabel}>Comentar</Text>
@@ -386,11 +429,24 @@ const styles = StyleSheet.create({
   mediaFill: { width: '100%', height: '100%' },
   topFade: { position: 'absolute', top: 0, left: 0, right: 0, height: 140 },
   bottomFade: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 180 },
-  taps: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', zIndex: 1 },
-  tapLeft: { flex: 1 },
-  tapRight: { flex: 1 },
-  topChrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 },
-  bottomChrome: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 2, paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
+  touchLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+    elevation: 4,
+    backgroundColor: 'transparent',
+  },
+  topChrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2, elevation: 8 },
+  bottomChrome: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 2,
+    elevation: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 10,
+  },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',

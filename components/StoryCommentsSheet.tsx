@@ -10,11 +10,13 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { db, type ApiComment } from '../lib/db';
 import { colors, spacing } from '../lib/theme';
 import { STORY_EXPIRED_MESSAGE, STORY_NOT_VET_DISCLAIMER } from '../lib/stories';
+import { storyCommentsComposerPadding } from '../lib/storyViewerUi';
 import { thumb, userFallbackAvatar } from '../lib/images';
 
 type Props = {
@@ -26,6 +28,8 @@ type Props = {
 };
 
 export default function StoryCommentsSheet({ storyId, visible, canComment, onClose, onExpired }: Props) {
+  const insets = useSafeAreaInsets();
+  const composerPad = storyCommentsComposerPadding(insets);
   const [comments, setComments] = useState<ApiComment[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -86,7 +90,12 @@ export default function StoryCommentsSheet({ storyId, visible, canComment, onClo
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.wrap}>
+    <KeyboardAvoidingView
+      behavior="padding"
+      enabled={Platform.OS !== 'web'}
+      keyboardVerticalOffset={0}
+      style={[styles.wrap, { paddingBottom: composerPad }]}
+    >
       <View style={styles.sheet}>
         <View style={styles.head}>
           <Text style={styles.title}>Comentarios</Text>
@@ -139,12 +148,12 @@ export default function StoryCommentsSheet({ storyId, visible, canComment, onClo
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 3 },
+  wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10, elevation: 16 },
   sheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
-    paddingBottom: 16,
+    paddingBottom: 8,
     maxHeight: 420,
   },
   head: {
