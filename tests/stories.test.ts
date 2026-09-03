@@ -66,6 +66,7 @@ import {
   storyChromeInsets,
   storyChromeTopInset,
   storyCommentsComposerPadding,
+  storyGestureChildUsesExplicitStageSize,
   storyGestureDetectorChildUsesFlexLayout,
   storyGestureHoldUsesSharedValue,
   storyGesturePausesOnTouchStart,
@@ -82,6 +83,10 @@ import {
   STORY_GESTURE_DEBUG_MARK,
   STORY_GESTURE_DEBUG_SOLID,
   formatStoryDebugBox,
+  storyDebugBoxesEqual,
+  storyExplicitSurfaceStyle,
+  storyHasExplicitSurface,
+  storyLayoutToBox,
   storyTouchCoversStage,
   abbreviateUpdateId,
   formatStoryGestureDebugAction,
@@ -229,7 +234,7 @@ describe('viewer', () => {
     assert.equal(nextStoryIndex(1, 2), null);
     assert.equal(prevStoryIndex(1), 0);
     assert.equal(prevStoryIndex(0), null);
-    assert.match(viewer, /gestureSurface/);
+    assert.match(viewer, /stageSurface/);
     assert.match(viewer, /classifyStorySwipe/);
     assert.match(viewer, /accessibilityLabel="Cerrar"/);
     assert.match(viewer, /StoryProgress/);
@@ -526,13 +531,13 @@ describe('safe area StoryViewer', () => {
     assert.match(viewer, /useSafeAreaInsets/);
     assert.match(viewer, /storyStageInsets\(insets\)/);
     assert.match(viewer, /storyChromeTopInset\(insets\)/);
-    assert.match(viewer, /styles\.stage, stage/);
+    assert.match(viewer, /styles\.stageShell, stage/);
     assert.deepEqual(storyStageInsets({ top: 44, bottom: 28 }), { marginTop: 0, marginBottom: 28 });
     assert.deepEqual(storyStageInsets(null), { marginTop: 0, marginBottom: 0 });
     assert.equal(storyChromeTopInset({ top: 44 }), 44);
     assert.deepEqual(storyChromeInsets({ top: 44, bottom: 28 }), { paddingTop: 44, paddingBottom: 28 });
     const closeIdx = viewer.lastIndexOf('accessibilityLabel="Cerrar"');
-    const stageIdx = viewer.indexOf('styles.stage, stage');
+    const stageIdx = viewer.indexOf('styles.stageShell, stage');
     const commentIdx = viewer.indexOf('accessibilityLabel="Comentar"');
     assert.ok(stageIdx > 0 && closeIdx > stageIdx && commentIdx > stageIdx);
     assert.doesNotMatch(viewer, /paddingTop:\s*48|paddingBottom:\s*34/);
@@ -561,7 +566,7 @@ describe('gestos StoryViewer', () => {
     assert.equal(STORY_SWIPE_MIN_DX, 60);
     assert.match(viewer, /classifyStorySwipe/);
     assert.match(viewer, /applyStoryGesture/);
-    assert.match(viewer, /gestureSurface/);
+    assert.match(viewer, /stageSurface/);
     assert.match(viewer, /pointerEvents="box-none"/);
     assert.match(viewer, /accessibilityLabel="Cerrar"/);
     assert.match(viewer, /setCommentsOpen\(true\)/);
@@ -736,9 +741,9 @@ describe('GestureDetector StoryViewer A–K', () => {
     assert.doesNotMatch(viewer.slice(viewer.indexOf('onFinalize'), viewer.indexOf('onFinalize') + 280), /progress\.value = 0/);
   });
 
-  it('marca temporal GESTURE-V7 y log preview de expo-updates', () => {
-    assert.equal(STORY_GESTURE_DEBUG_MARK, 'GESTURE-V7');
-    assert.match(viewer, /GESTURE-V7/);
+  it('marca temporal GESTURE-V8 LAYOUT y log preview de expo-updates', () => {
+    assert.equal(STORY_GESTURE_DEBUG_MARK, 'GESTURE-V8 LAYOUT');
+    assert.match(viewer, /GESTURE-V8 LAYOUT/);
     assert.match(gestureHud, /pointerEvents="none"/);
     assert.match(viewer, /Updates\.updateId/);
     assert.match(viewer, /Updates\.runtimeVersion/);
@@ -787,15 +792,20 @@ describe('telemetría visual Stories (Preview/DEV)', () => {
     assert.match(viewer, /debugProgress=\{progress\}/);
   });
 
-  it('media restaurada; hijo directo flex, no absoluteFill', () => {
+  it('media restaurada; hijo directo con tamaño explícito del stage', () => {
     assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
-    assert.equal(storyGestureDetectorChildUsesFlexLayout(), true);
+    assert.equal(storyGestureDetectorChildUsesFlexLayout(), false);
+    assert.equal(storyGestureChildUsesExplicitStageSize(), true);
     assert.match(viewer, /debugOn && STORY_GESTURE_DEBUG_SOLID/);
     const detector = viewer.slice(viewer.indexOf('<GestureDetector'), viewer.indexOf('</GestureDetector>'));
-    assert.match(detector, /<Animated\.View/);
-    assert.match(detector, /styles\.gestureSurface/);
-    assert.doesNotMatch(detector, /absoluteFill|touchLayer/);
-    assert.doesNotMatch(detector, /<StoryVideo|<Image /);
+    assert.match(detector, /<View/);
+    assert.doesNotMatch(detector, /<Animated\.View/);
+    assert.match(detector, /styles\.stageSurface, surfaceStyle/);
+    assert.match(viewer, /storyExplicitSurfaceStyle\(stageBox\)/);
+    assert.match(detector, /styles\.stageSurface/);
+    assert.match(detector, /<StoryVideo/);
+    assert.match(detector, /pointerEvents="none"/);
+    assert.doesNotMatch(detector, /gestureSurface/);
     assert.doesNotMatch(viewer, /\[commentsOpen, .*paused\]/);
   });
 
@@ -823,22 +833,42 @@ describe('hit target + arquitectura Gemini', () => {
       false
     );
     assert.equal(storyTouchCoversStage({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 0, width: 360, height: 0 }), false);
-    assert.match(viewer, /gestureSurface: \{/);
-    assert.match(viewer, /flex: 1/);
+    assert.deepEqual(storyExplicitSurfaceStyle({ x: 0, y: 0, width: 360, height: 752 }), {
+      width: 360,
+      height: 752,
+      flexGrow: 0,
+      flexShrink: 0,
+    });
+    assert.equal(storyHasExplicitSurface({ x: 0, y: 0, width: 360, height: 752 }), true);
+    assert.equal(storyHasExplicitSurface({ x: 0, y: 752, width: 360, height: 0 }), false);
+    assert.equal(storyGestureChildUsesExplicitStageSize(), true);
+    assert.equal(storyGestureDetectorChildUsesFlexLayout(), false);
+    assert.match(viewer, /storyExplicitSurfaceStyle\(stageBox\)/);
+    assert.match(viewer, /styles\.stageShell/);
+    assert.match(viewer, /styles\.stageSurface/);
+    assert.doesNotMatch(viewer, /gestureSurface/);
     const detector = viewer.slice(viewer.indexOf('<GestureDetector'), viewer.indexOf('</GestureDetector>'));
-    assert.doesNotMatch(detector, /absoluteFillObject|position: 'absolute'/);
+    assert.doesNotMatch(detector, /flex: 1/);
+    assert.doesNotMatch(detector, /style=\{styles\.gestureSurface\}/);
   });
 
   it('STAGE/TOUCH en HUD; RAW HIT; media normal', () => {
-    assert.equal(formatStoryDebugBox({ x: 0, y: 0, width: 360, height: 752 }), '0,0 360x752');
+    assert.equal(storyDebugBoxesEqual({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 0, width: 360, height: 752 }), true);
+    assert.equal(storyDebugBoxesEqual({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 752, width: 360, height: 0 }), false);
+    assert.deepEqual(storyLayoutToBox({ x: 0, y: 0, width: 360.4, height: 752.2 }), { x: 0, y: 0, width: 360.4, height: 752.2 });
     assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
-    assert.match(viewer, /setStageBox\(event\.nativeEvent\.layout\)/);
-    assert.match(viewer, /setTouchBox\(event\.nativeEvent\.layout\)/);
+    assert.match(viewer, /setStageBox\(\(prev\) => \(storyDebugBoxesEqual\(prev, next\) \? prev : next\)\)/);
+    assert.match(viewer, /setTouchBox\(\(prev\) => \(storyDebugBoxesEqual\(prev, next\) \? prev : next\)\)/);
     assert.match(gestureHud, /STAGE:/);
     assert.match(gestureHud, /TOUCH:/);
+    assert.match(gestureHud, /GESTURE CHILD:/);
+    assert.match(gestureHud, /SURFACE W:/);
+    assert.match(gestureHud, /SURFACE H:/);
     assert.match(gestureHud, /RAW HIT:/);
     assert.match(gestureHud, /HOLD:/);
     assert.match(gestureHud, /PAN:/);
+    assert.match(viewer, /gestureChildBox=\{formatStoryDebugBox\(touchBox\)\}/);
+    assert.match(viewer, /surfaceW=\{Math\.round\(touchBox\?\.width \|\| 0\)\}/);
     assert.match(viewer, /<StoryVideo uri=\{mediaUri\} paused=\{videoPaused\} \/>/);
   });
 
@@ -888,10 +918,11 @@ describe('Samsung: media, responder y comentarios', () => {
 
   it('B. media no usa absoluteFill de la raíz; GestureDetector cubre el stage', () => {
     assert.equal(storyMediaUsesRootAbsoluteFill(), false);
-    assert.match(viewer, /styles\.gestureSurface/);
+    assert.match(viewer, /styles\.stageSurface/);
+    assert.match(viewer, /storyExplicitSurfaceStyle\(stageBox\)/);
     assert.match(viewer, /<GestureDetector gesture=\{storyGestures\}>/);
     assert.match(viewer, /pointerEvents="none"/);
-    assert.match(viewer, /flex: 1/);
+    assert.match(viewer, /stageShell: \{ flex: 1/);
     assert.doesNotMatch(viewer, /tapLeft|tapRight|onZonePressIn|PanResponder/);
   });
 

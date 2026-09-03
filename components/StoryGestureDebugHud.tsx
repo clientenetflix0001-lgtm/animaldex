@@ -18,6 +18,9 @@ type Props = {
   rawHit: boolean;
   stageBox: string;
   touchBox: string;
+  gestureChildBox: string;
+  surfaceW: number;
+  surfaceH: number;
   debugDx: SharedValue<number>;
   debugDy: SharedValue<number>;
   debugProgress: SharedValue<number>;
@@ -38,6 +41,9 @@ export default function StoryGestureDebugHud({
   rawHit,
   stageBox,
   touchBox,
+  gestureChildBox,
+  surfaceW,
+  surfaceH,
   debugDx,
   debugDy,
   debugProgress,
@@ -73,6 +79,15 @@ export default function StoryGestureDebugHud({
       </Text>
       <Text pointerEvents="none" style={styles.line}>
         TOUCH: {touchBox}
+      </Text>
+      <Text pointerEvents="none" style={styles.line}>
+        GESTURE CHILD: {gestureChildBox}
+      </Text>
+      <Text pointerEvents="none" style={styles.line}>
+        SURFACE W: {surfaceW}
+      </Text>
+      <Text pointerEvents="none" style={styles.line}>
+        SURFACE H: {surfaceH}
       </Text>
       <Text pointerEvents="none" style={styles.line}>
         RAW HIT: {rawHit ? 'YES' : 'NO'}

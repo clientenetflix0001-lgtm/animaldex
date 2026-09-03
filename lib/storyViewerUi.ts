@@ -119,6 +119,10 @@ export function storyGestureHoldUsesSharedValue(): boolean {
 }
 
 export function storyGestureDetectorChildUsesFlexLayout(): boolean {
+  return false;
+}
+
+export function storyGestureChildUsesExplicitStageSize(): boolean {
   return true;
 }
 

@@ -1,7 +1,7 @@
 import type { StoryGestureAction } from './storyViewerUi.ts';
 
 /** Marca temporal Preview/DEV. */
-export const STORY_GESTURE_DEBUG_MARK = 'GESTURE-V7';
+export const STORY_GESTURE_DEBUG_MARK = 'GESTURE-V8 LAYOUT';
 
 /** Superficie sólida de diagnóstico. OFF: media real restaurada. */
 export const STORY_GESTURE_DEBUG_SOLID = false;
@@ -20,7 +20,51 @@ export function formatStoryDebugBox(box: StoryDebugBox | null | undefined): stri
   return `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)}`;
 }
 
-/** Evita el bug Samsung: TOUCH 360x38 en y=752 bajo un stage 360x752. */
+export function storyDebugBoxesEqual(
+  a: StoryDebugBox | null | undefined,
+  b: StoryDebugBox | null | undefined
+): boolean {
+  if (!a || !b) return a === b;
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+export function storyLayoutToBox(layout: {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}): StoryDebugBox {
+  return {
+    x: Number(layout.x) || 0,
+    y: Number(layout.y) || 0,
+    width: Number(layout.width) || 0,
+    height: Number(layout.height) || 0,
+  };
+}
+
+export type StoryExplicitSurfaceStyle = {
+  width: number;
+  height: number;
+  flexGrow: 0;
+  flexShrink: 0;
+};
+
+/** Pixels from the measured stage. Never flex:1 — that collapses inside RNGH AnimatedWrap. */
+export function storyExplicitSurfaceStyle(box: StoryDebugBox | null | undefined): StoryExplicitSurfaceStyle {
+  return {
+    width: Math.max(0, Math.round(Number(box?.width) || 0)),
+    height: Math.max(0, Math.round(Number(box?.height) || 0)),
+    flexGrow: 0,
+    flexShrink: 0,
+  };
+}
+
+export function storyHasExplicitSurface(box: StoryDebugBox | null | undefined): boolean {
+  const style = storyExplicitSurfaceStyle(box);
+  return style.width >= 80 && style.height >= 80;
+}
+
+/** Evita el bug Samsung: TOUCH 360x38 / 360x0 en y=752 bajo un stage 360x752. */
 export function storyTouchCoversStage(
   stage: StoryDebugBox | null | undefined,
   touch: StoryDebugBox | null | undefined,

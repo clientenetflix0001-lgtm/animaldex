@@ -19,7 +19,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
+import {
   Easing,
   cancelAnimation,
   runOnJS,
@@ -47,7 +47,11 @@ import {
   STORY_GESTURE_DEBUG_SOLID,
   formatStoryDebugBox,
   formatStoryGestureDebugAction,
+  storyExplicitSurfaceStyle,
   storyGestureDebugEnabled,
+  storyHasExplicitSurface,
+  storyLayoutToBox,
+  storyDebugBoxesEqual,
   storyTouchCoversStage,
   type StoryDebugBox,
 } from '../lib/storyGestureDebug';
@@ -361,7 +365,7 @@ export default function StoryViewerScreen() {
 
   useEffect(() => {
     if (!debugOn) return;
-    console.log('[Animaldex Stories] GESTURE-V7', {
+    console.log('[Animaldex Stories] GESTURE-V8 LAYOUT', {
       updateId: Updates.updateId,
       runtimeVersion: Updates.runtimeVersion,
       channel: Updates.channel,
@@ -434,39 +438,50 @@ export default function StoryViewerScreen() {
   const mediaUri = current.mediaType === 'video' ? current.hlsUrl : current.imageUrl;
   const owner = !!(user && current.authorUserId === user.id);
   const subline = [current.protagonistName, current.breedLabel].filter(Boolean).join(' · ');
+  const surfaceStyle = storyExplicitSurfaceStyle(stageBox);
+  const hasSurface = storyHasExplicitSurface(stageBox);
 
   return (
     <View style={styles.black}>
       <StatusBar style="light" backgroundColor="transparent" translucent />
       <View
-        style={[styles.stage, stage]}
-        onLayout={(event) => setStageBox(event.nativeEvent.layout)}
+        style={[styles.stageShell, stage]}
+        collapsable={false}
+        onLayout={(event) => {
+          const next = storyLayoutToBox(event.nativeEvent.layout);
+          setStageBox((prev) => (storyDebugBoxesEqual(prev, next) ? prev : next));
+        }}
       >
-        <View style={styles.media} pointerEvents="none">
-          {debugOn && STORY_GESTURE_DEBUG_SOLID ? (
-            <View style={[styles.mediaFill, styles.debugSolid]} />
-          ) : current.mediaType === 'video' && mediaUri ? (
-            <StoryVideo uri={mediaUri} paused={videoPaused} />
-          ) : (
-            <Image
-              source={{ uri: mediaUri || current.thumbnailUrl || '' }}
-              style={styles.mediaFill}
-              contentFit="cover"
-              pointerEvents="none"
-            />
-          )}
-          <LinearGradient colors={['rgba(0,0,0,0.5)', 'transparent']} style={styles.topFade} pointerEvents="none" />
-          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.45)']} style={styles.bottomFade} pointerEvents="none" />
-        </View>
-
-        <GestureDetector gesture={storyGestures}>
-          <Animated.View
-            style={styles.gestureSurface}
-            collapsable={false}
-            accessibilityLabel="Controles de historia"
-            onLayout={(event) => setTouchBox(event.nativeEvent.layout)}
-          />
-        </GestureDetector>
+        {hasSurface ? (
+          <GestureDetector gesture={storyGestures}>
+            <View
+              collapsable={false}
+              style={[styles.stageSurface, surfaceStyle]}
+              accessibilityLabel="Controles de historia"
+              onLayout={(event) => {
+                const next = storyLayoutToBox(event.nativeEvent.layout);
+                setTouchBox((prev) => (storyDebugBoxesEqual(prev, next) ? prev : next));
+              }}
+            >
+              <View style={styles.media} pointerEvents="none">
+                {debugOn && STORY_GESTURE_DEBUG_SOLID ? (
+                  <View style={[styles.mediaFill, styles.debugSolid]} />
+                ) : current.mediaType === 'video' && mediaUri ? (
+                  <StoryVideo uri={mediaUri} paused={videoPaused} />
+                ) : (
+                  <Image
+                    source={{ uri: mediaUri || current.thumbnailUrl || '' }}
+                    style={styles.mediaFill}
+                    contentFit="cover"
+                    pointerEvents="none"
+                  />
+                )}
+                <LinearGradient colors={['rgba(0,0,0,0.5)', 'transparent']} style={styles.topFade} pointerEvents="none" />
+                <LinearGradient colors={['transparent', 'rgba(0,0,0,0.45)']} style={styles.bottomFade} pointerEvents="none" />
+              </View>
+            </View>
+          </GestureDetector>
+        ) : null}
         <StoryGestureDebugHud
           visible={debugOn}
           top={chromeTop + 4}
@@ -480,6 +495,9 @@ export default function StoryViewerScreen() {
           rawHit={storyTouchCoversStage(stageBox, touchBox)}
           stageBox={formatStoryDebugBox(stageBox)}
           touchBox={formatStoryDebugBox(touchBox)}
+          gestureChildBox={formatStoryDebugBox(touchBox)}
+          surfaceW={Math.round(touchBox?.width || 0)}
+          surfaceH={Math.round(touchBox?.height || 0)}
           debugDx={debugDx}
           debugDy={debugDy}
           debugProgress={progress}
@@ -541,15 +559,12 @@ export default function StoryViewerScreen() {
 
 const styles = StyleSheet.create({
   black: { flex: 1, backgroundColor: '#000' },
-  stage: { flex: 1, overflow: 'hidden' },
+  stageShell: { flex: 1, overflow: 'visible' },
+  stageSurface: { overflow: 'hidden' },
   media: { ...StyleSheet.absoluteFillObject },
   mediaFill: { width: '100%', height: '100%' },
   topFade: { position: 'absolute', top: 0, left: 0, right: 0, height: 140 },
   bottomFade: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 180 },
-  gestureSurface: {
-    flex: 1,
-    zIndex: 1,
-  },
   topChrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2, elevation: 8 },
   bottomChrome: {
     position: 'absolute',
