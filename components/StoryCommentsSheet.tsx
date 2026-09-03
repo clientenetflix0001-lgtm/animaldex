@@ -94,9 +94,9 @@ export default function StoryCommentsSheet({ storyId, visible, canComment, onClo
       behavior="padding"
       enabled={Platform.OS !== 'web'}
       keyboardVerticalOffset={0}
-      style={[styles.wrap, { paddingBottom: composerPad }]}
+      style={styles.wrap}
     >
-      <View style={styles.sheet}>
+      <View style={[styles.sheet, { paddingBottom: composerPad }]}>
         <View style={styles.head}>
           <Text style={styles.title}>Comentarios</Text>
           <Pressable onPress={onClose} accessibilityLabel="Cerrar comentarios">
@@ -110,6 +110,7 @@ export default function StoryCommentsSheet({ storyId, visible, canComment, onClo
           data={comments}
           keyExtractor={(c) => c.id}
           style={styles.list}
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <View style={styles.row}>
               <Image
@@ -153,7 +154,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
-    paddingBottom: 8,
+    paddingBottom: 20,
     maxHeight: 420,
   },
   head: {

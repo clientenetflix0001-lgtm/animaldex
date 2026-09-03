@@ -5,6 +5,10 @@ export const STORY_TAP_LEFT_RATIO = 0.5;
 export const STORY_HOLD_DELAY_MS = 250;
 export const STORY_TAP_MAX_MS = 250;
 export const STORY_MOVE_SLOP_PX = 16;
+export const STORY_SWIPE_MIN_DX = 60;
+/** Mismo slack que el result sheet del QR Scanner (probado en Samsung). */
+export const OVERLAY_SHEET_BOTTOM_EXTRA = 12;
+export const OVERLAY_SHEET_BOTTOM_MIN = 20;
 
 export type StoryGestureKind = 'previous' | 'next' | 'hold' | 'cancel';
 export type StoryGestureAction = 'stay' | 'previous' | 'next' | 'close' | 'resume';
@@ -55,15 +59,26 @@ export function shouldNavigateOnRelease(opts: {
   return opts.nowMs - opts.downAtMs < delay;
 }
 
+export function classifyStorySwipe(opts: {
+  deltaX: number;
+  deltaY: number;
+  commentsOpen?: boolean;
+}): StoryGestureKind {
+  if (opts.commentsOpen) return 'cancel';
+  const dx = Number(opts.deltaX);
+  const dy = Number(opts.deltaY);
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return 'cancel';
+  if (Math.abs(dx) < STORY_SWIPE_MIN_DX) return 'hold';
+  if (Math.abs(dx) <= Math.abs(dy)) return 'cancel';
+  return dx < 0 ? 'next' : 'previous';
+}
+
 export function classifyStoryGesture(touch: StoryTouch): StoryGestureKind {
-  if (touch.commentsOpen) return 'cancel';
-  const duration = Number(touch.endMs) - Number(touch.startMs);
-  const dx = Math.abs(Number(touch.endX) - Number(touch.startX));
-  const dy = Math.abs(Number(touch.endY) - Number(touch.startY));
-  if (!Number.isFinite(duration) || duration < 0) return 'cancel';
-  if (dx > STORY_MOVE_SLOP_PX || dy > STORY_MOVE_SLOP_PX) return 'cancel';
-  if (duration >= STORY_TAP_MAX_MS) return 'hold';
-  return storyTapSide(touch.startX, touch.width) === 'left' ? 'previous' : 'next';
+  return classifyStorySwipe({
+    deltaX: Number(touch.endX) - Number(touch.startX),
+    deltaY: Number(touch.endY) - Number(touch.startY),
+    commentsOpen: touch.commentsOpen,
+  });
 }
 
 export function applyStoryGesture(
@@ -111,8 +126,9 @@ export function storyChromeInsets(insets: { top?: number; bottom?: number } | nu
   };
 }
 
+/** Copia el contrato del result sheet de QRScanner: Math.max(insets.bottom + 12, 20). */
 export function storyCommentsComposerPadding(insets: { bottom?: number } | null | undefined) {
-  return Math.max(0, Number(insets?.bottom || 0));
+  return Math.max(Number(insets?.bottom || 0) + OVERLAY_SHEET_BOTTOM_EXTRA, OVERLAY_SHEET_BOTTOM_MIN);
 }
 
 export function storyMediaUsesRootAbsoluteFill(): boolean {

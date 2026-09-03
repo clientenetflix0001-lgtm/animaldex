@@ -52,16 +52,14 @@ import {
   subscribeStoriesRevision,
 } from '../lib/storyRailRefresh.ts';
 import {
-  STORY_HOLD_DELAY_MS,
-  STORY_MOVE_SLOP_PX,
-  STORY_TAP_LEFT_RATIO,
-  STORY_TAP_MAX_MS,
+  OVERLAY_SHEET_BOTTOM_EXTRA,
+  OVERLAY_SHEET_BOTTOM_MIN,
+  STORY_SWIPE_MIN_DX,
   applyStoryGesture,
   clamp01,
-  classifyStoryGesture,
+  classifyStorySwipe,
   remainingProgressMs,
   shouldIgnoreTapAfterHold,
-  shouldNavigateOnRelease,
   storyChromeInsets,
   storyChromeTopInset,
   storyCommentsComposerPadding,
@@ -72,7 +70,6 @@ import {
   storyProgressUsesInterval,
   storyProgressUsesPerFrameState,
   storyStageInsets,
-  storyTapSide,
 } from '../lib/storyViewerUi.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -86,6 +83,7 @@ const circle = readFileSync(join(root, 'components/StoryCircle.tsx'), 'utf8');
 const viewer = readFileSync(join(root, 'screens/StoryViewerScreen.tsx'), 'utf8');
 const composer = readFileSync(join(root, 'screens/CreateStoryScreen.tsx'), 'utf8');
 const comments = readFileSync(join(root, 'components/StoryCommentsSheet.tsx'), 'utf8');
+const qrScanner = readFileSync(join(root, 'screens/QRScannerScreen.tsx'), 'utf8');
 const app = readFileSync(join(root, 'App.tsx'), 'utf8');
 const db = readFileSync(join(root, 'lib/db.ts'), 'utf8');
 const types = readFileSync(join(root, 'lib/types.ts'), 'utf8');
@@ -211,7 +209,7 @@ describe('viewer', () => {
     assert.equal(prevStoryIndex(1), 0);
     assert.equal(prevStoryIndex(0), null);
     assert.match(viewer, /touchLayer/);
-    assert.match(viewer, /classifyStoryGesture/);
+    assert.match(viewer, /classifyStorySwipe/);
     assert.match(viewer, /accessibilityLabel="Cerrar"/);
     assert.match(viewer, /StoryProgress/);
   });
@@ -521,11 +519,13 @@ describe('safe area StoryViewer', () => {
 });
 
 describe('gestos StoryViewer', () => {
-  it('9–11. touchStart pausa; touchEnd reanuda o navega', () => {
+  it('9–11. PanResponder: grant pausa; release swipe o resume', () => {
     assert.equal(storyGestureUsesPressableZones(), false);
     assert.equal(storyGesturePausesOnTouchStart(), true);
-    assert.match(viewer, /onResponderGrant=\{onTouchStart\}/);
-    assert.match(viewer, /onResponderRelease=\{onTouchEnd\}/);
+    assert.match(viewer, /PanResponder\.create/);
+    assert.match(viewer, /onPanResponderGrant/);
+    assert.match(viewer, /onPanResponderRelease/);
+    assert.match(viewer, /classifyStorySwipe/);
     assert.match(viewer, /setPaused\(true\)/);
     assert.match(viewer, /setPaused\(false\)/);
     assert.match(viewer, /paused=\{frozen\}/);
@@ -533,12 +533,9 @@ describe('gestos StoryViewer', () => {
     assert.equal(shouldIgnoreTapAfterHold(true), true);
   });
 
-  it('12–16. tap izquierda\/derecha, X y comentarios no disparan next', () => {
-    assert.equal(STORY_TAP_LEFT_RATIO, 0.5);
-    assert.equal(storyTapSide(10, 100), 'left');
-    assert.equal(storyTapSide(49, 100), 'left');
-    assert.equal(storyTapSide(50, 100), 'right');
-    assert.match(viewer, /classifyStoryGesture/);
+  it('12–16. swipe, X y comentarios no disparan next', () => {
+    assert.equal(STORY_SWIPE_MIN_DX, 60);
+    assert.match(viewer, /classifyStorySwipe/);
     assert.match(viewer, /applyStoryGesture/);
     assert.match(viewer, /touchLayer/);
     assert.match(viewer, /pointerEvents="box-none"/);
@@ -598,72 +595,47 @@ describe('progreso fluido', () => {
   });
 });
 
-describe('clasificación de gestos Stories', () => {
-  const base = { startY: 10, endY: 10, startMs: 0, width: 200 };
-
-  it('touch 100ms izquierda → previous', () => {
-    assert.equal(
-      classifyStoryGesture({ ...base, startX: 20, endX: 20, endMs: 100 }),
-      'previous'
-    );
-    assert.deepEqual(applyStoryGesture('previous', 2, 4), { action: 'previous', nextIndex: 1 });
-  });
-
-  it('touch 100ms derecha → next', () => {
-    assert.equal(
-      classifyStoryGesture({ ...base, startX: 160, endX: 160, endMs: 100 }),
-      'next'
-    );
+describe('clasificación de swipe Stories', () => {
+  it('1. deltaX -100, deltaY 10 → NEXT', () => {
+    assert.equal(classifyStorySwipe({ deltaX: -100, deltaY: 10 }), 'next');
     assert.deepEqual(applyStoryGesture('next', 1, 4), { action: 'next', nextIndex: 2 });
   });
 
-  it('touch 500ms izquierda/derecha → HOLD, no navega', () => {
-    assert.equal(
-      classifyStoryGesture({ ...base, startX: 20, endX: 20, endMs: 500 }),
-      'hold'
-    );
-    assert.equal(
-      classifyStoryGesture({ ...base, startX: 160, endX: 160, endMs: 500 }),
-      'hold'
-    );
-    assert.deepEqual(applyStoryGesture('hold', 2, 4), { action: 'resume', nextIndex: 2 });
-    assert.equal(STORY_TAP_MAX_MS, 250);
-    assert.equal(STORY_HOLD_DELAY_MS, 250);
+  it('2. deltaX +100, deltaY 10 → PREVIOUS', () => {
+    assert.equal(classifyStorySwipe({ deltaX: 100, deltaY: 10 }), 'previous');
+    assert.deepEqual(applyStoryGesture('previous', 2, 4), { action: 'previous', nextIndex: 1 });
   });
 
-  it('movimiento mayor a slop cancela navegación', () => {
-    assert.equal(
-      classifyStoryGesture({
-        ...base,
-        startX: 20,
-        endX: 20 + STORY_MOVE_SLOP_PX + 1,
-        endMs: 80,
-      }),
-      'cancel'
-    );
+  it('3. deltaX 20 → no navegación', () => {
+    assert.equal(classifyStorySwipe({ deltaX: 20, deltaY: 0 }), 'hold');
+    assert.deepEqual(applyStoryGesture('hold', 2, 4), { action: 'resume', nextIndex: 2 });
+  });
+
+  it('4. deltaX 60, deltaY 100 → no navegación horizontal', () => {
+    assert.equal(classifyStorySwipe({ deltaX: 60, deltaY: 100 }), 'cancel');
     assert.deepEqual(applyStoryGesture('cancel', 2, 4), { action: 'resume', nextIndex: 2 });
   });
 
-  it('primera story + izquierda permanece; última + derecha cierra', () => {
+  it('5–6. primera + previous permanece; última + next cierra', () => {
     assert.deepEqual(applyStoryGesture('previous', 0, 3), { action: 'stay', nextIndex: 0 });
     assert.deepEqual(applyStoryGesture('next', 2, 3), { action: 'close', nextIndex: 2 });
   });
 
-  it('commentsOpen cancela gesto y deja frozen', () => {
-    assert.equal(
-      classifyStoryGesture({ ...base, startX: 160, endX: 160, endMs: 80, commentsOpen: true }),
-      'cancel'
-    );
-    assert.match(viewer, /frozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
+  it('7–9. touch start pausa; sin swipe resume; con swipe navega', () => {
+    assert.equal(storyGesturePausesOnTouchStart(), true);
+    assert.match(viewer, /onPanResponderGrant/);
+    assert.match(viewer, /setPaused\(true\)/);
+    assert.match(viewer, /finishTouch\(gesture\.dx, gesture\.dy\)/);
+    assert.equal(classifyStorySwipe({ deltaX: 0, deltaY: 0 }), 'hold');
+    assert.equal(classifyStorySwipe({ deltaX: -80, deltaY: 5 }), 'next');
+    assert.equal(STORY_SWIPE_MIN_DX, 60);
   });
 
-  it('hold pausa en touchStart y resume conserva índice', () => {
-    assert.equal(storyGesturePausesOnTouchStart(), true);
-    assert.match(viewer, /onTouchStart/);
-    assert.match(viewer, /setPaused\(true\)/);
-    assert.deepEqual(applyStoryGesture('hold', 1, 3), { action: 'resume', nextIndex: 1 });
-    assert.equal(shouldNavigateOnRelease({ held: false, downAtMs: 0, nowMs: 80 }), true);
-    assert.equal(shouldNavigateOnRelease({ held: false, downAtMs: 0, nowMs: 300 }), false);
+  it('10–11. progreso no usa interval; commentsOpen desactiva swipe', () => {
+    assert.equal(storyProgressUsesInterval(), false);
+    assert.equal(classifyStorySwipe({ deltaX: -100, deltaY: 0, commentsOpen: true }), 'cancel');
+    assert.match(viewer, /frozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
+    assert.match(viewer, /!commentsOpenRef\.current/);
   });
 });
 
@@ -676,10 +648,10 @@ describe('Samsung: media, responder y comentarios', () => {
     assert.match(viewerUi, /marginBottom/);
   });
 
-  it('B. media no usa absoluteFill de la raíz; responder cubre el stage', () => {
+  it('B. media no usa absoluteFill de la raíz; PanResponder cubre el stage', () => {
     assert.equal(storyMediaUsesRootAbsoluteFill(), false);
     assert.match(viewer, /styles\.touchLayer/);
-    assert.match(viewer, /onResponderGrant/);
+    assert.match(viewer, /PanResponder\.create/);
     assert.match(viewer, /pointerEvents="none"/);
     assert.match(viewer, /elevation: 4/);
     assert.doesNotMatch(viewer, /tapLeft|tapRight|onZonePressIn/);
@@ -712,14 +684,23 @@ describe('Samsung: media, responder y comentarios', () => {
     assert.equal(storyPublishInvalidatesFeedPosts(), false);
   });
 
-  it('StatusBar light y comentarios sobre insets.bottom', () => {
+  it('StatusBar light y comentarios con patrón QR overlay', () => {
     assert.match(viewer, /StatusBar style="light"/);
     assert.match(viewer, /setBarStyle\('light-content'/);
     assert.match(viewer, /setBarStyle\('dark-content'/);
     assert.match(comments, /useSafeAreaInsets/);
     assert.match(comments, /storyCommentsComposerPadding/);
     assert.match(comments, /behavior="padding"/);
-    assert.equal(storyCommentsComposerPadding({ bottom: 36 }), 36);
+    assert.match(comments, /styles\.sheet, \{ paddingBottom: composerPad \}/);
+    assert.match(qrScanner, /Math\.max\(insets\.bottom \+ 12, 20\)/);
+    assert.match(app, /paddingBottom: bottomInset \+ 6/);
+    assert.equal(OVERLAY_SHEET_BOTTOM_EXTRA, 12);
+    assert.equal(OVERLAY_SHEET_BOTTOM_MIN, 20);
+    assert.equal(storyCommentsComposerPadding({ bottom: 36 }), 48);
+    assert.equal(storyCommentsComposerPadding({ bottom: 0 }), 20);
+    assert.ok(storyCommentsComposerPadding({ bottom: 0 }) > 0);
+    assert.match(comments, /accessibilityLabel="Publicar comentario"|name="send"/);
+    assert.doesNotMatch(comments, /paddingBottom:\s*48|Samsung/);
   });
 });
 

@@ -8,9 +8,9 @@ import {
   AppState,
   Alert,
   Platform,
+  PanResponder,
   StatusBar as RNStatusBar,
 } from 'react-native';
-import type { GestureResponderEvent } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -24,7 +24,7 @@ import { useStore } from '../lib/store';
 import { STORY_EXPIRED_MESSAGE, nextStoryIndex } from '../lib/stories';
 import {
   applyStoryGesture,
-  classifyStoryGesture,
+  classifyStorySwipe,
   remainingProgressMs,
   storyChromeInsets,
   storyChromeTopInset,
@@ -86,9 +86,13 @@ export default function StoryViewerScreen() {
   const [loading, setLoading] = useState(true);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [error, setError] = useState('');
-  const touchRef = useRef<{ startX: number; startY: number; startMs: number } | null>(null);
-  const stageWidthRef = useRef(1);
+  const indexRef = useRef(0);
+  const storiesLenRef = useRef(0);
+  const commentsOpenRef = useRef(false);
   const progress = useSharedValue(0);
+  indexRef.current = index;
+  storiesLenRef.current = stories.length;
+  commentsOpenRef.current = commentsOpen;
 
   const params = route.params || {};
   const current = stories[index] || null;
@@ -261,51 +265,50 @@ export default function StoryViewerScreen() {
     Alert.alert('Gracias', 'Recibimos el reporte.');
   }, [current]);
 
-  const onTouchStart = useCallback(
-    (event: GestureResponderEvent) => {
-      if (commentsOpen) return;
-      const { locationX, locationY } = event.nativeEvent;
-      touchRef.current = { startX: locationX, startY: locationY, startMs: Date.now() };
-      setPaused(true);
-    },
-    [commentsOpen]
-  );
-
-  const onTouchEnd = useCallback(
-    (event: GestureResponderEvent) => {
-      const start = touchRef.current;
-      touchRef.current = null;
-      if (!start || commentsOpen) {
+  const finishTouch = useCallback(
+    (deltaX: number, deltaY: number) => {
+      if (commentsOpenRef.current) {
         setPaused(false);
         return;
       }
       const result = applyStoryGesture(
-        classifyStoryGesture({
-          startX: start.startX,
-          startY: start.startY,
-          endX: event.nativeEvent.locationX,
-          endY: event.nativeEvent.locationY,
-          startMs: start.startMs,
-          endMs: Date.now(),
-          width: stageWidthRef.current,
-          commentsOpen,
+        classifyStorySwipe({
+          deltaX,
+          deltaY,
+          commentsOpen: commentsOpenRef.current,
         }),
-        index,
-        stories.length
+        indexRef.current,
+        storiesLenRef.current
       );
+      setPaused(false);
       if (result.action === 'previous' || result.action === 'next') {
-        setPaused(false);
         go(result.nextIndex);
         return;
       }
       if (result.action === 'close') {
-        setPaused(false);
         go(null);
-        return;
       }
-      setPaused(false);
     },
-    [commentsOpen, go, index, stories.length]
+    [go]
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => !commentsOpenRef.current,
+        onMoveShouldSetPanResponder: () => !commentsOpenRef.current,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          setPaused(true);
+        },
+        onPanResponderRelease: (_, gesture) => {
+          finishTouch(gesture.dx, gesture.dy);
+        },
+        onPanResponderTerminate: () => {
+          setPaused(false);
+        },
+      }),
+    [finishTouch]
   );
 
   if (loading) {
@@ -334,12 +337,7 @@ export default function StoryViewerScreen() {
   return (
     <View style={styles.black}>
       <StatusBar style="light" backgroundColor="transparent" translucent />
-      <View
-        style={[styles.stage, stage]}
-        onLayout={(event) => {
-          stageWidthRef.current = event.nativeEvent.layout.width || 1;
-        }}
-      >
+      <View style={[styles.stage, stage]}>
         <View style={styles.media} pointerEvents="none">
           {current.mediaType === 'video' && mediaUri ? (
             <StoryVideo uri={mediaUri} paused={frozen} />
@@ -358,16 +356,8 @@ export default function StoryViewerScreen() {
         <View
           style={styles.touchLayer}
           collapsable={false}
-          onStartShouldSetResponder={() => !commentsOpen}
-          onMoveShouldSetResponder={() => !commentsOpen}
-          onResponderTerminationRequest={() => false}
-          onResponderGrant={onTouchStart}
-          onResponderRelease={onTouchEnd}
-          onResponderTerminate={() => {
-            touchRef.current = null;
-            setPaused(false);
-          }}
           accessibilityLabel="Controles de historia"
+          {...panResponder.panHandlers}
         />
 
         <View style={[styles.topChrome, { paddingTop: chromeTop }]} pointerEvents="box-none">
