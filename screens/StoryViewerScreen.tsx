@@ -11,7 +11,6 @@ import {
   StatusBar as RNStatusBar,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import * as Updates from 'expo-updates';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -39,27 +38,18 @@ import {
   remainingProgressMs,
   storyChromeInsets,
   storyChromeTopInset,
+  storyExplicitSurfaceStyle,
+  storyHasExplicitSurface,
+  storyLayoutBoxesEqual,
+  storyLayoutToBox,
   storyProgressDurationMs,
   storyStageInsets,
+  type StoryLayoutBox,
 } from '../lib/storyViewerUi';
-import {
-  STORY_GESTURE_DEBUG_ACTION_MS,
-  STORY_GESTURE_DEBUG_SOLID,
-  formatStoryDebugBox,
-  formatStoryGestureDebugAction,
-  storyExplicitSurfaceStyle,
-  storyGestureDebugEnabled,
-  storyHasExplicitSurface,
-  storyLayoutToBox,
-  storyDebugBoxesEqual,
-  storyTouchCoversStage,
-  type StoryDebugBox,
-} from '../lib/storyGestureDebug';
 import { notifyStoriesChanged } from '../lib/storyRailRefresh';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import StoryProgress from '../components/StoryProgress';
 import StoryCommentsSheet from '../components/StoryCommentsSheet';
-import StoryGestureDebugHud from '../components/StoryGestureDebugHud';
 
 function StoryVideo({ uri, paused }: { uri: string; paused: boolean }) {
   const player = useVideoPlayer(uri, (p) => {
@@ -115,23 +105,15 @@ export default function StoryViewerScreen() {
   const indexRef = useRef(0);
   const storiesLenRef = useRef(0);
   const commentsOpenRef = useRef(false);
-  const debugActionClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [debugAction, setDebugAction] = useState('NONE');
-  const [stageBox, setStageBox] = useState<StoryDebugBox | null>(null);
-  const [touchBox, setTouchBox] = useState<StoryDebugBox | null>(null);
+  const [stageBox, setStageBox] = useState<StoryLayoutBox | null>(null);
   const progress = useSharedValue(0);
   const isHolding = useSharedValue(0);
   const suppressResume = useSharedValue(0);
   const durationSv = useSharedValue(5000);
   const reactFrozenSv = useSharedValue(1);
-  const debugDx = useSharedValue(0);
-  const debugDy = useSharedValue(0);
-  const debugHold = useSharedValue(0);
-  const debugPan = useSharedValue(0);
   indexRef.current = index;
   storiesLenRef.current = stories.length;
   commentsOpenRef.current = commentsOpen;
-  const debugOn = storyGestureDebugEnabled(__DEV__, Updates.channel);
 
   const params = route.params || {};
   const current = stories[index] || null;
@@ -346,9 +328,6 @@ export default function StoryViewerScreen() {
         indexRef.current,
         storiesLenRef.current
       );
-      setDebugAction(formatStoryGestureDebugAction(result.action));
-      if (debugActionClearRef.current) clearTimeout(debugActionClearRef.current);
-      debugActionClearRef.current = setTimeout(() => setDebugAction('NONE'), STORY_GESTURE_DEBUG_ACTION_MS);
       if (commentsOpenRef.current) return;
       if (result.action === 'previous' || result.action === 'next') {
         suppressResume.value = 1;
@@ -363,16 +342,6 @@ export default function StoryViewerScreen() {
     [go, suppressResume]
   );
 
-  useEffect(() => {
-    if (!debugOn) return;
-    console.log('[Animaldex Stories] GESTURE-V8 LAYOUT', {
-      updateId: Updates.updateId,
-      runtimeVersion: Updates.runtimeVersion,
-      channel: Updates.channel,
-      isEmbeddedLaunch: Updates.isEmbeddedLaunch,
-    });
-  }, [debugOn]);
-
   const storyGestures = useMemo(() => {
     const hold = Gesture.LongPress()
       .minDuration(STORY_HOLD_MIN_DURATION_MS)
@@ -380,41 +349,24 @@ export default function StoryViewerScreen() {
       .enabled(!commentsOpen)
       .onBegin(() => {
         isHolding.value = 1;
-        debugHold.value = 1;
       })
       .onFinalize(() => {
         isHolding.value = 0;
-        debugHold.value = 0;
       });
 
     const pan = Gesture.Pan()
       .activeOffsetX([-STORY_PAN_ACTIVE_OFFSET_X, STORY_PAN_ACTIVE_OFFSET_X])
       .failOffsetY([-STORY_PAN_FAIL_OFFSET_Y, STORY_PAN_FAIL_OFFSET_Y])
       .enabled(!commentsOpen)
-      .onStart((event) => {
-        debugPan.value = 1;
-        debugDx.value = event.translationX;
-        debugDy.value = event.translationY;
-      })
-      .onUpdate((event) => {
-        debugDx.value = event.translationX;
-        debugDy.value = event.translationY;
-        debugPan.value = 1;
-      })
       .onEnd((event) => {
-        debugDx.value = event.translationX;
-        debugDy.value = event.translationY;
-        debugPan.value = 2;
         runOnJS(onPanEnd)(event.translationX, event.translationY);
       })
-      .onFinalize((_event, success) => {
+      .onFinalize(() => {
         isHolding.value = 0;
-        debugHold.value = 0;
-        if (!success) debugPan.value = 3;
       });
 
     return Gesture.Simultaneous(hold, pan);
-  }, [commentsOpen, debugDx, debugDy, debugHold, debugPan, isHolding, onPanEnd]);
+  }, [commentsOpen, isHolding, onPanEnd]);
 
   if (loading) {
     return (
@@ -449,7 +401,7 @@ export default function StoryViewerScreen() {
         collapsable={false}
         onLayout={(event) => {
           const next = storyLayoutToBox(event.nativeEvent.layout);
-          setStageBox((prev) => (storyDebugBoxesEqual(prev, next) ? prev : next));
+          setStageBox((prev) => (storyLayoutBoxesEqual(prev, next) ? prev : next));
         }}
       >
         {hasSurface ? (
@@ -458,15 +410,9 @@ export default function StoryViewerScreen() {
               collapsable={false}
               style={[styles.stageSurface, surfaceStyle]}
               accessibilityLabel="Controles de historia"
-              onLayout={(event) => {
-                const next = storyLayoutToBox(event.nativeEvent.layout);
-                setTouchBox((prev) => (storyDebugBoxesEqual(prev, next) ? prev : next));
-              }}
             >
               <View style={styles.media} pointerEvents="none">
-                {debugOn && STORY_GESTURE_DEBUG_SOLID ? (
-                  <View style={[styles.mediaFill, styles.debugSolid]} />
-                ) : current.mediaType === 'video' && mediaUri ? (
+                {current.mediaType === 'video' && mediaUri ? (
                   <StoryVideo uri={mediaUri} paused={videoPaused} />
                 ) : (
                   <Image
@@ -482,29 +428,6 @@ export default function StoryViewerScreen() {
             </View>
           </GestureDetector>
         ) : null}
-        <StoryGestureDebugHud
-          visible={debugOn}
-          top={chromeTop + 4}
-          updateId={Updates.updateId}
-          channel={Updates.channel}
-          runtimeVersion={Updates.runtimeVersion}
-          embedded={Updates.isEmbeddedLaunch}
-          action={debugAction}
-          storyIndex={index}
-          storyCount={stories.length}
-          rawHit={storyTouchCoversStage(stageBox, touchBox)}
-          stageBox={formatStoryDebugBox(stageBox)}
-          touchBox={formatStoryDebugBox(touchBox)}
-          gestureChildBox={formatStoryDebugBox(touchBox)}
-          surfaceW={Math.round(touchBox?.width || 0)}
-          surfaceH={Math.round(touchBox?.height || 0)}
-          debugDx={debugDx}
-          debugDy={debugDy}
-          debugProgress={progress}
-          debugHold={debugHold}
-          debugPan={debugPan}
-        />
-
         <View style={[styles.topChrome, { paddingTop: chromeTop }]} pointerEvents="box-none">
           <StoryProgress count={stories.length} index={index} progress={progress} />
           <View style={styles.topRow}>
@@ -594,5 +517,4 @@ const styles = StyleSheet.create({
   commentLabel: { color: '#fff', fontWeight: '600' },
   error: { color: '#fff', textAlign: 'center', padding: 24 },
   closeBtn: { alignSelf: 'center', padding: 12 },
-  debugSolid: { backgroundColor: '#16324F' },
 });

@@ -126,6 +126,57 @@ export function storyGestureChildUsesExplicitStageSize(): boolean {
   return true;
 }
 
+export type StoryLayoutBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type StoryExplicitSurfaceStyle = {
+  width: number;
+  height: number;
+  flexGrow: 0;
+  flexShrink: 0;
+};
+
+export function storyLayoutToBox(layout: {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}): StoryLayoutBox {
+  return {
+    x: Number(layout.x) || 0,
+    y: Number(layout.y) || 0,
+    width: Number(layout.width) || 0,
+    height: Number(layout.height) || 0,
+  };
+}
+
+export function storyLayoutBoxesEqual(
+  a: StoryLayoutBox | null | undefined,
+  b: StoryLayoutBox | null | undefined
+): boolean {
+  if (!a || !b) return a === b;
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+/** Pixels from the measured stage. Never flex:1 — that collapses inside RNGH AnimatedWrap. */
+export function storyExplicitSurfaceStyle(box: StoryLayoutBox | null | undefined): StoryExplicitSurfaceStyle {
+  return {
+    width: Math.max(0, Math.round(Number(box?.width) || 0)),
+    height: Math.max(0, Math.round(Number(box?.height) || 0)),
+    flexGrow: 0,
+    flexShrink: 0,
+  };
+}
+
+export function storyHasExplicitSurface(box: StoryLayoutBox | null | undefined): boolean {
+  const style = storyExplicitSurfaceStyle(box);
+  return style.width >= 80 && style.height >= 80;
+}
+
 /** Media may extend behind the status bar; bottom nav stays inset. */
 export function storyStageInsets(insets: { top?: number; bottom?: number } | null | undefined) {
   return {

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -66,35 +66,22 @@ import {
   storyChromeInsets,
   storyChromeTopInset,
   storyCommentsComposerPadding,
+  storyExplicitSurfaceStyle,
   storyGestureChildUsesExplicitStageSize,
   storyGestureDetectorChildUsesFlexLayout,
   storyGestureHoldUsesSharedValue,
   storyGesturePausesOnTouchStart,
   storyGestureUsesDedicatedHoldAndPan,
   storyGestureUsesPressableZones,
+  storyHasExplicitSurface,
+  storyLayoutBoxesEqual,
+  storyLayoutToBox,
   storyMediaUsesRootAbsoluteFill,
   storyProgressDurationMs,
   storyProgressUsesInterval,
   storyProgressUsesPerFrameState,
   storyStageInsets,
 } from '../lib/storyViewerUi.ts';
-import {
-  STORY_GESTURE_DEBUG_ACTION_MS,
-  STORY_GESTURE_DEBUG_MARK,
-  STORY_GESTURE_DEBUG_SOLID,
-  formatStoryDebugBox,
-  storyDebugBoxesEqual,
-  storyExplicitSurfaceStyle,
-  storyHasExplicitSurface,
-  storyLayoutToBox,
-  storyTouchCoversStage,
-  abbreviateUpdateId,
-  formatStoryGestureDebugAction,
-  storyGestureDebugEnabled,
-  storyGestureDebugProductionSafe,
-  storyGestureDebugTouchesBackend,
-  storyGestureDebugTouchesProductLogic,
-} from '../lib/storyGestureDebug.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const worker = readFileSync(join(root, 'worker/index.js'), 'utf8');
@@ -119,8 +106,6 @@ const reelsLib = readFileSync(join(root, 'lib/reels.ts'), 'utf8');
 const progressUi = readFileSync(join(root, 'components/StoryProgress.tsx'), 'utf8');
 const store = readFileSync(join(root, 'lib/store.tsx'), 'utf8');
 const viewerUi = readFileSync(join(root, 'lib/storyViewerUi.ts'), 'utf8');
-const gestureDebug = readFileSync(join(root, 'lib/storyGestureDebug.ts'), 'utf8');
-const gestureHud = readFileSync(join(root, 'components/StoryGestureDebugHud.tsx'), 'utf8');
 
 const T0 = 1_700_000_000_000;
 
@@ -741,98 +726,58 @@ describe('GestureDetector StoryViewer A–K', () => {
     assert.doesNotMatch(viewer.slice(viewer.indexOf('onFinalize'), viewer.indexOf('onFinalize') + 280), /progress\.value = 0/);
   });
 
-  it('marca temporal GESTURE-V8 LAYOUT y log preview de expo-updates', () => {
-    assert.equal(STORY_GESTURE_DEBUG_MARK, 'GESTURE-V8 LAYOUT');
-    assert.match(viewer, /GESTURE-V8 LAYOUT/);
-    assert.match(gestureHud, /pointerEvents="none"/);
-    assert.match(viewer, /Updates\.updateId/);
-    assert.match(viewer, /Updates\.runtimeVersion/);
-    assert.match(viewer, /Updates\.channel/);
-    assert.match(viewer, /Updates\.isEmbeddedLaunch/);
+  it('sin HUD ni telemetría visual de gestos', () => {
+    assert.equal(existsSync(join(root, 'lib/storyGestureDebug.ts')), false);
+    assert.equal(existsSync(join(root, 'components/StoryGestureDebugHud.tsx')), false);
+    assert.doesNotMatch(viewer, /StoryGestureDebugHud|GESTURE-V[4-8]|expo-updates|Updates\./);
+    assert.doesNotMatch(viewer, /debugDx|debugHold|debugPan|debugOn|debugAction/);
+    assert.doesNotMatch(storiesWorker, /GESTURE-V5|storyGestureDebug/);
+    assert.doesNotMatch(worker, /GESTURE-V5|storyGestureDebug/);
+    assert.doesNotMatch(migration, /GESTURE-V5|storyGestureDebug/);
     assert.match(pkg, /"react-native-gesture-handler": "\^3\.1\.0"/);
-    assert.match(pkg, /"expo-updates":/);
   });
 });
 
-describe('telemetría visual Stories (Preview/DEV)', () => {
-  it('solo Preview/DEV; production no habilita el panel', () => {
-    assert.equal(storyGestureDebugEnabled(true, null), true);
-    assert.equal(storyGestureDebugEnabled(false, 'preview'), true);
-    assert.equal(storyGestureDebugEnabled(false, 'production'), false);
-    assert.equal(storyGestureDebugProductionSafe(false, 'production'), true);
-    assert.match(viewer, /storyGestureDebugEnabled\(__DEV__, Updates\.channel\)/);
-    assert.match(viewer, /visible=\{debugOn\}/);
-  });
-
-  it('HUD no bloquea gestos y no toca producto/backend', () => {
-    assert.equal(storyGestureDebugTouchesProductLogic(), false);
-    assert.equal(storyGestureDebugTouchesBackend(), false);
-    assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
-    assert.equal(STORY_GESTURE_DEBUG_ACTION_MS, 1000);
-    assert.match(gestureHud, /pointerEvents="none"/);
-    assert.match(gestureHud, /zIndex: 30/);
-    assert.match(viewer, /<StoryGestureDebugHud/);
+describe('Stories V8 productivo sin HUD', () => {
+  it('no queda telemetría visual ni archivos de diagnóstico', () => {
+    assert.equal(existsSync(join(root, 'lib/storyGestureDebug.ts')), false);
+    assert.equal(existsSync(join(root, 'components/StoryGestureDebugHud.tsx')), false);
+    assert.doesNotMatch(viewer, /StoryGestureDebugHud|GESTURE-V[4-8]|expo-updates|Updates\./);
+    assert.doesNotMatch(viewer, /debugDx|debugHold|debugPan|debugOn|debugAction|debugSolid/);
     assert.doesNotMatch(storiesWorker, /GESTURE-V5|storyGestureDebug/);
     assert.doesNotMatch(worker, /GESTURE-V5|storyGestureDebug/);
     assert.doesNotMatch(migration, /GESTURE-V5|storyGestureDebug/);
   });
 
-  it('instrumenta begin/start/update/end/finalize sin setState por frame', () => {
-    assert.match(viewer, /\.onBegin\(/);
-    assert.match(viewer, /\.onStart\(/);
-    assert.match(viewer, /\.onUpdate\(/);
-    assert.match(viewer, /\.onEnd\(/);
-    assert.match(viewer, /\.onFinalize\(/);
-    assert.match(viewer, /debugDx\.value = event\.translationX/);
-    assert.match(viewer, /debugDy\.value = event\.translationY/);
-    assert.match(viewer, /isHolding\.value = 1/);
-    const updateBlock = viewer.slice(viewer.indexOf('.onUpdate'), viewer.indexOf('.onEnd'));
-    assert.doesNotMatch(updateBlock, /setPaused|setState|setDebugAction/);
-    assert.match(gestureHud, /useAnimatedProps/);
-    assert.match(viewer, /debugProgress=\{progress\}/);
-  });
-
-  it('media restaurada; hijo directo con tamaño explícito del stage', () => {
-    assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
+  it('hijo directo con tamaño explícito del stage; media real', () => {
     assert.equal(storyGestureDetectorChildUsesFlexLayout(), false);
     assert.equal(storyGestureChildUsesExplicitStageSize(), true);
-    assert.match(viewer, /debugOn && STORY_GESTURE_DEBUG_SOLID/);
     const detector = viewer.slice(viewer.indexOf('<GestureDetector'), viewer.indexOf('</GestureDetector>'));
     assert.match(detector, /<View/);
     assert.doesNotMatch(detector, /<Animated\.View/);
     assert.match(detector, /styles\.stageSurface, surfaceStyle/);
     assert.match(viewer, /storyExplicitSurfaceStyle\(stageBox\)/);
-    assert.match(detector, /styles\.stageSurface/);
     assert.match(detector, /<StoryVideo/);
     assert.match(detector, /pointerEvents="none"/);
     assert.doesNotMatch(detector, /gestureSurface/);
     assert.doesNotMatch(viewer, /\[commentsOpen, .*paused\]/);
   });
 
-  it('acciones de debug y updateId abreviado no cambian classify', () => {
-    assert.equal(formatStoryGestureDebugAction('next'), 'NEXT');
-    assert.equal(formatStoryGestureDebugAction('previous'), 'PREVIOUS');
-    assert.equal(formatStoryGestureDebugAction('stay'), 'STAY');
-    assert.equal(formatStoryGestureDebugAction('resume'), 'STAY');
-    assert.equal(formatStoryGestureDebugAction('close'), 'CLOSE');
-    assert.equal(formatStoryGestureDebugAction('none'), 'NONE');
-    assert.equal(abbreviateUpdateId('01a064f3-efb3-7514-9bc8-e47c4a5522c4'), '01a064f3');
+  it('gestos productivos sin setState por frame', () => {
+    assert.match(viewer, /\.onBegin\(/);
+    assert.match(viewer, /\.onEnd\(/);
+    assert.match(viewer, /\.onFinalize\(/);
+    assert.match(viewer, /isHolding\.value = 1/);
+    assert.match(viewer, /runOnJS\(onPanEnd\)\(event\.translationX, event\.translationY\)/);
+    const endBlock = viewer.slice(viewer.lastIndexOf('.onEnd'), viewer.lastIndexOf('.onFinalize'));
+    assert.doesNotMatch(endBlock, /setPaused|setState|setDebugAction/);
     assert.equal(classifyStorySwipe({ deltaX: -80, deltaY: 0 }), 'next');
     assert.deepEqual(applyStoryGesture('next', 0, 3), { action: 'next', nextIndex: 1 });
   });
 });
 
 describe('hit target + arquitectura Gemini', () => {
-  it('TOUCH cubre STAGE; el bug 360x38 queda rechazado', () => {
-    assert.equal(
-      storyTouchCoversStage({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 0, width: 360, height: 752 }),
-      true
-    );
-    assert.equal(
-      storyTouchCoversStage({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 752, width: 360, height: 38 }),
-      false
-    );
-    assert.equal(storyTouchCoversStage({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 0, width: 360, height: 0 }), false);
+  it('superficie explícita; height 0 queda rechazada', () => {
     assert.deepEqual(storyExplicitSurfaceStyle({ x: 0, y: 0, width: 360, height: 752 }), {
       width: 360,
       height: 752,
@@ -841,6 +786,7 @@ describe('hit target + arquitectura Gemini', () => {
     });
     assert.equal(storyHasExplicitSurface({ x: 0, y: 0, width: 360, height: 752 }), true);
     assert.equal(storyHasExplicitSurface({ x: 0, y: 752, width: 360, height: 0 }), false);
+    assert.equal(storyHasExplicitSurface({ x: 0, y: 752, width: 360, height: 38 }), false);
     assert.equal(storyGestureChildUsesExplicitStageSize(), true);
     assert.equal(storyGestureDetectorChildUsesFlexLayout(), false);
     assert.match(viewer, /storyExplicitSurfaceStyle\(stageBox\)/);
@@ -852,23 +798,12 @@ describe('hit target + arquitectura Gemini', () => {
     assert.doesNotMatch(detector, /style=\{styles\.gestureSurface\}/);
   });
 
-  it('STAGE/TOUCH en HUD; RAW HIT; media normal', () => {
-    assert.equal(storyDebugBoxesEqual({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 0, width: 360, height: 752 }), true);
-    assert.equal(storyDebugBoxesEqual({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 752, width: 360, height: 0 }), false);
+  it('stage medido fuera del detector; media normal', () => {
+    assert.equal(storyLayoutBoxesEqual({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 0, width: 360, height: 752 }), true);
+    assert.equal(storyLayoutBoxesEqual({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 752, width: 360, height: 0 }), false);
     assert.deepEqual(storyLayoutToBox({ x: 0, y: 0, width: 360.4, height: 752.2 }), { x: 0, y: 0, width: 360.4, height: 752.2 });
-    assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
-    assert.match(viewer, /setStageBox\(\(prev\) => \(storyDebugBoxesEqual\(prev, next\) \? prev : next\)\)/);
-    assert.match(viewer, /setTouchBox\(\(prev\) => \(storyDebugBoxesEqual\(prev, next\) \? prev : next\)\)/);
-    assert.match(gestureHud, /STAGE:/);
-    assert.match(gestureHud, /TOUCH:/);
-    assert.match(gestureHud, /GESTURE CHILD:/);
-    assert.match(gestureHud, /SURFACE W:/);
-    assert.match(gestureHud, /SURFACE H:/);
-    assert.match(gestureHud, /RAW HIT:/);
-    assert.match(gestureHud, /HOLD:/);
-    assert.match(gestureHud, /PAN:/);
-    assert.match(viewer, /gestureChildBox=\{formatStoryDebugBox\(touchBox\)\}/);
-    assert.match(viewer, /surfaceW=\{Math\.round\(touchBox\?\.width \|\| 0\)\}/);
+    assert.match(viewer, /setStageBox\(\(prev\) => \(storyLayoutBoxesEqual\(prev, next\) \? prev : next\)\)/);
+    assert.doesNotMatch(viewer, /setTouchBox|StoryGestureDebugHud/);
     assert.match(viewer, /<StoryVideo uri=\{mediaUri\} paused=\{videoPaused\} \/>/);
   });
 
@@ -884,9 +819,10 @@ describe('hit target + arquitectura Gemini', () => {
     assert.match(viewer, /Gesture\.Simultaneous\(hold, pan\)/);
     assert.match(viewer, /runOnJS\(onPanEnd\)/);
     assert.match(viewer, /suppressResume\.value = 1/);
-    const finalizeBlock = viewer.slice(viewer.lastIndexOf('.onFinalize'), viewer.lastIndexOf('.onFinalize') + 220);
+    const finalizeStart = viewer.lastIndexOf('.onFinalize');
+    const finalizeBlock = viewer.slice(finalizeStart, finalizeStart + 90);
     assert.match(finalizeBlock, /isHolding\.value = 0/);
-    assert.doesNotMatch(finalizeBlock, /onPanEnd|go\(/);
+    assert.doesNotMatch(finalizeBlock, /onPanEnd\(|go\(/);
   });
 
   it('hold no usa setPaused; video via reaction; comments deshabilitan', () => {
