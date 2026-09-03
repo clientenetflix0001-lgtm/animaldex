@@ -160,7 +160,7 @@ describe('QR perdido: ubicación y origen', () => {
 
   it('21. aro animado intacto', () => {
     assert.match(petProfile, /<PetStatusAvatar/);
-    assert.match(petProfile, /size=\{84\}/);
+    assert.match(petProfile, /size=\{96\}/);
     assert.match(avatar, /react-native-reanimated/);
   });
 

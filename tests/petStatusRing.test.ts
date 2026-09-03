@@ -79,12 +79,12 @@ describe('aro de estado de mascota', () => {
     assert.equal(rotateCount, 1);
   });
 
-  it('9. PetProfile mantiene avatar base 84', () => {
+  it('9. PetProfile mantiene avatar base 96', () => {
     assert.match(petProfile, /<PetStatusAvatar/);
-    assert.match(petProfile, /size=\{84\}/);
+    assert.match(petProfile, /size=\{96\}/);
     assert.doesNotMatch(petProfile, /Math\.min\(288/);
-    assert.equal(petStatusRingOuterSize(84), 84 + 2 * (PET_STATUS_RING_WIDTH + PET_STATUS_RING_GAP));
-    assert.ok(petStatusRingOuterSize(84) < 120);
+    assert.equal(petStatusRingOuterSize(96), 96 + 2 * (PET_STATUS_RING_WIDTH + PET_STATUS_RING_GAP));
+    assert.ok(petStatusRingOuterSize(96) < 140);
   });
 
   it('10. username .pet intacto', () => {

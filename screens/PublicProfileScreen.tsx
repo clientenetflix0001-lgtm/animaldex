@@ -489,9 +489,9 @@ const styles = StyleSheet.create({
   topBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   head: { alignItems: 'center', paddingHorizontal: spacing.xl, paddingBottom: spacing.md },
   avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 108,
+    height: 108,
+    borderRadius: 54,
     borderWidth: 3,
     borderColor: colors.primarysoft,
     backgroundColor: colors.border,

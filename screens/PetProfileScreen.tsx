@@ -317,7 +317,7 @@ export default function PetProfileScreen() {
         >
           <PetStatusAvatar
             uri={thumb(avatarUri, 200)}
-            size={84}
+            size={96}
             status={realPet?.careStatus}
           >
             {uploadingPhoto && (

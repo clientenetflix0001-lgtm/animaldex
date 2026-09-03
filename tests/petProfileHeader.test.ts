@@ -29,7 +29,7 @@ describe('perfil mascota: encabezado compacto', () => {
     assert.doesNotMatch(petProfile, /avatarSection/);
     assert.doesNotMatch(petProfile, /width: AVATAR/);
     assert.match(petProfile, /<PetStatusAvatar/);
-    assert.match(petProfile, /size=\{84\}/);
+    assert.match(petProfile, /size=\{96\}/);
     assert.match(petProfile, /avatarPress: \{ flexShrink: 0 \}/);
   });
 
@@ -89,7 +89,7 @@ describe('perfil personal: layout intacto + fondo blanco', () => {
     );
     assert.match(
       userProfile,
-      /avatar: \{ width: 84, height: 84, borderRadius: 42, borderWidth: 3/
+      /avatar: \{ width: 96, height: 96, borderRadius: 48, borderWidth: 3/
     );
     assert.match(userProfile, /Editar perfil/);
     assert.match(userProfile, /Mis mascotas/);
@@ -114,7 +114,7 @@ describe('página empresa / bienestar animal: layout intacto', () => {
     assert.match(publicProfile, /head: \{ alignItems: 'center'/);
     assert.match(
       publicProfile,
-      /avatar: \{\s*width: 96,\s*height: 96,\s*borderRadius: 48/
+      /avatar: \{\s*width: 108,\s*height: 108,\s*borderRadius: 54/
     );
     assert.match(publicProfile, /safeWhite: \{ flex: 1, backgroundColor: '#FFFFFF' \}/);
     assert.match(publicProfile, /<ProfileBadge type=\{profile\.type\} \/>/);
