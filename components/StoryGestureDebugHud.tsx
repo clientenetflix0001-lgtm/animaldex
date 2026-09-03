@@ -12,20 +12,17 @@ type Props = {
   channel: string | null;
   runtimeVersion: string | null;
   embedded: boolean;
-  paused: boolean;
-  frozen: boolean;
   action: string;
   storyIndex: number;
   storyCount: number;
+  rawHit: boolean;
+  stageBox: string;
+  touchBox: string;
   debugDx: SharedValue<number>;
   debugDy: SharedValue<number>;
   debugProgress: SharedValue<number>;
-  debugPhase: SharedValue<number>;
-  debugDown: SharedValue<number>;
-  stageBox: string;
-  touchBox: string;
-  rawTap: boolean;
-  rawPress: boolean;
+  debugHold: SharedValue<number>;
+  debugPan: SharedValue<number>;
 };
 
 export default function StoryGestureDebugHud({
@@ -35,34 +32,26 @@ export default function StoryGestureDebugHud({
   channel,
   runtimeVersion,
   embedded,
-  paused,
-  frozen,
   action,
   storyIndex,
   storyCount,
+  rawHit,
+  stageBox,
+  touchBox,
   debugDx,
   debugDy,
   debugProgress,
-  debugPhase,
-  debugDown,
-  stageBox,
-  touchBox,
-  rawTap,
-  rawPress,
+  debugHold,
+  debugPan,
 }: Props) {
   const liveProps = useAnimatedProps(() => {
-    const names = ['IDLE', 'BEGAN', 'ACTIVE', 'END', 'CANCEL'];
-    const phase = names[debugPhase.value] || 'IDLE';
-    const down = debugDown.value >= 1 ? 'TRUE' : 'FALSE';
-    const dx = debugDx.value;
-    const dy = debugDy.value;
-    const progress = debugProgress.value;
+    const panNames = ['IDLE', 'ACTIVE', 'END', 'CANCEL'];
     const text =
-      `GESTURE: ${phase}\n` +
-      `GESTURE_DOWN: ${down}\n` +
-      `DX: ${dx.toFixed(1)}\n` +
-      `DY: ${dy.toFixed(1)}\n` +
-      `PROGRESS: ${progress.toFixed(2)}`;
+      `HOLD: ${debugHold.value >= 1 ? 'TRUE' : 'FALSE'}\n` +
+      `PAN: ${panNames[debugPan.value] || 'IDLE'}\n` +
+      `DX: ${debugDx.value.toFixed(1)}\n` +
+      `DY: ${debugDy.value.toFixed(1)}\n` +
+      `PROGRESS: ${debugProgress.value.toFixed(2)}`;
     return { text, defaultValue: text };
   });
 
@@ -74,13 +63,19 @@ export default function StoryGestureDebugHud({
         {STORY_GESTURE_DEBUG_MARK}
       </Text>
       <Text pointerEvents="none" style={styles.line}>
-        UPDATE: {abbreviateUpdateId(updateId)}
+        UPDATE: {abbreviateUpdateId(updateId)} CH: {channel || 'null'}
       </Text>
       <Text pointerEvents="none" style={styles.line}>
-        CH: {channel || 'null'} RT: {runtimeVersion || 'null'}
+        RT: {runtimeVersion || 'null'} EMBEDDED: {embedded ? 'true' : 'false'}
       </Text>
       <Text pointerEvents="none" style={styles.line}>
-        EMBEDDED: {embedded ? 'true' : 'false'}
+        STAGE: {stageBox}
+      </Text>
+      <Text pointerEvents="none" style={styles.line}>
+        TOUCH: {touchBox}
+      </Text>
+      <Text pointerEvents="none" style={styles.line}>
+        RAW HIT: {rawHit ? 'YES' : 'NO'}
       </Text>
       <AnimatedTextInput
         pointerEvents="none"
@@ -92,28 +87,10 @@ export default function StoryGestureDebugHud({
         animatedProps={liveProps}
       />
       <Text pointerEvents="none" style={styles.line}>
-        PAUSED: {paused ? 'TRUE' : 'FALSE'}
-      </Text>
-      <Text pointerEvents="none" style={styles.line}>
-        FROZEN: {frozen ? 'TRUE' : 'FALSE'}
-      </Text>
-      <Text pointerEvents="none" style={styles.line}>
         ACTION: {action}
       </Text>
       <Text pointerEvents="none" style={styles.line}>
         STORY: {storyIndex + 1}/{Math.max(storyCount, 1)}
-      </Text>
-      <Text pointerEvents="none" style={styles.line}>
-        STAGE: {stageBox}
-      </Text>
-      <Text pointerEvents="none" style={styles.line}>
-        TOUCH: {touchBox}
-      </Text>
-      <Text pointerEvents="none" style={styles.line}>
-        RAW TAP: {rawTap ? 'YES' : 'NO'}
-      </Text>
-      <Text pointerEvents="none" style={styles.line}>
-        RAW PRESS: {rawPress ? 'YES' : 'NO'}
       </Text>
     </View>
   );
@@ -129,23 +106,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 6,
-    maxWidth: 240,
+    maxWidth: 220,
   },
   line: {
     color: '#B8FF6A',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    lineHeight: 16,
+    lineHeight: 14,
     fontVariant: ['tabular-nums'],
   },
   live: {
     color: '#B8FF6A',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    lineHeight: 16,
+    lineHeight: 14,
     padding: 0,
     margin: 0,
-    minHeight: 80,
+    minHeight: 70,
     backgroundColor: 'transparent',
   },
 });

@@ -6,6 +6,9 @@ export const STORY_HOLD_DELAY_MS = 250;
 export const STORY_TAP_MAX_MS = 250;
 export const STORY_MOVE_SLOP_PX = 16;
 export const STORY_SWIPE_MIN_DX = 60;
+export const STORY_PAN_ACTIVE_OFFSET_X = 15;
+export const STORY_PAN_FAIL_OFFSET_Y = 40;
+export const STORY_HOLD_MIN_DURATION_MS = 0;
 /** Mismo slack que el result sheet del QR Scanner (probado en Samsung). */
 export const OVERLAY_SHEET_BOTTOM_EXTRA = 12;
 export const OVERLAY_SHEET_BOTTOM_MIN = 20;
@@ -105,6 +108,18 @@ export function storyGesturePausesOnTouchStart(): boolean {
 
 export function storyGestureUsesPressableZones(): boolean {
   return false;
+}
+
+export function storyGestureUsesDedicatedHoldAndPan(): boolean {
+  return true;
+}
+
+export function storyGestureHoldUsesSharedValue(): boolean {
+  return true;
+}
+
+export function storyGestureDetectorChildUsesFlexLayout(): boolean {
+  return true;
 }
 
 /** Media may extend behind the status bar; bottom nav stays inset. */

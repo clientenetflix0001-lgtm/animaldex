@@ -54,6 +54,9 @@ import {
 import {
   OVERLAY_SHEET_BOTTOM_EXTRA,
   OVERLAY_SHEET_BOTTOM_MIN,
+  STORY_HOLD_MIN_DURATION_MS,
+  STORY_PAN_ACTIVE_OFFSET_X,
+  STORY_PAN_FAIL_OFFSET_Y,
   STORY_SWIPE_MIN_DX,
   applyStoryGesture,
   clamp01,
@@ -63,7 +66,10 @@ import {
   storyChromeInsets,
   storyChromeTopInset,
   storyCommentsComposerPadding,
+  storyGestureDetectorChildUsesFlexLayout,
+  storyGestureHoldUsesSharedValue,
   storyGesturePausesOnTouchStart,
+  storyGestureUsesDedicatedHoldAndPan,
   storyGestureUsesPressableZones,
   storyMediaUsesRootAbsoluteFill,
   storyProgressDurationMs,
@@ -75,8 +81,8 @@ import {
   STORY_GESTURE_DEBUG_ACTION_MS,
   STORY_GESTURE_DEBUG_MARK,
   STORY_GESTURE_DEBUG_SOLID,
-  STORY_GESTURE_DEBUG_TOUCH_FILL,
   formatStoryDebugBox,
+  storyTouchCoversStage,
   abbreviateUpdateId,
   formatStoryGestureDebugAction,
   storyGestureDebugEnabled,
@@ -223,7 +229,7 @@ describe('viewer', () => {
     assert.equal(nextStoryIndex(1, 2), null);
     assert.equal(prevStoryIndex(1), 0);
     assert.equal(prevStoryIndex(0), null);
-    assert.match(viewer, /touchLayer/);
+    assert.match(viewer, /gestureSurface/);
     assert.match(viewer, /classifyStorySwipe/);
     assert.match(viewer, /accessibilityLabel="Cerrar"/);
     assert.match(viewer, /StoryProgress/);
@@ -534,18 +540,18 @@ describe('safe area StoryViewer', () => {
 });
 
 describe('gestos StoryViewer', () => {
-  it('9–11. Gesture.Pan nativo: onBegin pausa; finalize swipe o resume', () => {
+  it('9–11. LongPress + Pan Simultaneous; hold en SharedValue', () => {
     assert.equal(storyGestureUsesPressableZones(), false);
     assert.equal(storyGesturePausesOnTouchStart(), true);
+    assert.equal(storyGestureUsesDedicatedHoldAndPan(), true);
+    assert.equal(storyGestureHoldUsesSharedValue(), true);
+    assert.match(viewer, /Gesture\.LongPress\(\)/);
     assert.match(viewer, /Gesture\.Pan\(\)/);
-    assert.match(viewer, /\.minDistance\(0\)/);
-    assert.match(viewer, /\.onBegin\(/);
-    assert.match(viewer, /\.onFinalize\(/);
-    assert.match(viewer, /<GestureDetector gesture=\{detectorGesture\}>/);
+    assert.match(viewer, /Gesture\.Simultaneous\(hold, pan\)/);
+    assert.match(viewer, /<GestureDetector gesture=\{storyGestures\}>/);
+    assert.match(viewer, /isHolding\.value = 1/);
     assert.match(viewer, /classifyStorySwipe/);
-    assert.match(viewer, /setPaused\(true\)/);
-    assert.match(viewer, /setPaused\(false\)/);
-    assert.match(viewer, /paused=\{frozen\}/);
+    assert.match(viewer, /paused=\{videoPaused\}/);
     assert.doesNotMatch(viewer, /PanResponder/);
     assert.doesNotMatch(viewer, /onZonePressIn|tapLeft|delayLongPress/);
     assert.equal(shouldIgnoreTapAfterHold(true), true);
@@ -555,7 +561,7 @@ describe('gestos StoryViewer', () => {
     assert.equal(STORY_SWIPE_MIN_DX, 60);
     assert.match(viewer, /classifyStorySwipe/);
     assert.match(viewer, /applyStoryGesture/);
-    assert.match(viewer, /touchLayer/);
+    assert.match(viewer, /gestureSurface/);
     assert.match(viewer, /pointerEvents="box-none"/);
     assert.match(viewer, /accessibilityLabel="Cerrar"/);
     assert.match(viewer, /setCommentsOpen\(true\)/);
@@ -604,12 +610,12 @@ describe('progreso fluido', () => {
   it('26–28. video coherente, comments y background pausan', () => {
     assert.equal(storyProgressDurationMs('video', 8000), 8000);
     assert.equal(storyProgressDurationMs('video', 20000), STORY_VIDEO_MAX_MS);
-    assert.match(viewer, /frozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
+    assert.match(viewer, /reactFrozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
     assert.match(viewer, /setCommentsOpen\(false\)/);
     assert.match(viewer, /AppState.addEventListener/);
     assert.match(viewer, /setAppActive\(state === 'active'\)/);
     assert.match(viewer, /staysActiveInBackground = false/);
-    assert.match(viewer, /<StoryVideo uri=\{mediaUri\} paused=\{frozen\} \/>/);
+    assert.match(viewer, /<StoryVideo uri=\{mediaUri\} paused=\{videoPaused\} \/>/);
   });
 });
 
@@ -642,8 +648,8 @@ describe('clasificación de swipe Stories', () => {
   it('7–9. touch start pausa; sin swipe resume; con swipe navega', () => {
     assert.equal(storyGesturePausesOnTouchStart(), true);
     assert.match(viewer, /\.onBegin\(/);
-    assert.match(viewer, /setPaused\(true\)/);
-    assert.match(viewer, /finishTouch\(event\.translationX, event\.translationY\)/);
+    assert.match(viewer, /isHolding\.value = 1/);
+    assert.match(viewer, /runOnJS\(onPanEnd\)\(event\.translationX, event\.translationY\)/);
     assert.equal(classifyStorySwipe({ deltaX: 0, deltaY: 0 }), 'hold');
     assert.equal(classifyStorySwipe({ deltaX: -80, deltaY: 5 }), 'next');
     assert.equal(STORY_SWIPE_MIN_DX, 60);
@@ -652,7 +658,7 @@ describe('clasificación de swipe Stories', () => {
   it('10–11. progreso no usa interval; commentsOpen desactiva swipe', () => {
     assert.equal(storyProgressUsesInterval(), false);
     assert.equal(classifyStorySwipe({ deltaX: -100, deltaY: 0, commentsOpen: true }), 'cancel');
-    assert.match(viewer, /frozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
+    assert.match(viewer, /reactFrozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
     assert.match(viewer, /\.enabled\(!commentsOpen\)/);
     assert.match(viewer, /commentsOpenRef\.current/);
   });
@@ -662,15 +668,15 @@ describe('GestureDetector StoryViewer A–K', () => {
   it('A. touch begin → paused', () => {
     assert.equal(storyGesturePausesOnTouchStart(), true);
     assert.match(viewer, /\.onBegin\(/);
-    assert.match(viewer, /setPaused\(true\)/);
-    assert.match(viewer, /\.minDistance\(0\)/);
+    assert.match(viewer, /isHolding\.value = 1/);
+    assert.match(viewer, /\.minDuration\(STORY_HOLD_MIN_DURATION_MS\)/);
     assert.doesNotMatch(viewer, /activateAfterLongPress|delayLongPress|STORY_HOLD_DELAY_MS/);
   });
 
   it('B. mantener sin mover → continúa paused', () => {
     assert.equal(classifyStorySwipe({ deltaX: 0, deltaY: 0 }), 'hold');
-    assert.match(viewer, /frozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
-    assert.match(viewer, /<StoryVideo uri=\{mediaUri\} paused=\{frozen\} \/>/);
+    assert.match(viewer, /reactFrozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
+    assert.match(viewer, /<StoryVideo uri=\{mediaUri\} paused=\{videoPaused\} \/>/);
     assert.doesNotMatch(viewer, /onPanResponderGrant|PanResponder\.create/);
   });
 
@@ -678,7 +684,7 @@ describe('GestureDetector StoryViewer A–K', () => {
     assert.equal(classifyStorySwipe({ deltaX: 0, deltaY: 0 }), 'hold');
     assert.deepEqual(applyStoryGesture('hold', 1, 3), { action: 'resume', nextIndex: 1 });
     assert.match(viewer, /\.onFinalize\(/);
-    assert.match(viewer, /setPaused\(false\)/);
+    assert.match(viewer, /isHolding\.value = 0/);
   });
 
   it('D. translationX -80 → next', () => {
@@ -718,7 +724,7 @@ describe('GestureDetector StoryViewer A–K', () => {
   it('J. commentsOpen → Story frozen y Gesture no navega', () => {
     assert.equal(classifyStorySwipe({ deltaX: -80, deltaY: 0, commentsOpen: true }), 'cancel');
     assert.deepEqual(applyStoryGesture('cancel', 1, 3), { action: 'resume', nextIndex: 1 });
-    assert.match(viewer, /frozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
+    assert.match(viewer, /reactFrozen = paused \|\| commentsOpen \|\| !appActive \|\| loading/);
     assert.match(viewer, /\.enabled\(!commentsOpen\)/);
   });
 
@@ -730,9 +736,9 @@ describe('GestureDetector StoryViewer A–K', () => {
     assert.doesNotMatch(viewer.slice(viewer.indexOf('onFinalize'), viewer.indexOf('onFinalize') + 280), /progress\.value = 0/);
   });
 
-  it('marca temporal GESTURE-V6 HITTEST y log preview de expo-updates', () => {
-    assert.equal(STORY_GESTURE_DEBUG_MARK, 'GESTURE-V6 HITTEST');
-    assert.match(viewer, /GESTURE-V6 HITTEST/);
+  it('marca temporal GESTURE-V7 y log preview de expo-updates', () => {
+    assert.equal(STORY_GESTURE_DEBUG_MARK, 'GESTURE-V7');
+    assert.match(viewer, /GESTURE-V7/);
     assert.match(gestureHud, /pointerEvents="none"/);
     assert.match(viewer, /Updates\.updateId/);
     assert.match(viewer, /Updates\.runtimeVersion/);
@@ -756,7 +762,7 @@ describe('telemetría visual Stories (Preview/DEV)', () => {
   it('HUD no bloquea gestos y no toca producto/backend', () => {
     assert.equal(storyGestureDebugTouchesProductLogic(), false);
     assert.equal(storyGestureDebugTouchesBackend(), false);
-    assert.equal(STORY_GESTURE_DEBUG_SOLID, true);
+    assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
     assert.equal(STORY_GESTURE_DEBUG_ACTION_MS, 1000);
     assert.match(gestureHud, /pointerEvents="none"/);
     assert.match(gestureHud, /zIndex: 30/);
@@ -774,22 +780,23 @@ describe('telemetría visual Stories (Preview/DEV)', () => {
     assert.match(viewer, /\.onFinalize\(/);
     assert.match(viewer, /debugDx\.value = event\.translationX/);
     assert.match(viewer, /debugDy\.value = event\.translationY/);
-    assert.match(viewer, /debugDown\.value = 1/);
-    assert.match(viewer, /setPaused\(true\)/);
+    assert.match(viewer, /isHolding\.value = 1/);
     const updateBlock = viewer.slice(viewer.indexOf('.onUpdate'), viewer.indexOf('.onEnd'));
     assert.doesNotMatch(updateBlock, /setPaused|setState|setDebugAction/);
     assert.match(gestureHud, /useAnimatedProps/);
     assert.match(viewer, /debugProgress=\{progress\}/);
   });
 
-  it('superficie sólida activa; Gesture hijo es View nativa', () => {
-    assert.equal(STORY_GESTURE_DEBUG_SOLID, true);
+  it('media restaurada; hijo directo flex, no absoluteFill', () => {
+    assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
+    assert.equal(storyGestureDetectorChildUsesFlexLayout(), true);
     assert.match(viewer, /debugOn && STORY_GESTURE_DEBUG_SOLID/);
     const detector = viewer.slice(viewer.indexOf('<GestureDetector'), viewer.indexOf('</GestureDetector>'));
-    assert.match(detector, /<View/);
-    assert.doesNotMatch(detector, /<StoryVideo|<Image |function /);
-    assert.match(viewer, /\[commentsOpen, debugDx, debugDy, debugDown, debugPhase, finishTouch\]/);
-    assert.doesNotMatch(viewer, /\[commentsOpen, finishTouch, paused\]/);
+    assert.match(detector, /<Animated\.View/);
+    assert.match(detector, /styles\.gestureSurface/);
+    assert.doesNotMatch(detector, /absoluteFill|touchLayer/);
+    assert.doesNotMatch(detector, /<StoryVideo|<Image /);
+    assert.doesNotMatch(viewer, /\[commentsOpen, .*paused\]/);
   });
 
   it('acciones de debug y updateId abreviado no cambian classify', () => {
@@ -805,40 +812,61 @@ describe('telemetría visual Stories (Preview/DEV)', () => {
   });
 });
 
-describe('hit-test Stories GESTURE-V6', () => {
-  it('superficie sólida y touchLayer visible', () => {
-    assert.equal(STORY_GESTURE_DEBUG_SOLID, true);
-    assert.equal(STORY_GESTURE_DEBUG_TOUCH_FILL, 'rgba(255,0,0,0.15)');
-    assert.match(viewer, /styles\.touchLayerDebug/);
-    assert.match(viewer, /STORY_GESTURE_DEBUG_TOUCH_FILL/);
-    assert.match(viewer, /debugOn && STORY_GESTURE_DEBUG_SOLID/);
-    assert.match(viewer, /styles\.debugSolid/);
+describe('hit target + arquitectura Gemini', () => {
+  it('TOUCH cubre STAGE; el bug 360x38 queda rechazado', () => {
+    assert.equal(
+      storyTouchCoversStage({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 0, width: 360, height: 752 }),
+      true
+    );
+    assert.equal(
+      storyTouchCoversStage({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 752, width: 360, height: 38 }),
+      false
+    );
+    assert.equal(storyTouchCoversStage({ x: 0, y: 0, width: 360, height: 752 }, { x: 0, y: 0, width: 360, height: 0 }), false);
+    assert.match(viewer, /gestureSurface: \{/);
+    assert.match(viewer, /flex: 1/);
+    const detector = viewer.slice(viewer.indexOf('<GestureDetector'), viewer.indexOf('</GestureDetector>'));
+    assert.doesNotMatch(detector, /absoluteFillObject|position: 'absolute'/);
   });
 
-  it('onLayout reporta STAGE y TOUCH; HUD no captura', () => {
-    assert.equal(formatStoryDebugBox({ x: 0, y: 0, width: 360, height: 700 }), '0,0 360x700');
-    assert.equal(formatStoryDebugBox(null), 'unmeasured');
+  it('STAGE/TOUCH en HUD; RAW HIT; media normal', () => {
+    assert.equal(formatStoryDebugBox({ x: 0, y: 0, width: 360, height: 752 }), '0,0 360x752');
+    assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
     assert.match(viewer, /setStageBox\(event\.nativeEvent\.layout\)/);
     assert.match(viewer, /setTouchBox\(event\.nativeEvent\.layout\)/);
     assert.match(gestureHud, /STAGE:/);
     assert.match(gestureHud, /TOUCH:/);
-    assert.match(gestureHud, /pointerEvents="none"/);
+    assert.match(gestureHud, /RAW HIT:/);
+    assert.match(gestureHud, /HOLD:/);
+    assert.match(gestureHud, /PAN:/);
+    assert.match(viewer, /<StoryVideo uri=\{mediaUri\} paused=\{videoPaused\} \/>/);
   });
 
-  it('Gesture.Tap crudo y Pressable RAW PRESS no navegan', () => {
-    assert.match(viewer, /Gesture\.Tap\(\)/);
-    assert.match(viewer, /setRawTap\(true\)/);
-    assert.match(viewer, /setRawPress\(true\)/);
-    assert.match(viewer, /detectorGesture = debugOn \? debugTap : storyPan/);
-    assert.match(gestureHud, /RAW TAP:/);
-    assert.match(gestureHud, /RAW PRESS:/);
-    const tapBlock = viewer.slice(viewer.indexOf('Gesture.Tap()'), viewer.indexOf('detectorGesture'));
-    assert.doesNotMatch(tapBlock, /setPaused|finishTouch|go\(/);
-    const pressBlock = viewer.slice(viewer.indexOf('accessibilityLabel="RAW PRESS"'), viewer.indexOf('accessibilityLabel="RAW PRESS"') + 180);
-    assert.doesNotMatch(pressBlock, /go\(|setCommentsOpen|setPaused/);
+  it('LongPress + Pan Simultaneous; onEnd navega; onFinalize cleanup', () => {
+    assert.equal(STORY_HOLD_MIN_DURATION_MS, 0);
+    assert.equal(STORY_PAN_ACTIVE_OFFSET_X, 15);
+    assert.equal(STORY_PAN_FAIL_OFFSET_Y, 40);
+    assert.match(viewer, /Gesture\.LongPress\(\)/);
+    assert.match(viewer, /\.minDuration\(STORY_HOLD_MIN_DURATION_MS\)/);
+    assert.match(viewer, /\.maxDistance\(9999\)/);
+    assert.match(viewer, /\.activeOffsetX\(\[-STORY_PAN_ACTIVE_OFFSET_X, STORY_PAN_ACTIVE_OFFSET_X\]\)/);
+    assert.match(viewer, /\.failOffsetY\(\[-STORY_PAN_FAIL_OFFSET_Y, STORY_PAN_FAIL_OFFSET_Y\]\)/);
+    assert.match(viewer, /Gesture\.Simultaneous\(hold, pan\)/);
+    assert.match(viewer, /runOnJS\(onPanEnd\)/);
+    assert.match(viewer, /suppressResume\.value = 1/);
+    const finalizeBlock = viewer.slice(viewer.lastIndexOf('.onFinalize'), viewer.lastIndexOf('.onFinalize') + 220);
+    assert.match(finalizeBlock, /isHolding\.value = 0/);
+    assert.doesNotMatch(finalizeBlock, /onPanEnd|go\(/);
   });
 
-  it('chrome box-none; media pointerEvents none; HUD no es fullscreen auto', () => {
+  it('hold no usa setPaused; video via reaction; comments deshabilitan', () => {
+    assert.match(viewer, /useAnimatedReaction/);
+    assert.match(viewer, /runOnJS\(setHoldingJs\)\(true\)/);
+    assert.match(viewer, /paused=\{videoPaused\}/);
+    assert.match(viewer, /\.enabled\(!commentsOpen\)/);
+  });
+
+  it('chrome box-none; media pointerEvents none', () => {
     assert.match(viewer, /styles\.topChrome, \{ paddingTop: chromeTop \}\]\} pointerEvents="box-none"/);
     assert.match(viewer, /styles\.bottomChrome\} pointerEvents="box-none"/);
     assert.match(viewer, /styles\.media\} pointerEvents="none"/);
@@ -860,10 +888,10 @@ describe('Samsung: media, responder y comentarios', () => {
 
   it('B. media no usa absoluteFill de la raíz; GestureDetector cubre el stage', () => {
     assert.equal(storyMediaUsesRootAbsoluteFill(), false);
-    assert.match(viewer, /styles\.touchLayer/);
-    assert.match(viewer, /<GestureDetector gesture=\{detectorGesture\}>/);
+    assert.match(viewer, /styles\.gestureSurface/);
+    assert.match(viewer, /<GestureDetector gesture=\{storyGestures\}>/);
     assert.match(viewer, /pointerEvents="none"/);
-    assert.match(viewer, /elevation: 4/);
+    assert.match(viewer, /flex: 1/);
     assert.doesNotMatch(viewer, /tapLeft|tapRight|onZonePressIn|PanResponder/);
   });
 

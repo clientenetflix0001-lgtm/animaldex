@@ -1,14 +1,10 @@
 import type { StoryGestureAction } from './storyViewerUi.ts';
 
-/** Marca temporal de esta ronda de diagnóstico. Solo Preview/DEV. */
-export const STORY_GESTURE_DEBUG_MARK = 'GESTURE-V6 HITTEST';
+/** Marca temporal Preview/DEV. */
+export const STORY_GESTURE_DEBUG_MARK = 'GESTURE-V7';
 
-/**
- * Reemplaza foto/video por una View sólida para descartar expo-image / VideoView.
- * Conserva GestureDetector, progreso, chrome y navegación.
- * TEMPORAL: true solo para esta ronda de hit-test.
- */
-export const STORY_GESTURE_DEBUG_SOLID = true;
+/** Superficie sólida de diagnóstico. OFF: media real restaurada. */
+export const STORY_GESTURE_DEBUG_SOLID = false;
 
 export const STORY_GESTURE_DEBUG_TOUCH_FILL = 'rgba(255,0,0,0.15)';
 
@@ -22,6 +18,20 @@ export type StoryDebugBox = {
 export function formatStoryDebugBox(box: StoryDebugBox | null | undefined): string {
   if (!box || !Number.isFinite(box.width) || !Number.isFinite(box.height)) return 'unmeasured';
   return `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)}`;
+}
+
+/** Evita el bug Samsung: TOUCH 360x38 en y=752 bajo un stage 360x752. */
+export function storyTouchCoversStage(
+  stage: StoryDebugBox | null | undefined,
+  touch: StoryDebugBox | null | undefined,
+  slack = 24
+): boolean {
+  if (!stage || !touch) return false;
+  if (touch.height < 80) return false;
+  if (touch.height < stage.height - slack) return false;
+  if (Math.abs(touch.y - stage.y) > slack) return false;
+  if (Math.abs(touch.width - stage.width) > slack) return false;
+  return true;
 }
 
 export const STORY_GESTURE_DEBUG_ACTION_MS = 1000;
