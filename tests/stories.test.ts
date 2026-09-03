@@ -71,6 +71,17 @@ import {
   storyProgressUsesPerFrameState,
   storyStageInsets,
 } from '../lib/storyViewerUi.ts';
+import {
+  STORY_GESTURE_DEBUG_ACTION_MS,
+  STORY_GESTURE_DEBUG_MARK,
+  STORY_GESTURE_DEBUG_SOLID,
+  abbreviateUpdateId,
+  formatStoryGestureDebugAction,
+  storyGestureDebugEnabled,
+  storyGestureDebugProductionSafe,
+  storyGestureDebugTouchesBackend,
+  storyGestureDebugTouchesProductLogic,
+} from '../lib/storyGestureDebug.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const worker = readFileSync(join(root, 'worker/index.js'), 'utf8');
@@ -95,6 +106,8 @@ const reelsLib = readFileSync(join(root, 'lib/reels.ts'), 'utf8');
 const progressUi = readFileSync(join(root, 'components/StoryProgress.tsx'), 'utf8');
 const store = readFileSync(join(root, 'lib/store.tsx'), 'utf8');
 const viewerUi = readFileSync(join(root, 'lib/storyViewerUi.ts'), 'utf8');
+const gestureDebug = readFileSync(join(root, 'lib/storyGestureDebug.ts'), 'utf8');
+const gestureHud = readFileSync(join(root, 'components/StoryGestureDebugHud.tsx'), 'utf8');
 
 const T0 = 1_700_000_000_000;
 
@@ -646,7 +659,8 @@ describe('clasificación de swipe Stories', () => {
 describe('GestureDetector StoryViewer A–K', () => {
   it('A. touch begin → paused', () => {
     assert.equal(storyGesturePausesOnTouchStart(), true);
-    assert.match(viewer, /\.onBegin\(\(\) => \{\s*setPaused\(true\);/);
+    assert.match(viewer, /\.onBegin\(/);
+    assert.match(viewer, /setPaused\(true\)/);
     assert.match(viewer, /\.minDistance\(0\)/);
     assert.doesNotMatch(viewer, /activateAfterLongPress|delayLongPress|STORY_HOLD_DELAY_MS/);
   });
@@ -714,16 +728,78 @@ describe('GestureDetector StoryViewer A–K', () => {
     assert.doesNotMatch(viewer.slice(viewer.indexOf('onFinalize'), viewer.indexOf('onFinalize') + 280), /progress\.value = 0/);
   });
 
-  it('marca temporal GESTURE-V4 y log preview de expo-updates', () => {
-    assert.match(viewer, /GESTURE-V4/);
-    assert.match(viewer, /pointerEvents="none"/);
-    assert.match(viewer, /styles\.gestureDebug/);
+  it('marca temporal GESTURE-V5 DEBUG y log preview de expo-updates', () => {
+    assert.equal(STORY_GESTURE_DEBUG_MARK, 'GESTURE-V5 DEBUG');
+    assert.match(viewer, /GESTURE-V5 DEBUG/);
+    assert.match(gestureHud, /pointerEvents="none"/);
     assert.match(viewer, /Updates\.updateId/);
     assert.match(viewer, /Updates\.runtimeVersion/);
     assert.match(viewer, /Updates\.channel/);
     assert.match(viewer, /Updates\.isEmbeddedLaunch/);
     assert.match(pkg, /"react-native-gesture-handler": "\^3\.1\.0"/);
     assert.match(pkg, /"expo-updates":/);
+  });
+});
+
+describe('telemetría visual Stories (Preview/DEV)', () => {
+  it('solo Preview/DEV; production no habilita el panel', () => {
+    assert.equal(storyGestureDebugEnabled(true, null), true);
+    assert.equal(storyGestureDebugEnabled(false, 'preview'), true);
+    assert.equal(storyGestureDebugEnabled(false, 'production'), false);
+    assert.equal(storyGestureDebugProductionSafe(false, 'production'), true);
+    assert.match(viewer, /storyGestureDebugEnabled\(__DEV__, Updates\.channel\)/);
+    assert.match(viewer, /visible=\{debugOn\}/);
+  });
+
+  it('HUD no bloquea gestos y no toca producto/backend', () => {
+    assert.equal(storyGestureDebugTouchesProductLogic(), false);
+    assert.equal(storyGestureDebugTouchesBackend(), false);
+    assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
+    assert.equal(STORY_GESTURE_DEBUG_ACTION_MS, 1000);
+    assert.match(gestureHud, /pointerEvents="none"/);
+    assert.match(gestureHud, /zIndex: 30/);
+    assert.match(viewer, /<StoryGestureDebugHud/);
+    assert.doesNotMatch(storiesWorker, /GESTURE-V5|storyGestureDebug/);
+    assert.doesNotMatch(worker, /GESTURE-V5|storyGestureDebug/);
+    assert.doesNotMatch(migration, /GESTURE-V5|storyGestureDebug/);
+  });
+
+  it('instrumenta begin/start/update/end/finalize sin setState por frame', () => {
+    assert.match(viewer, /\.onBegin\(/);
+    assert.match(viewer, /\.onStart\(/);
+    assert.match(viewer, /\.onUpdate\(/);
+    assert.match(viewer, /\.onEnd\(/);
+    assert.match(viewer, /\.onFinalize\(/);
+    assert.match(viewer, /debugDx\.value = event\.translationX/);
+    assert.match(viewer, /debugDy\.value = event\.translationY/);
+    assert.match(viewer, /debugDown\.value = 1/);
+    assert.match(viewer, /setPaused\(true\)/);
+    const updateBlock = viewer.slice(viewer.indexOf('.onUpdate'), viewer.indexOf('.onEnd'));
+    assert.doesNotMatch(updateBlock, /setPaused|setState|setDebugAction/);
+    assert.match(gestureHud, /useAnimatedProps/);
+    assert.match(viewer, /debugProgress=\{progress\}/);
+  });
+
+  it('superficie sólida apagada; Gesture hijo es View nativa', () => {
+    assert.equal(STORY_GESTURE_DEBUG_SOLID, false);
+    assert.match(viewer, /debugOn && STORY_GESTURE_DEBUG_SOLID/);
+    const detector = viewer.slice(viewer.indexOf('<GestureDetector'), viewer.indexOf('</GestureDetector>'));
+    assert.match(detector, /<View/);
+    assert.doesNotMatch(detector, /<StoryVideo|<Image |function /);
+    assert.match(viewer, /\[commentsOpen, debugDx, debugDy, debugDown, debugPhase, finishTouch\]/);
+    assert.doesNotMatch(viewer, /\[commentsOpen, finishTouch, paused\]/);
+  });
+
+  it('acciones de debug y updateId abreviado no cambian classify', () => {
+    assert.equal(formatStoryGestureDebugAction('next'), 'NEXT');
+    assert.equal(formatStoryGestureDebugAction('previous'), 'PREVIOUS');
+    assert.equal(formatStoryGestureDebugAction('stay'), 'STAY');
+    assert.equal(formatStoryGestureDebugAction('resume'), 'STAY');
+    assert.equal(formatStoryGestureDebugAction('close'), 'CLOSE');
+    assert.equal(formatStoryGestureDebugAction('none'), 'NONE');
+    assert.equal(abbreviateUpdateId('01a064f3-efb3-7514-9bc8-e47c4a5522c4'), '01a064f3');
+    assert.equal(classifyStorySwipe({ deltaX: -80, deltaY: 0 }), 'next');
+    assert.deepEqual(applyStoryGesture('next', 0, 3), { action: 'next', nextIndex: 1 });
   });
 });
 

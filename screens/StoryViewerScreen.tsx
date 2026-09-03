@@ -32,10 +32,18 @@ import {
   storyProgressDurationMs,
   storyStageInsets,
 } from '../lib/storyViewerUi';
+import {
+  STORY_GESTURE_DEBUG_ACTION_MS,
+  STORY_GESTURE_DEBUG_SOLID,
+  formatStoryGestureDebugAction,
+  storyGestureDebugEnabled,
+  storyGestureDebugPhaseIndex,
+} from '../lib/storyGestureDebug';
 import { notifyStoriesChanged } from '../lib/storyRailRefresh';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import StoryProgress from '../components/StoryProgress';
 import StoryCommentsSheet from '../components/StoryCommentsSheet';
+import StoryGestureDebugHud from '../components/StoryGestureDebugHud';
 
 function StoryVideo({ uri, paused }: { uri: string; paused: boolean }) {
   const player = useVideoPlayer(uri, (p) => {
@@ -90,10 +98,17 @@ export default function StoryViewerScreen() {
   const indexRef = useRef(0);
   const storiesLenRef = useRef(0);
   const commentsOpenRef = useRef(false);
+  const debugActionClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debugAction, setDebugAction] = useState('NONE');
   const progress = useSharedValue(0);
+  const debugDx = useSharedValue(0);
+  const debugDy = useSharedValue(0);
+  const debugPhase = useSharedValue(0);
+  const debugDown = useSharedValue(0);
   indexRef.current = index;
   storiesLenRef.current = stories.length;
   commentsOpenRef.current = commentsOpen;
+  const debugOn = storyGestureDebugEnabled(__DEV__, Updates.channel);
 
   const params = route.params || {};
   const current = stories[index] || null;
@@ -268,10 +283,6 @@ export default function StoryViewerScreen() {
 
   const finishTouch = useCallback(
     (deltaX: number, deltaY: number) => {
-      if (commentsOpenRef.current) {
-        setPaused(false);
-        return;
-      }
       const result = applyStoryGesture(
         classifyStorySwipe({
           deltaX,
@@ -281,6 +292,13 @@ export default function StoryViewerScreen() {
         indexRef.current,
         storiesLenRef.current
       );
+      setDebugAction(formatStoryGestureDebugAction(result.action));
+      if (debugActionClearRef.current) clearTimeout(debugActionClearRef.current);
+      debugActionClearRef.current = setTimeout(() => setDebugAction('NONE'), STORY_GESTURE_DEBUG_ACTION_MS);
+      if (commentsOpenRef.current) {
+        setPaused(false);
+        return;
+      }
       setPaused(false);
       if (result.action === 'previous' || result.action === 'next') {
         go(result.nextIndex);
@@ -294,14 +312,14 @@ export default function StoryViewerScreen() {
   );
 
   useEffect(() => {
-    if (!__DEV__ && Updates.channel !== 'preview') return;
-    console.log('[Animaldex Stories] GESTURE-V4', {
+    if (!debugOn) return;
+    console.log('[Animaldex Stories] GESTURE-V5 DEBUG', {
       updateId: Updates.updateId,
       runtimeVersion: Updates.runtimeVersion,
       channel: Updates.channel,
       isEmbeddedLaunch: Updates.isEmbeddedLaunch,
     });
-  }, []);
+  }, [debugOn]);
 
   const storyPan = useMemo(
     () =>
@@ -309,13 +327,36 @@ export default function StoryViewerScreen() {
         .minDistance(0)
         .enabled(!commentsOpen)
         .runOnJS(true)
-        .onBegin(() => {
+        .onBegin((event) => {
+          debugDx.value = event.translationX;
+          debugDy.value = event.translationY;
+          debugPhase.value = storyGestureDebugPhaseIndex('BEGAN');
+          debugDown.value = 1;
           setPaused(true);
         })
-        .onFinalize((event) => {
+        .onStart((event) => {
+          debugDx.value = event.translationX;
+          debugDy.value = event.translationY;
+          debugPhase.value = storyGestureDebugPhaseIndex('ACTIVE');
+        })
+        .onUpdate((event) => {
+          debugDx.value = event.translationX;
+          debugDy.value = event.translationY;
+          debugPhase.value = storyGestureDebugPhaseIndex('ACTIVE');
+        })
+        .onEnd((event) => {
+          debugDx.value = event.translationX;
+          debugDy.value = event.translationY;
+          debugPhase.value = storyGestureDebugPhaseIndex('END');
+        })
+        .onFinalize((event, success) => {
+          debugDx.value = event.translationX;
+          debugDy.value = event.translationY;
+          debugDown.value = 0;
+          if (!success) debugPhase.value = storyGestureDebugPhaseIndex('CANCEL');
           finishTouch(event.translationX, event.translationY);
         }),
-    [commentsOpen, finishTouch]
+    [commentsOpen, debugDx, debugDy, debugDown, debugPhase, finishTouch]
   );
 
   if (loading) {
@@ -346,7 +387,9 @@ export default function StoryViewerScreen() {
       <StatusBar style="light" backgroundColor="transparent" translucent />
       <View style={[styles.stage, stage]}>
         <View style={styles.media} pointerEvents="none">
-          {current.mediaType === 'video' && mediaUri ? (
+          {debugOn && STORY_GESTURE_DEBUG_SOLID ? (
+            <View style={[styles.mediaFill, styles.debugSolid]} />
+          ) : current.mediaType === 'video' && mediaUri ? (
             <StoryVideo uri={mediaUri} paused={frozen} />
           ) : (
             <Image
@@ -367,9 +410,24 @@ export default function StoryViewerScreen() {
             accessibilityLabel="Controles de historia"
           />
         </GestureDetector>
-        <Text pointerEvents="none" style={[styles.gestureDebug, { top: chromeTop + 4 }]}>
-          GESTURE-V4
-        </Text>
+        <StoryGestureDebugHud
+          visible={debugOn}
+          top={chromeTop + 4}
+          updateId={Updates.updateId}
+          channel={Updates.channel}
+          runtimeVersion={Updates.runtimeVersion}
+          embedded={Updates.isEmbeddedLaunch}
+          paused={paused}
+          frozen={frozen}
+          action={debugAction}
+          storyIndex={index}
+          storyCount={stories.length}
+          debugDx={debugDx}
+          debugDy={debugDy}
+          debugProgress={progress}
+          debugPhase={debugPhase}
+          debugDown={debugDown}
+        />
 
         <View style={[styles.topChrome, { paddingTop: chromeTop }]} pointerEvents="box-none">
           <StoryProgress count={stories.length} index={index} progress={progress} />
@@ -465,13 +523,5 @@ const styles = StyleSheet.create({
   commentLabel: { color: '#fff', fontWeight: '600' },
   error: { color: '#fff', textAlign: 'center', padding: 24 },
   closeBtn: { alignSelf: 'center', padding: 12 },
-  gestureDebug: {
-    position: 'absolute',
-    left: 10,
-    zIndex: 6,
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
+  debugSolid: { backgroundColor: '#16324F' },
 });
