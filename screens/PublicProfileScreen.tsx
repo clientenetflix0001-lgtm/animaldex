@@ -23,6 +23,7 @@ import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius } from '../lib/theme';
+import { centeredParentTextWrap } from '../lib/centeredText';
 import { RootStackParamList } from '../lib/types';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import type { PublicProfile } from '../features/profiles/profileTypes';
@@ -239,7 +240,7 @@ export default function PublicProfileScreen() {
         </View>
         {!isProtector ? <Text style={styles.handle}>@{profile.username}</Text> : null}
         <ProfileBadge type={profile.type} />
-        {!!profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
+        {!!profile.bio && <Text style={[styles.bio, centeredParentTextWrap]}>{profile.bio}</Text>}
         {!!profile.phone && (
           <View style={styles.loc}>
             <Ionicons name="call-outline" size={13} color={colors.textMuted} />

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { qrLostPetMessage, qrLostPetQuestion, qrLostPetTitle } from '../lib/qrLostPet';
+import { centeredParentTextWrap } from '../lib/centeredText';
 
 type Props = {
   visible: boolean;
@@ -29,9 +30,9 @@ function QrLostPetModal({ visible, petName, sending, onClose, onSendLocation }: 
               <Ionicons name="close" size={22} color={colors.textMuted} />
             </Pressable>
             <Text style={styles.paw}>🐾</Text>
-            <Text style={styles.title}>{qrLostPetTitle()}</Text>
-            <Text style={styles.body}>{qrLostPetMessage(petName)}</Text>
-            <Text style={styles.question}>{qrLostPetQuestion()}</Text>
+            <Text style={[styles.title, centeredParentTextWrap]}>{qrLostPetTitle()}</Text>
+            <Text style={[styles.body, centeredParentTextWrap]}>{qrLostPetMessage(petName)}</Text>
+            <Text style={[styles.question, centeredParentTextWrap]}>{qrLostPetQuestion()}</Text>
             <Pressable
               style={[styles.primary, sending && styles.primaryOff]}
               onPress={onSendLocation}

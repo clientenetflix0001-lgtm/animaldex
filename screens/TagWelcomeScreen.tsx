@@ -30,6 +30,7 @@ import {
   qrPageRegisterView,
   type QrPageRegisterView,
 } from '../lib/qrPageRegister';
+import { centeredParentTextWrap } from '../lib/centeredText';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -102,7 +103,7 @@ export default function TagWelcomeScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
-          <Text style={styles.loadingText}>
+          <Text style={[styles.loadingText, centeredParentTextWrap]}>
             {state === 'claimed' ? 'Llevándote al perfil de la mascota…' : 'Verificando chapita…'}
           </Text>
         </View>
@@ -117,8 +118,8 @@ export default function TagWelcomeScreen() {
           <View style={styles.iconWrapMuted}>
             <Ionicons name="alert-circle-outline" size={40} color={colors.textMuted} />
           </View>
-          <Text style={styles.title}>Código no válido</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, centeredParentTextWrap]}>Código no válido</Text>
+          <Text style={[styles.subtitle, centeredParentTextWrap]}>
             Esta chapita QR (#{code}) no existe en Animaldex. Verifica el enlace o contacta a quien te la entregó.
           </Text>
           <Pressable style={styles.primaryBtn} onPress={() => navigation.replace('Tabs')}>
@@ -136,8 +137,8 @@ export default function TagWelcomeScreen() {
           <View style={styles.iconWrapMuted}>
             <Ionicons name="cloud-offline-outline" size={40} color={colors.textMuted} />
           </View>
-          <Text style={styles.title}>No se pudo verificar</Text>
-          <Text style={styles.subtitle}>Revisa tu conexión e inténtalo de nuevo.</Text>
+          <Text style={[styles.title, centeredParentTextWrap]}>No se pudo verificar</Text>
+          <Text style={[styles.subtitle, centeredParentTextWrap]}>Revisa tu conexión e inténtalo de nuevo.</Text>
           <Pressable style={styles.primaryBtn} onPress={check}>
             <Text style={styles.primaryBtnText}>Reintentar</Text>
           </Pressable>
@@ -174,10 +175,10 @@ export default function TagWelcomeScreen() {
         <View style={styles.iconWrap}>
           <Text style={styles.pawEmoji}>🐾</Text>
         </View>
-        <Text style={styles.title}>¡Escaneaste una chapita QR!</Text>
+        <Text style={[styles.title, centeredParentTextWrap]}>¡Escaneaste una chapita QR!</Text>
         {pageView === 'welcome' ? (
           <>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.subtitle, centeredParentTextWrap]}>
               Esta chapita (#{code}) todavía no tiene una mascota asignada. Completa estos datos para
               activarla: cada vez que alguien la escanee, llegará directo al perfil de tu mascota.
             </Text>
@@ -222,7 +223,7 @@ export default function TagWelcomeScreen() {
 
         {pageView === 'need-create' ? (
           <>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.subtitle, centeredParentTextWrap]}>
               Para registrar mascotas en una página primero necesitás crear una Página de Bienestar Animal.
             </Text>
             <Pressable
@@ -286,7 +287,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     maxWidth: 340,
   },
-  loadingText: { fontSize: 14, color: colors.textMuted, marginTop: spacing.sm },
+  loadingText: { fontSize: 14, color: colors.textMuted, marginTop: spacing.sm, textAlign: 'center' },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
