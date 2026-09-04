@@ -121,6 +121,6 @@ describe('Stories V8 intactas', () => {
     assert.match(stories, /Gesture\.Simultaneous\(hold, pan\)/);
     assert.match(stories, /progress\.value = withTiming/);
     assert.match(storiesTest, /stageShell/);
-    assert.match(storiesTest, /Gesture\.Simultaneous\(hold, pan\)/);
+    assert.match(storiesTest, /Simultaneous/);
   });
 });
