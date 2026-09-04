@@ -42,6 +42,7 @@ const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
 describe('Crear: Publicación | Reel', () => {
   it('Publicación abre el flujo existente y Reel abre CreateReel', () => {
     assert.equal(createChooserDestination('post'), 'CreatePost');
+    assert.equal(createChooserDestination('story'), 'CreateStory');
     assert.equal(createChooserDestination('reel'), 'CreateReel');
     const app = read('App.tsx');
     const chooser = read('screens/CreateChooserScreen.tsx');
@@ -49,6 +50,7 @@ describe('Crear: Publicación | Reel', () => {
     assert.match(app, /name="CreatePost"/);
     assert.match(app, /component=\{CreatePostScreen\}/);
     assert.match(chooser, /open\('post'\)/);
+    assert.match(chooser, /open\('story'\)/);
     assert.match(chooser, /open\('reel'\)/);
     assert.match(chooser, /createChooserDestination\(kind\)/);
     assert.doesNotMatch(chooser, /CreatePostScreen/);

@@ -44,6 +44,22 @@ export default function CreateChooserScreen() {
 
         <Pressable
           style={styles.card}
+          onPress={() => open('story')}
+          accessibilityRole="button"
+          accessibilityLabel="Crear historia"
+        >
+          <View style={[styles.iconWrap, { backgroundColor: colors.primarysoft }]}>
+            <Ionicons name="time-outline" size={26} color={colors.primary} />
+          </View>
+          <View style={styles.copy}>
+            <Text style={styles.cardTitle}>Historia</Text>
+            <Text style={styles.cardHint}>Foto o video de 24 horas</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </Pressable>
+
+        <Pressable
+          style={styles.card}
           onPress={() => open('reel')}
           accessibilityRole="button"
           accessibilityLabel="Reel"
