@@ -60,8 +60,8 @@ describe('QR perdido: cuándo mostrar el modal', () => {
     assert.equal(qrTagShouldPromptLost({ exists: true, status: 'unclaimed', pet: null }), false);
     assert.match(welcome, /setState\('unclaimed'\)/);
     assert.match(welcome, /Registrar mi mascota/);
-    assert.match(welcome, /replace\('AddPet'/);
-    assert.match(welcome, /tagCode: code/);
+    assert.match(welcome, /replace\('AddPet', addPetParamsForPersonalQr\(code\)\)/);
+    assert.match(welcome, /addPetParamsForPersonalQr/);
   });
 
   it('6. QR inexistente → flujo actual', () => {
@@ -87,14 +87,15 @@ describe('QR perdido: cuándo mostrar el modal', () => {
 describe('QR perdido: copy y cierre', () => {
   it('9. copy usa nombre de la mascota', () => {
     assert.equal(qrLostPetTitle(), '¡Qué gran trabajo!');
-    assert.equal(qrLostPetMessage('Toby'), 'Toby está perdido y su familia lo extraña.');
+    assert.equal(qrLostPetMessage('Toby'), 'Toby está perdido y su familia lo busca.');
+    assert.equal(qrLostPetMessage('Luchi'), 'Luchi está perdido y su familia lo busca.');
     assert.match(modal, /qrLostPetMessage\(petName\)/);
   });
 
   it('10. nombre ausente usa fallback', () => {
-    assert.equal(qrLostPetMessage(null), 'Esta mascota está perdida y su familia la extraña.');
-    assert.equal(qrLostPetMessage(''), 'Esta mascota está perdida y su familia la extraña.');
-    assert.equal(qrLostPetMessage('   '), 'Esta mascota está perdida y su familia la extraña.');
+    assert.equal(qrLostPetMessage(null), 'Esta mascota está perdida y su familia la está buscando.');
+    assert.equal(qrLostPetMessage(''), 'Esta mascota está perdida y su familia la está buscando.');
+    assert.equal(qrLostPetMessage('   '), 'Esta mascota está perdida y su familia la está buscando.');
     assert.equal(qrLostPetQuestion(), '¿Querés enviar tu ubicación para ayudar a encontrarlo?');
   });
 

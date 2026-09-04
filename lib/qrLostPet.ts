@@ -30,8 +30,8 @@ export function qrLostPetTitle(): string {
 
 export function qrLostPetMessage(name?: string | null): string {
   const n = String(name || '').trim();
-  if (n) return `${n} está perdido y su familia lo extraña.`;
-  return 'Esta mascota está perdida y su familia la extraña.';
+  if (n) return `${n} está perdido y su familia lo busca.`;
+  return 'Esta mascota está perdida y su familia la está buscando.';
 }
 
 export function qrLostPetQuestion(): string {
