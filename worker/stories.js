@@ -113,6 +113,7 @@ function storyRow(r, extras = {}) {
     authorProfileUsername: r.author_profile_username || null,
     authorProfileAvatar: r.author_profile_avatar || null,
     authorPetName: r.author_pet_name || null,
+    authorPetUsername: r.author_pet_username || null,
     authorPetAvatar: r.author_pet_avatar || null,
     protagonistName: r.protagonist_name || null,
     protagonistAvatar: r.protagonist_avatar || null,

@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
@@ -47,6 +47,7 @@ import {
   type StoryLayoutBox,
 } from '../lib/storyViewerUi';
 import { notifyStoriesChanged } from '../lib/storyRailRefresh';
+import { openStoryAuthorProfile, openStoryProtagonistProfile, resolveStoryAuthorIdentity } from '../lib/storyAuthor';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import StoryProgress from '../components/StoryProgress';
 import StoryCommentsSheet from '../components/StoryCommentsSheet';
@@ -261,18 +262,30 @@ export default function StoryViewerScreen() {
     };
   }, []);
 
-  const headerName = useMemo(() => {
-    if (!current) return '';
-    return current.username || current.authorPetName || current.authorProfileUsername || current.userName || 'Historia';
-  }, [current]);
+  useFocusEffect(
+    useCallback(() => {
+      setPaused(false);
+      return () => {
+        setPaused(true);
+      };
+    }, [])
+  );
 
-  const headerAvatar = current
-    ? current.authorPetAvatar ||
-      current.authorProfileAvatar ||
-      current.userAvatar ||
-      current.protagonistAvatar ||
-      userFallbackAvatar(headerName)
-    : '';
+  const author = useMemo(() => (current ? resolveStoryAuthorIdentity(current) : null), [current]);
+  const headerName = author?.username || (current ? 'Historia' : '');
+  const headerAvatar = author?.avatarUrl || (headerName ? userFallbackAvatar(headerName) : '');
+
+  const openAuthor = useCallback(() => {
+    if (!current) return;
+    setPaused(true);
+    openStoryAuthorProfile(navigation, current);
+  }, [current, navigation]);
+
+  const openProtagonist = useCallback(() => {
+    if (!current?.protagonistPetId) return;
+    setPaused(true);
+    openStoryProtagonistProfile(navigation, current);
+  }, [current, navigation]);
 
   const close = useCallback(() => navigation.goBack(), [navigation]);
 
@@ -431,19 +444,27 @@ export default function StoryViewerScreen() {
         <View style={[styles.topChrome, { paddingTop: chromeTop }]} pointerEvents="box-none">
           <StoryProgress count={stories.length} index={index} progress={progress} />
           <View style={styles.topRow}>
-            <View style={styles.identity} pointerEvents="none">
+            <Pressable style={styles.identity} onPress={openAuthor} accessibilityLabel="Ver perfil del autor">
               <Image source={{ uri: thumb(headerAvatar, 80) }} style={styles.avatar} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name} numberOfLines={1}>
                   {headerName}
                 </Text>
                 {subline ? (
-                  <Text style={styles.meta} numberOfLines={1}>
-                    {subline}
-                  </Text>
+                  current.protagonistPetId ? (
+                    <Pressable onPress={openProtagonist} accessibilityLabel="Ver perfil del protagonista">
+                      <Text style={styles.meta} numberOfLines={1}>
+                        {subline}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Text style={styles.meta} numberOfLines={1}>
+                      {subline}
+                    </Text>
+                  )
                 ) : null}
               </View>
-            </View>
+            </Pressable>
             <View style={styles.topActions}>
               {owner ? (
                 <Pressable onPress={remove} accessibilityLabel="Más opciones" hitSlop={10}>

@@ -52,6 +52,13 @@ import {
   subscribeStoriesRevision,
 } from '../lib/storyRailRefresh.ts';
 import {
+  openStoryAuthorProfile,
+  openStoryProtagonistProfile,
+  resolveStoryAuthorIdentity,
+  storyAuthorPressPlan,
+  storyAuthorVisibleName,
+} from '../lib/storyAuthor.ts';
+import {
   OVERLAY_SHEET_BOTTOM_EXTRA,
   OVERLAY_SHEET_BOTTOM_MIN,
   STORY_HOLD_MIN_DURATION_MS,
@@ -906,6 +913,190 @@ describe('Samsung: media, responder y comentarios', () => {
     assert.ok(storyCommentsComposerPadding({ bottom: 0 }) > 0);
     assert.match(comments, /accessibilityLabel="Publicar comentario"|name="send"/);
     assert.doesNotMatch(comments, /paddingBottom:\s*48|Samsung/);
+  });
+});
+
+describe('identidad visible del autor en Stories', () => {
+  const personal = {
+    authorUserId: 'u1',
+    username: '@lucasfuentes',
+    userName: 'Lucas Fuentes',
+    userAvatar: 'me.jpg',
+  };
+  const company = {
+    authorUserId: 'u1',
+    username: 'lucasfuentes',
+    userName: 'Lucas Fuentes',
+    userAvatar: 'me.jpg',
+    authorProfileId: 'biz1',
+    authorProfileType: 'business',
+    authorProfileName: 'Tienda Rocky',
+    authorProfileUsername: 'tiendarocky',
+    authorProfileAvatar: 'shop.jpg',
+  };
+  const protector = {
+    authorUserId: 'u1',
+    username: 'lucasfuentes',
+    userName: 'Lucas Fuentes',
+    userAvatar: 'me.jpg',
+    authorProfileId: 'p1',
+    authorProfileType: 'protector',
+    authorProfileName: 'APAN Salta',
+    authorProfileUsername: 'apansalta',
+    authorProfileAvatar: 'apan.jpg',
+    protagonistPetId: 'good1',
+    protagonistName: 'Good',
+    protagonistAvatar: 'good.jpg',
+    breedLabel: 'Caniche',
+  };
+  const petAuthor = {
+    authorUserId: 'u1',
+    username: 'lucasfuentes',
+    userName: 'Lucas Fuentes',
+    userAvatar: 'me.jpg',
+    authorPetId: 'pet1',
+    authorPetName: 'Rocky',
+    authorPetUsername: 'rockys.pet',
+    authorPetAvatar: 'rocky.jpg',
+  };
+
+  it('1. Story personal → avatar + username personal', () => {
+    const author = resolveStoryAuthorIdentity(personal);
+    assert.equal(author.kind, 'personal');
+    assert.equal(author.username, 'lucasfuentes');
+    assert.equal(author.avatarUrl, 'me.jpg');
+    assert.equal(storyAuthorVisibleName(personal), 'lucasfuentes');
+    assert.doesNotMatch(storyAuthorVisibleName(personal), /^@/);
+  });
+
+  it('2. Story empresa → avatar + username empresa', () => {
+    const author = resolveStoryAuthorIdentity(company);
+    assert.equal(author.kind, 'profile');
+    assert.equal(author.username, 'tiendarocky');
+    assert.equal(author.avatarUrl, 'shop.jpg');
+    assert.equal(storyAuthorVisibleName(company), 'tiendarocky');
+  });
+
+  it('3. Story Bienestar Animal → avatar + username Página', () => {
+    const author = resolveStoryAuthorIdentity(protector);
+    assert.equal(author.kind, 'profile');
+    assert.equal(author.username, 'apansalta');
+    assert.equal(author.avatarUrl, 'apan.jpg');
+    assert.equal(author.profileType, 'protector');
+  });
+
+  it('4. Story mascota → avatar + username .pet', () => {
+    const author = resolveStoryAuthorIdentity(petAuthor);
+    assert.equal(author.kind, 'pet');
+    assert.equal(author.username, 'rockys.pet');
+    assert.equal(author.avatarUrl, 'rocky.jpg');
+    assert.equal(storyAuthorVisibleName(petAuthor), 'rockys.pet');
+  });
+
+  it('5. Página no muestra nombre del owner personal', () => {
+    assert.notEqual(storyAuthorVisibleName(protector), 'lucasfuentes');
+    assert.notEqual(storyAuthorVisibleName(company), 'Lucas Fuentes');
+    assert.equal(resolveStoryAuthorIdentity(protector).username, 'apansalta');
+  });
+
+  it('6. avatar y username pertenecen a la misma identidad', () => {
+    for (const story of [personal, company, protector, petAuthor]) {
+      const author = resolveStoryAuthorIdentity(story);
+      if (author.kind === 'personal') {
+        assert.equal(author.username, 'lucasfuentes');
+        assert.equal(author.avatarUrl, story.userAvatar);
+      }
+      if (author.kind === 'profile') {
+        assert.equal(author.avatarUrl, story.authorProfileAvatar);
+        assert.equal(author.username, story.authorProfileUsername);
+      }
+      if (author.kind === 'pet') {
+        assert.equal(author.avatarUrl, story.authorPetAvatar);
+        assert.equal(author.username, story.authorPetUsername);
+      }
+    }
+    assert.match(viewer, /resolveStoryAuthorIdentity\(current\)/);
+    assert.match(viewer, /author\?\.avatarUrl/);
+    assert.doesNotMatch(viewer, /current\.username \|\| current\.authorPetName/);
+    assert.doesNotMatch(viewer, /current\.protagonistAvatar/);
+  });
+
+  it('7. tap autor personal → perfil personal', () => {
+    const calls: Array<{ name: string; params?: Record<string, unknown> }> = [];
+    openStoryAuthorProfile({ navigate: (name, params) => calls.push({ name, params }) }, personal);
+    assert.deepEqual(calls, [{ name: 'PublicProfile', params: { username: 'lucasfuentes' } }]);
+  });
+
+  it('8. tap empresa → PublicProfile', () => {
+    const calls: Array<{ name: string; params?: Record<string, unknown> }> = [];
+    openStoryAuthorProfile({ navigate: (name, params) => calls.push({ name, params }) }, company);
+    assert.deepEqual(calls, [{ name: 'PublicProfile', params: { username: 'tiendarocky' } }]);
+  });
+
+  it('9. tap Bienestar Animal → PublicProfile', () => {
+    const calls: Array<{ name: string; params?: Record<string, unknown> }> = [];
+    openStoryAuthorProfile({ navigate: (name, params) => calls.push({ name, params }) }, protector);
+    assert.deepEqual(calls, [{ name: 'PublicProfile', params: { username: 'apansalta' } }]);
+  });
+
+  it('10. tap mascota → PetProfile', () => {
+    const calls: Array<{ name: string; params?: Record<string, unknown> }> = [];
+    openStoryAuthorProfile({ navigate: (name, params) => calls.push({ name, params }) }, petAuthor);
+    assert.deepEqual(calls, [{ name: 'PetProfile', params: { petId: 'pet1' } }]);
+  });
+
+  it('11. tocar autor no dispara swipe', () => {
+    const plan = storyAuthorPressPlan(protector);
+    assert.equal(plan.swipe, false);
+    assert.equal(plan.advance, false);
+    const detector = viewer.slice(viewer.indexOf('<GestureDetector'), viewer.indexOf('</GestureDetector>'));
+    assert.doesNotMatch(detector, /Ver perfil del autor/);
+    assert.match(viewer, /topChrome[\s\S]*accessibilityLabel="Ver perfil del autor"/);
+    assert.match(viewer, /onPress=\{openAuthor\}/);
+    assert.doesNotMatch(viewer, /openAuthor[\s\S]{0,80}go\(|openAuthor[\s\S]{0,80}advance\(/);
+  });
+
+  it('12. tocar autor pausa Story', () => {
+    assert.equal(storyAuthorPressPlan(company).pause, true);
+    assert.match(viewer, /const openAuthor = useCallback\(\(\) => \{[\s\S]*setPaused\(true\)/);
+    assert.match(viewer, /useFocusEffect/);
+  });
+
+  it('13. video no sigue sonando al navegar', () => {
+    assert.match(viewer, /staysActiveInBackground = false/);
+    assert.match(viewer, /<StoryVideo uri=\{mediaUri\} paused=\{videoPaused\} \/>/);
+    assert.match(viewer, /videoPaused = reactFrozen \|\| holdingJs/);
+    assert.match(viewer, /openAuthor = useCallback\(\(\) => \{[\s\S]*setPaused\(true\);[\s\S]*openStoryAuthorProfile/);
+    assert.match(viewer, /useFocusEffect\(\s*useCallback\(\(\) => \{\s*setPaused\(false\);\s*return \(\) => \{\s*setPaused\(true\);/);
+  });
+
+  it('14. protagonista no reemplaza identidad del autor', () => {
+    const author = resolveStoryAuthorIdentity(protector);
+    assert.equal(author.username, 'apansalta');
+    assert.equal(author.avatarUrl, 'apan.jpg');
+    assert.notEqual(author.avatarUrl, protector.protagonistAvatar);
+    assert.notEqual(author.username, 'Good');
+    const calls: Array<{ name: string; params?: Record<string, unknown> }> = [];
+    openStoryAuthorProfile({ navigate: (name, params) => calls.push({ name, params }) }, protector);
+    assert.equal(calls[0]?.name, 'PublicProfile');
+    assert.notEqual(calls[0]?.params?.petId, 'good1');
+    calls.length = 0;
+    openStoryProtagonistProfile({ navigate: (name, params) => calls.push({ name, params }) }, protector);
+    assert.deepEqual(calls, [{ name: 'PetProfile', params: { petId: 'good1' } }]);
+    assert.match(viewer, /subline/);
+    assert.match(viewer, /Ver perfil del protagonista/);
+  });
+
+  it('15. backend\/schema sin migration', () => {
+    assert.match(storiesWorker, /authorPetUsername: r\.author_pet_username \|\| null/);
+    assert.match(storiesWorker, /pet\.username AS author_pet_username/);
+    assert.match(db, /authorPetUsername\?: string \| null/);
+    assert.doesNotMatch(storiesWorker, /ALTER TABLE stories/);
+    assert.doesNotMatch(migration, /author_visible|CREATE TABLE stories_author/);
+    assert.equal(storiesSchemaApplyEnabled(''), false);
+    assert.equal(STORIES_SCHEMA_STATEMENTS.some((sql) => /ALTER TABLE/i.test(sql)), false);
+    assert.match(viewer, /Gesture\.Simultaneous\(hold, pan\)/);
+    assert.match(viewer, /styles\.stageShell/);
   });
 });
 

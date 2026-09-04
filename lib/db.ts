@@ -184,6 +184,7 @@ export interface ApiStory {
   authorProfileUsername?: string | null;
   authorProfileAvatar?: string | null;
   authorPetName?: string | null;
+  authorPetUsername?: string | null;
   authorPetAvatar?: string | null;
   protagonistName?: string | null;
   protagonistAvatar?: string | null;
