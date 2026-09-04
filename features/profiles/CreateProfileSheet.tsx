@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   View,
@@ -15,16 +15,21 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, radius, spacing } from '../../lib/theme';
 import { useProfiles } from './ProfileContext';
-import { limitMessage, type ProfileType } from './profileTypes';
+import { limitMessage, type ProfileType, type PublicProfile } from './profileTypes';
+import BioField from '../../components/BioField';
+import { isBioWithinWordLimit, BIO_WORD_LIMIT_ERROR } from '../../lib/bio';
 import { isValidPublicUsername, normalizePublicUsername } from '../../lib/publicHandles';
 import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../../lib/adoptionContact';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
+  onCreated?: (profile: PublicProfile) => void;
+  initialType?: Exclude<ProfileType, 'personal'> | null;
+  lockType?: boolean;
 }
 
-export default function CreateProfileSheet({ visible, onClose }: Props) {
+export default function CreateProfileSheet({ visible, onClose, onCreated, initialType, lockType }: Props) {
   const { canCreate, createProfile } = useProfiles();
   const [step, setStep] = useState<'pick' | 'form'>('pick');
   const [type, setType] = useState<Exclude<ProfileType, 'personal'> | null>(null);
@@ -45,6 +50,23 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
     setAdoptionPhone('');
     setSaving(false);
   };
+
+  useEffect(() => {
+    if (!visible) return;
+    setName('');
+    setUsername('');
+    setBio('');
+    setAdoptionWhatsapp('');
+    setAdoptionPhone('');
+    setSaving(false);
+    if (initialType) {
+      setType(initialType);
+      setStep('form');
+    } else {
+      setType(null);
+      setStep('pick');
+    }
+  }, [visible, initialType]);
 
   const close = () => {
     reset();
@@ -74,6 +96,10 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
       );
       return;
     }
+    if (!isBioWithinWordLimit(bio)) {
+      Alert.alert('Biografía', BIO_WORD_LIMIT_ERROR);
+      return;
+    }
     if (type === 'protector') {
       const contact = parseProtectorAdoptionContact(type, adoptionWhatsapp, adoptionPhone);
       if (!contact.ok) {
@@ -83,7 +109,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
     }
     setSaving(true);
     try {
-      await createProfile({
+      const created = await createProfile({
         type,
         name: name.trim(),
         username: handle,
@@ -91,6 +117,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
         adoptionWhatsapp: type === 'protector' ? adoptionWhatsapp.trim() : undefined,
         adoptionPhone: type === 'protector' ? adoptionPhone.trim() : undefined,
       });
+      onCreated?.(created);
       close();
     } catch (e: any) {
       Alert.alert('No se pudo crear', e?.message || 'Inténtalo de nuevo');
@@ -128,10 +155,12 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
             </>
           ) : (
             <>
-              <Pressable onPress={() => setStep('pick')} style={styles.back}>
-                <Ionicons name="chevron-back" size={18} color={colors.primary} />
-                <Text style={styles.backText}>Volver</Text>
-              </Pressable>
+              {!lockType ? (
+                <Pressable onPress={() => setStep('pick')} style={styles.back}>
+                  <Ionicons name="chevron-back" size={18} color={colors.primary} />
+                  <Text style={styles.backText}>Volver</Text>
+                </Pressable>
+              ) : null}
               <Text style={styles.title}>
                 {type === 'business' ? 'Nueva página empresarial' : 'Nueva página de Bienestar Animal'}
               </Text>
@@ -151,13 +180,11 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
                 placeholderTextColor={colors.textMuted}
                 style={styles.input}
               />
-              <TextInput
+              <BioField
                 value={bio}
                 onChangeText={setBio}
                 placeholder="Bio (opcional)"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
-                multiline
+                style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
               />
               {type === 'protector' ? (
                 <View>
@@ -185,7 +212,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
                   />
                 </View>
               ) : null}
-              <Pressable style={styles.save} onPress={submit} disabled={saving}>
+              <Pressable style={styles.save} onPress={submit} disabled={saving || !isBioWithinWordLimit(bio)}>
                 {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Crear página</Text>}
               </Pressable>
             </>
