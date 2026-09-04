@@ -90,6 +90,7 @@ import {
   parseIncomingTagCode,
   parseManualTagCode,
 } from '../lib/tags.ts';
+import { acceptedBio } from '../lib/bio.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -1146,7 +1147,9 @@ async function handleAuth(request, env) {
       const userId = await authUser(request, env, body);
       if (!userId) return json({ error: 'Sesión inválida' }, 401);
       const name = clean(body.name, 60);
-      const bio = clean(body.bio, 200);
+      const bioRes = acceptedBio(body.bio);
+      if (!bioRes.ok) return json({ error: bioRes.error }, 400);
+      const bio = bioRes.bio;
       const location = clean(body.location, 60);
       const avatarUrl = clean(body.avatarUrl, 500) || null;
       const nextUsername = body.username != null
@@ -2730,7 +2733,9 @@ async function handleDb(request, env) {
       const type = clean(body.type, 20);
       const name = clean(body.name, 60);
       const username = clean(body.username, 20).toLowerCase();
-      const bio = clean(body.bio, 200);
+      const bioRes = acceptedBio(body.bio);
+      if (!bioRes.ok) return json({ error: bioRes.error }, 400);
+      const bio = bioRes.bio;
       const avatar = clean(body.avatar, 500) || null;
       if (type !== 'business' && type !== 'protector') {
         return json({ error: 'Solo se pueden crear perfiles de tienda o proteccionista' }, 400);
@@ -2780,7 +2785,9 @@ async function handleDb(request, env) {
       if (owned[0].type === 'personal') return json({ error: 'El perfil personal se edita desde tu cuenta' }, 400);
       const name = clean(body.name, 60);
       const username = clean(String(body.username || '').replace(/^@/, ''), 20).toLowerCase();
-      const bio = clean(body.bio, 200);
+      const bioRes = acceptedBio(body.bio);
+      if (!bioRes.ok) return json({ error: bioRes.error }, 400);
+      const bio = bioRes.bio;
       const location = clean(body.location, 80);
       let locality = owned[0].locality || null;
       if (body.locality !== undefined) {
@@ -2858,7 +2865,9 @@ async function handleDb(request, env) {
       const name = clean(body.name, 40);
       const species = normalizeSpecies(body.species) || 'perro';
       const breed = clean(body.breed, 60);
-      const bio = clean(body.bio, 200);
+      const bioRes = acceptedBio(body.bio);
+      if (!bioRes.ok) return json({ error: bioRes.error }, 400);
+      const bio = bioRes.bio;
       const emoji = clean(body.emoji, 8) || emojiForSpecies(species);
       const avatarUrl = clean(body.avatarUrl, 500) || null;
       const size = normalizeSize(body.size) || null;
@@ -2925,7 +2934,12 @@ async function handleDb(request, env) {
       const name = clean(body.name, 40) || p.name;
       const species = normalizeSpecies(body.species) || p.species || 'perro';
       const breed = body.breed != null ? clean(body.breed, 60) : (p.breed || '');
-      const bio = body.bio != null ? clean(body.bio, 200) : (p.bio || '');
+      let bio = p.bio || '';
+      if (body.bio != null) {
+        const bioRes = acceptedBio(body.bio);
+        if (!bioRes.ok) return json({ error: bioRes.error }, 400);
+        bio = bioRes.bio;
+      }
       const emoji = clean(body.emoji, 8) || emojiForSpecies(species) || p.emoji;
       const avatarUrl = body.avatarUrl != null ? (clean(body.avatarUrl, 500) || p.avatar_url) : p.avatar_url;
       const size = body.size != null ? (normalizeSize(body.size) || null) : (p.size || null);

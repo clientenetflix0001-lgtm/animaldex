@@ -33,6 +33,8 @@ import {
   PROTECTOR_STATUSES,
   defaultCareStatus,
 } from '../lib/petFields';
+import BioField from '../components/BioField';
+import { BIO_WORD_LIMIT_ERROR, isBioWithinWordLimit } from '../lib/bio';
 import {
   applyEditablePetBase,
   applySuggestionIfCurrent,
@@ -241,6 +243,10 @@ export default function AddPetScreen() {
     }
     if (!editPetId && available === false && !createdPetRef.current) {
       Alert.alert('Usuario ocupado', PET_TAKEN_ERROR);
+      return;
+    }
+    if (!isBioWithinWordLimit(bio)) {
+      Alert.alert('Biografía', BIO_WORD_LIMIT_ERROR);
       return;
     }
     if (birthTouched && !birthOk) {
@@ -518,17 +524,14 @@ export default function AddPetScreen() {
           />
 
           <Text style={styles.label}>Biografía</Text>
-          <TextInput
+          <BioField
             style={[styles.input, styles.bioInput]}
             placeholder="Cuéntanos de tu mascota..."
-            placeholderTextColor={colors.textMuted}
             value={bio}
             onChangeText={setBio}
-            multiline
-            maxLength={200}
           />
 
-          <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading}>
+          <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading || !isBioWithinWordLimit(bio)}>
             {saving ? (
               <ActivityIndicator color="#fff" />
             ) : (

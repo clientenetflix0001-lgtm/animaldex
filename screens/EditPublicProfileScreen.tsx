@@ -26,6 +26,8 @@ import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHan
 import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib/adoptionContact';
 import { LocalityPicker } from '../components/LocalityPicker';
 import type { ProfileType } from '../features/profiles/profileTypes';
+import BioField from '../components/BioField';
+import { BIO_WORD_LIMIT_ERROR, isBioWithinWordLimit } from '../lib/bio';
 
 export default function EditPublicProfileScreen() {
   const navigation = useNavigation<any>();
@@ -112,6 +114,10 @@ export default function EditPublicProfileScreen() {
       );
       return;
     }
+    if (!isBioWithinWordLimit(bio)) {
+      Alert.alert('Biografía', BIO_WORD_LIMIT_ERROR);
+      return;
+    }
     if (profileType === 'protector') {
       const contact = parseProtectorAdoptionContact(profileType, adoptionWhatsapp, adoptionPhone);
       if (!contact.ok) {
@@ -193,14 +199,11 @@ export default function EditPublicProfileScreen() {
           />
 
           <Text style={styles.label}>Biografía</Text>
-          <TextInput
+          <BioField
             style={[styles.input, styles.bioInput]}
             value={bio}
             onChangeText={setBio}
-            maxLength={200}
-            multiline
             placeholder="Contá de qué se trata esta página..."
-            placeholderTextColor={colors.textMuted}
           />
 
           <Text style={styles.label}>Teléfono (opcional)</Text>
@@ -264,7 +267,7 @@ export default function EditPublicProfileScreen() {
             </>
           ) : null}
 
-          <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading}>
+          <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading || !isBioWithinWordLimit(bio)}>
             {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Guardar cambios</Text>}
           </Pressable>
         </ScrollView>

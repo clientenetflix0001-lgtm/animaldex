@@ -22,6 +22,8 @@ import { useStore } from '../lib/store';
 import { userFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
+import BioField from '../components/BioField';
+import { BIO_WORD_LIMIT_ERROR, isBioWithinWordLimit } from '../lib/bio';
 
 export default function EditProfileScreen() {
   const navigation = useNavigation<any>();
@@ -70,6 +72,10 @@ export default function EditProfileScreen() {
 
   const save = useCallback(async () => {
     const handle = normalizePublicUsername(username);
+    if (!isBioWithinWordLimit(bio)) {
+      Alert.alert('Biografía', BIO_WORD_LIMIT_ERROR);
+      return;
+    }
     if (!isValidPublicUsername(handle)) {
       Alert.alert(
         'Usuario inválido',
@@ -139,14 +145,11 @@ export default function EditProfileScreen() {
           <Text style={styles.hint}>Tu perfil público será animaldex-web.pages.dev/{username.trim().replace(/^@/, '').toLowerCase() || 'usuario'}</Text>
 
           <Text style={styles.label}>Biografía</Text>
-          <TextInput
+          <BioField
             style={[styles.input, styles.bioInput]}
             value={bio}
             onChangeText={setBio}
-            maxLength={200}
-            multiline
             placeholder="Cuéntanos de ti y tus mascotas..."
-            placeholderTextColor={colors.textMuted}
           />
 
           <Text style={styles.label}>Ubicación</Text>
@@ -159,7 +162,7 @@ export default function EditProfileScreen() {
             placeholderTextColor={colors.textMuted}
           />
 
-          <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading}>
+          <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading || !isBioWithinWordLimit(bio)}>
             {saving ? (
               <ActivityIndicator color="#fff" />
             ) : (

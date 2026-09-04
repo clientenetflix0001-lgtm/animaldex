@@ -307,7 +307,6 @@ export default function PetProfileScreen() {
             )}
           </View>
           {!!waitText && <Text style={styles.waitText}>{waitText}</Text>}
-          {bio !== '' && <Text style={styles.bio}>{bio}</Text>}
         </View>
         <Pressable
           onPress={isMyPet ? changePetPhoto : undefined}
@@ -336,6 +335,7 @@ export default function PetProfileScreen() {
           </PetStatusAvatar>
         </Pressable>
       </View>
+      {bio !== '' && <Text style={styles.bio}>{bio}</Text>}
 
       {/* Stats */}
       <View style={styles.statsCard}>
@@ -661,6 +661,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'left',
     marginTop: spacing.sm,
+    marginHorizontal: spacing.lg,
     lineHeight: 20,
   },
   waitText: {
