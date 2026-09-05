@@ -240,8 +240,9 @@ describe('links / share / OG / QR', () => {
     assert.match(share, /encodeURIComponent\(raw\)/);
     assert.match(share, /\/pet\/\$\{encodeURIComponent\(petId\)\}/);
     assert.equal(petCanonicalPath('nina.pet'), '/nina.pet');
+    assert.equal(`https://animaldex.com${petCanonicalPath('nina.pet')}`, 'https://animaldex.com/nina.pet');
+    assert.equal(`https://animaldex.com${petCanonicalPath('pet-1')}`, 'https://animaldex.com/pet/pet-1');
     assert.equal(`https://animaldex-web.pages.dev${petCanonicalPath('nina.pet')}`, 'https://animaldex-web.pages.dev/nina.pet');
-    assert.equal(`https://animaldex-web.pages.dev${petCanonicalPath('pet-1')}`, 'https://animaldex-web.pages.dev/pet/pet-1');
   });
 
   it('31. WhatsApp/OG usa username nuevo', () => {

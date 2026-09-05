@@ -152,9 +152,10 @@ describe('actividad like / comment', () => {
     assert.equal(shouldCreateReelActivity('owner', 'owner'), false);
     assert.equal(shouldCreateReelActivity('owner', null), false);
     assert.equal(reelActivityPath('reel-1'), '/r/reel-1');
-    assert.equal(reelActivityAbsoluteUrl('reel-1'), 'https://animaldex-web.pages.dev/r/reel-1');
-    assert.doesNotMatch(reelActivityAbsoluteUrl('reel-1'), /animaldex\.com/);
+    assert.equal(reelActivityAbsoluteUrl('reel-1'), 'https://animaldex.com/r/reel-1');
+    assert.doesNotMatch(reelActivityAbsoluteUrl('reel-1'), /www\.animaldex\.com/);
     assert.equal(reelIdFromActivityUrl('https://animaldex-web.pages.dev/r/reel-1'), 'reel-1');
+    assert.equal(reelIdFromActivityUrl('https://animaldex.com/r/reel-1'), 'reel-1');
     const worker = read('worker/index.js');
     assert.match(worker, /type: 'reel_like'/);
     assert.match(worker, /type: 'reel_comment'/);

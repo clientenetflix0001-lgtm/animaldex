@@ -349,7 +349,7 @@ describe('Quiero adoptar', () => {
     const msg = adoptionInquiryMessage('Good', 'good.pet');
     assert.match(msg, /Hola, vi a Good en Animaldex/);
     assert.doesNotMatch(msg, /good\.pet y/);
-    assert.match(msg, /https:\/\/animaldex-web\.pages\.dev\/good\.pet/);
+    assert.match(msg, /https:\/\/animaldex\.com\/good\.pet/);
     assert.match(cardSrc, /petName: res\.petName \|\| card\.name/);
     assert.equal(adoptCtaLabel('macho'), 'Quiero adoptarlo');
     assert.equal(adoptCtaLabel('hembra'), 'Quiero adoptarla');

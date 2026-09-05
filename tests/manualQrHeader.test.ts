@@ -33,7 +33,7 @@ function action(name: string) {
 describe('QR código manual', () => {
   it('1. acepta AAA123', () => {
     assert.equal(parseManualTagCode('AAA123'), 'AAA123');
-    assert.equal(buildTagUrl('AAA123'), 'https://animaldex-web.pages.dev?qr=AAA123');
+    assert.equal(buildTagUrl('AAA123'), 'https://animaldex.com?qr=AAA123');
   });
 
   it('2. acepta aaa123 y normaliza a AAA123', () => {
@@ -81,11 +81,11 @@ describe('QR código manual', () => {
   });
 
   it('9. URL final correcta', () => {
-    assert.equal(APP_WEB_ORIGIN, 'https://animaldex-web.pages.dev');
-    assert.equal(buildTagUrl('AAA123'), 'https://animaldex-web.pages.dev?qr=AAA123');
-    assert.equal(buildTagUrl('PET001'), 'https://animaldex-web.pages.dev?qr=PET001');
+    assert.equal(APP_WEB_ORIGIN, 'https://animaldex.com');
+    assert.equal(buildTagUrl('AAA123'), 'https://animaldex.com?qr=AAA123');
+    assert.equal(buildTagUrl('PET001'), 'https://animaldex.com?qr=PET001');
     assert.match(admin, /Link generado correctamente/);
-    assert.doesNotMatch(admin, /animaldex\.com/);
+    assert.match(admin, /buildTagUrl/);
   });
 
   it('10. QR numérico antiguo sigue funcionando', () => {
@@ -119,9 +119,9 @@ describe('HEADER visual', () => {
     assert.doesNotMatch(pages, /Nimaldex/);
   });
 
-  it('14. URLs no cambian', () => {
-    assert.equal(APP_WEB_ORIGIN, 'https://animaldex-web.pages.dev');
+  it('14. URLs oficiales usan animaldex.com y legacy pages.dev sigue documentado', () => {
+    assert.equal(APP_WEB_ORIGIN, 'https://animaldex.com');
     assert.match(pages, /animaldex-web\.pages\.dev|ANIMALDEX_OG_IMAGE/);
-    assert.doesNotMatch(feed, /animaldex\.com/);
+    assert.doesNotMatch(feed, /www\.animaldex\.com/);
   });
 });
