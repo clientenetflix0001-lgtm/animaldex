@@ -21,6 +21,7 @@ const types = readFileSync(join(root, 'lib/types.ts'), 'utf8');
 const worker = readFileSync(join(root, 'worker/index.js'), 'utf8');
 const adoptionContact = readFileSync(join(root, 'lib/adoptionContact.ts'), 'utf8');
 const createAlert = readFileSync(join(root, 'screens/CreateAlertScreen.tsx'), 'utf8');
+const transferSheet = readFileSync(join(root, 'components/TransferPetSheet.tsx'), 'utf8');
 
 describe('perfil mascota: encabezado compacto', () => {
   it('1. el avatar ya no usa el tamaño gigante anterior', () => {
@@ -128,7 +129,7 @@ describe('copy visible: Refugio → Bienestar Animal', () => {
     assert.match(createSheet, />Bienestar Animal</);
     assert.match(createSheet, /Nueva página de Bienestar Animal/);
     assert.match(petProfile, /Bienestar Animal de \{name\}/);
-    assert.match(petProfile, /página de Bienestar Animal/);
+    assert.match(transferSheet, /página de Bienestar Animal/);
     assert.match(userProfile, /Tienda o Bienestar Animal/);
     assert.match(editPublic, /Localidad de Bienestar Animal/);
     assert.match(publicProfile, /Esta página de Bienestar Animal todavía no cargó mascotas/);

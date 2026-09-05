@@ -137,7 +137,7 @@ export default function TransferPetSheet({
                   }}
                 >
                   <Text style={styles.optionTitle}>Transferir esta mascota a una de mis páginas</Text>
-                  <Text style={styles.optionHint}>Pasa a una Página de Bienestar Animal que administres.</Text>
+                  <Text style={styles.optionHint}>Pasa a una página de Bienestar Animal que administres.</Text>
                 </Pressable>
               ) : (
                 <Pressable style={styles.option} onPress={() => setStep('confirm-personal')}>
