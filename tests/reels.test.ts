@@ -313,7 +313,8 @@ describe('esquema D1: migración vs ensureReelsSchema', () => {
 
 describe('aislamiento Animaldex', () => {
   it('no reutiliza POST /upload ni CreatePost para video', () => {
-    assert.match(createPost, /mediaTypes: \['images'\]/);
+    assert.match(createPost, /GALLERY_IMAGE_PICKER_OPTIONS/);
+    assert.match(readFileSync(join(root, 'lib/galleryImagePicker.ts'), 'utf8'), /mediaTypes: \['images'\]/);
     assert.doesNotMatch(createPost, /createReelUpload/);
     assert.match(createReel, /createReelUpload/);
     assert.match(createReel, /method: 'PUT'/);

@@ -58,7 +58,8 @@ describe('Crear: Publicación | Reel', () => {
 
   it('no modifica CreatePostScreen ni /upload de imágenes', () => {
     const createPost = read('screens/CreatePostScreen.tsx');
-    assert.match(createPost, /mediaTypes: \['images'\]/);
+    assert.match(createPost, /GALLERY_IMAGE_PICKER_OPTIONS/);
+    assert.match(read('lib/galleryImagePicker.ts'), /mediaTypes: \['images'\]/);
     assert.doesNotMatch(createPost, /CreateChooser|createReelUpload|CreateReel/);
   });
 });
