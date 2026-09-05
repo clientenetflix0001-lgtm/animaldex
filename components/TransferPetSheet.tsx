@@ -9,8 +9,12 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import { transferSheetBottomPadding, transferSheetScrollPadding } from '../lib/transferSheetLayout';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { db } from '../lib/db';
 import {
@@ -50,6 +54,9 @@ export default function TransferPetSheet({
   onClose,
   onTransferred,
 }: Props) {
+  const insets = useSafeAreaInsets();
+  const sheetPad = transferSheetBottomPadding(insets);
+  const scrollPad = transferSheetScrollPadding();
   const protectorPages = useMemo(() => transferablePages(pages), [pages]);
   const [step, setStep] = useState<Step>('menu');
   const [selectedPage, setSelectedPage] = useState<PublicProfile | null>(null);
@@ -112,8 +119,14 @@ export default function TransferPetSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
-      <Pressable style={styles.backdrop} onPress={close} />
-      <View style={styles.sheet}>
+      <KeyboardAvoidingView
+        style={styles.avoid}
+        behavior="padding"
+        enabled={Platform.OS !== 'web'}
+        keyboardVerticalOffset={0}
+      >
+        <Pressable style={styles.backdrop} onPress={close} />
+        <View style={[styles.sheet, { paddingBottom: sheetPad }]}>
         <View style={styles.handle} />
         <View style={styles.headerRow}>
           <Text style={styles.title}>{title}</Text>
@@ -122,7 +135,12 @@ export default function TransferPetSheet({
           </Pressable>
         </View>
 
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: spacing.xl }}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          contentContainerStyle={{ paddingBottom: scrollPad }}
+        >
           {step === 'menu' && (
             <View style={{ gap: spacing.sm }}>
               {isPersonal ? (
@@ -269,13 +287,18 @@ export default function TransferPetSheet({
 
           {!!error && <Text style={styles.error}>{error}</Text>}
         </ScrollView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  avoid: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
   sheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius.lg,
