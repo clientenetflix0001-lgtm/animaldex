@@ -316,7 +316,7 @@ export default function PetProfileScreen() {
         >
           <PetStatusAvatar
             uri={thumb(avatarUri, 200)}
-            size={96}
+            size={98}
             status={realPet?.careStatus}
           >
             {uploadingPhoto && (
@@ -615,7 +615,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: 42,
+    borderRadius: 49,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',

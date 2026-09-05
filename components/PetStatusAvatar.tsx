@@ -45,7 +45,7 @@ function PetStatusAvatar({ uri, size, status, children }: Props) {
   const hole = size + PET_STATUS_RING_GAP * 2;
 
   return (
-    <View style={{ width: outer, height: outer, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: outer, height: outer, alignItems: 'center', justifyContent: 'center', overflow: 'visible' }}>
       {palette ? (
         <Animated.View
           pointerEvents="none"
@@ -74,23 +74,25 @@ function PetStatusAvatar({ uri, size, status, children }: Props) {
           },
         ]}
       >
-        <View style={{ width: size, height: size }}>
-          <Image
-            source={{ uri }}
-            style={{
-              width: size,
-              height: size,
-              borderRadius: photoRadius,
-              backgroundColor: colors.border,
-              borderWidth: palette ? 0 : 3,
-              borderColor: colors.primarysoft,
-            }}
-            contentFit="cover"
-            transition={250}
-          />
+        <Image
+          source={{ uri }}
+          style={{
+            width: size,
+            height: size,
+            borderRadius: photoRadius,
+            backgroundColor: colors.border,
+            borderWidth: palette ? 0 : 3,
+            borderColor: colors.primarysoft,
+          }}
+          contentFit="cover"
+          transition={250}
+        />
+      </View>
+      {children ? (
+        <View pointerEvents="box-none" style={[styles.badgeLayer, { width: size, height: size }]}>
           {children}
         </View>
-      </View>
+      ) : null}
     </View>
   );
 }
@@ -101,10 +103,17 @@ const styles = StyleSheet.create({
   ringDisk: {
     position: 'absolute',
     overflow: 'hidden',
+    zIndex: 1,
   },
   photoWrap: {
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    zIndex: 2,
+  },
+  badgeLayer: {
+    position: 'absolute',
+    zIndex: 5,
+    elevation: 8,
   },
 });

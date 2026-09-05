@@ -3,7 +3,7 @@ import { colors } from './theme.ts';
 
 /** Una vuelta del aro, en ms. Lenta y lineal para que se lea como Stories, no como alarma. */
 export const PET_STATUS_RING_MS = 4000;
-export const PET_STATUS_RING_WIDTH = 3;
+export const PET_STATUS_RING_WIDTH = 4;
 export const PET_STATUS_RING_GAP = 2;
 
 export const PET_STATUS_RING_GREEN = ['#28C76F', '#39D37A', '#8AF0AD', '#47E68A'] as const;

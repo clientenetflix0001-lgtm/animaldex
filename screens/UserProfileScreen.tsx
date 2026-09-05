@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     gap: spacing.xl,
   },
-  avatar: { width: 96, height: 96, borderRadius: 48, borderWidth: 3, borderColor: colors.primarysoft, backgroundColor: colors.border },
+  avatar: { width: 98, height: 98, borderRadius: 49, borderWidth: 3, borderColor: colors.primarysoft, backgroundColor: colors.border },
   stats: { flex: 1, flexDirection: 'row' },
   bioBlock: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
