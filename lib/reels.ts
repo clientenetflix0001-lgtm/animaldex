@@ -22,6 +22,7 @@
  * ensureReelsSchema no aplica SQL salvo REELS_SCHEMA_APPLY=1.
  */
 
+import { PUBLIC_WEB_ORIGIN } from './publicWeb.ts';
 import { normalizeLocalFileUri } from './reelUri.ts';
 
 export const REEL_MAX_DURATION_SEC = 30;
@@ -42,7 +43,7 @@ export const REEL_WEBHOOK_SKEW_MS = 5 * 60 * 1000;
 export const REEL_SCROLL_DEBOUNCE_MS = 120;
 export const REEL_ACTIVE_BUFFER_SEC = 4;
 export const REEL_PRELOAD_BUFFER_SEC = 1.5;
-export const REEL_PUBLIC_ORIGIN = 'https://animaldex-web.pages.dev';
+export const REEL_PUBLIC_ORIGIN = PUBLIC_WEB_ORIGIN;
 
 export const REEL_STATUSES = [
   'uploading',

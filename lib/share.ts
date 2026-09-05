@@ -1,6 +1,7 @@
 import { Platform, Share } from 'react-native';
 import { Post, PETS, hashStr, makePost } from './data';
 import { isValidPetUsername } from './petHandles.ts';
+import { PUBLIC_WEB_ORIGIN } from './publicWeb.ts';
 
 // ---------- Base64 URL-safe (UTF-8) ----------
 const B64C = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -155,17 +156,9 @@ export function postNavParams(post: Post): { postId: string; d?: string } {
     : { postId: post.id };
 }
 
-// En web siempre se usa el dominio real donde est\u00e1 publicada la app
-// (funciona autom\u00e1ticamente con tu dominio propio cuando lo conectes).
-// FALLBACK_ORIGIN solo aplica en la app nativa (iOS/Android): es el
-// dominio que se usa al generar links para compartir desde el celular.
-const FALLBACK_ORIGIN = 'https://animaldex-web.pages.dev';
-
+/** Origen canónico de share. Nunca pages.dev ni www. */
 export function siteOrigin(): string {
-  if (typeof window !== 'undefined' && window.location?.origin?.startsWith('http')) {
-    return window.location.origin;
-  }
-  return FALLBACK_ORIGIN;
+  return PUBLIC_WEB_ORIGIN;
 }
 
 export function postShareUrl(post: Post): string {

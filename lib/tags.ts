@@ -1,9 +1,9 @@
-const FALLBACK_ORIGIN = 'https://animaldex-web.pages.dev';
+import { PUBLIC_WEB_ORIGIN, publicWebUrl } from './publicWeb.ts';
+
 export function appWebOrigin(): string {
-  if (typeof window !== 'undefined' && window.location?.origin?.startsWith('http')) return window.location.origin;
-  return FALLBACK_ORIGIN;
+  return PUBLIC_WEB_ORIGIN;
 }
-export const APP_WEB_ORIGIN = FALLBACK_ORIGIN;
+export const APP_WEB_ORIGIN = PUBLIC_WEB_ORIGIN;
 
 export const TAG_CODE_INVALID = 'El código debe tener hasta 6 letras o números.';
 export const TAG_CODE_TAKEN = 'Este código QR ya está en uso.';
@@ -28,7 +28,7 @@ export function parseIncomingTagCode(raw: unknown): string | null {
 }
 
 export function buildTagUrl(code: string | number): string {
-  return `${APP_WEB_ORIGIN}?qr=${encodeURIComponent(String(code))}`;
+  return publicWebUrl(`?qr=${encodeURIComponent(String(code))}`);
 }
 
 export function extractTagCode(url: string | null | undefined): string | null {

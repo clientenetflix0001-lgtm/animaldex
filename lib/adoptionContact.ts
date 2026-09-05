@@ -1,12 +1,13 @@
 import { normalizePhone } from './phone.ts';
 import { petCanonicalPath } from './petHandles.ts';
+import { PUBLIC_WEB_ORIGIN } from './publicWeb.ts';
 
 export const ADOPTION_CONTACT_REQUIRED =
   'Agregá un número de WhatsApp o teléfono para recibir solicitudes de adopción.';
 export const ADOPTION_CONTACT_MISSING =
   'Esta página de Bienestar Animal todavía no agregó un medio de contacto para solicitudes de adopción.';
 export const ADOPTION_CONTACT_INVALID = 'El número de WhatsApp o teléfono no es válido.';
-export const ADOPTION_SITE_ORIGIN = 'https://animaldex-web.pages.dev';
+export const ADOPTION_SITE_ORIGIN = PUBLIC_WEB_ORIGIN;
 
 export type AdoptionContactFields = {
   adoptionWhatsapp?: string | null;

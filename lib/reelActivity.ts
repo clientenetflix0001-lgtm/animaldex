@@ -1,4 +1,6 @@
-const REEL_PUBLIC_ORIGIN = 'https://animaldex-web.pages.dev';
+import { PUBLIC_WEB_ORIGIN } from './publicWeb.ts';
+
+const REEL_PUBLIC_ORIGIN = PUBLIC_WEB_ORIGIN;
 
 export const REEL_LIKE_ACTIVITY_TYPE = 'reel_like' as const;
 export const REEL_COMMENT_ACTIVITY_TYPE = 'reel_comment' as const;
