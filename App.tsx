@@ -24,6 +24,7 @@ import UserProfileScreen from './screens/UserProfileScreen';
 import PublicProfileScreen from './screens/PublicProfileScreen';
 import EditPublicProfileScreen from './screens/EditPublicProfileScreen';
 import PetProfileScreen from './screens/PetProfileScreen';
+import PetTransferRequestScreen from './screens/PetTransferRequestScreen';
 import PostDetailScreen from './screens/PostDetailScreen';
 import VerifyPhoneScreen from './screens/VerifyPhoneScreen';
 import AuthScreen from './screens/AuthScreen';
@@ -257,6 +258,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       Explorar: 'explorar',
       PostDetail: 'p/:postId',
       PetProfile: 'pet/:petId',
+      PetTransferRequest: 'transfer/:requestId',
       PublicProfile: ':username',
       EditPublicProfile: 'editar-perfil-publico',
       VerifyPhone: 'verificar',
@@ -285,6 +287,14 @@ const linking: LinkingOptions<RootStackParamList> = {
         routes: [
           { name: 'Tabs' },
           { name: 'PetProfile', params: target.params },
+        ],
+      };
+    }
+    if (target?.screen === 'PetTransferRequest') {
+      return {
+        routes: [
+          { name: 'Tabs' },
+          { name: 'PetTransferRequest', params: target.params },
         ],
       };
     }
@@ -460,6 +470,7 @@ function RootNavigator() {
         options={{ title: 'Explorar', ...screenHeaderOptions }}
       />
       <Stack.Screen name="PetProfile" component={PetProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="PetTransferRequest" component={PetTransferRequestScreen} options={{ headerShown: false }} />
       <Stack.Screen name="UserProfile" component={UserProfileRoute} options={{ headerShown: false }} />
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen

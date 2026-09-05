@@ -323,7 +323,7 @@ export interface ApiTag {
 
 export interface ApiNotification {
   id: string;
-  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday' | 'reel_like' | 'reel_comment';
+  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday' | 'reel_like' | 'reel_comment' | 'pet_transfer_requested' | 'pet_transfer_accepted' | 'pet_transfer_rejected';
   actorId: string | null;
   actorName: string;
   actorUsername: string;
@@ -335,6 +335,7 @@ export interface ApiNotification {
   petUsername?: string | null;
   petName?: string;
   petEmoji?: string;
+  requestId?: string | null;
   title?: string;
   text?: string;
   years?: number | null;
@@ -343,6 +344,26 @@ export interface ApiNotification {
   accuracy?: number | null;
   smsStatus?: string;
   createdAt: number;
+}
+
+export interface ApiTransferUser {
+  id: string;
+  username: string | null;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+export interface ApiPetTransferRequest {
+  id: string;
+  petId: string;
+  senderUserId: string;
+  sourceProfileId: string | null;
+  recipientUserId: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  createdAt: number;
+  respondedAt: number | null;
+  completedAt: number | null;
+  cancelledAt: number | null;
 }
 
 // ---------- Auth ----------
@@ -509,6 +530,39 @@ export const db = {
     call('/db', { action: 'updatePet', petId, ...fields }),
   archivePet: (petId: string): Promise<{ ok: boolean }> => call('/db', { action: 'archivePet', petId }),
   deletePet: (petId: string): Promise<{ ok: boolean }> => call('/db', { action: 'deletePet', petId }),
+  transferPetInternal: (
+    petId: string,
+    target: 'page' | 'personal',
+    profileId?: string
+  ): Promise<{ ok: boolean; pet: ApiPet; adoptedIncrement: boolean }> =>
+    call('/db', { action: 'transferPetInternal', petId, target, profileId }),
+  lookupTransferRecipient: (identifier: string): Promise<{ ok: boolean; user: ApiTransferUser }> =>
+    call('/db', { action: 'lookupTransferRecipient', identifier }),
+  createPetTransferRequest: (
+    petId: string,
+    identifier: string
+  ): Promise<{ ok: boolean; request: ApiPetTransferRequest; user: ApiTransferUser }> =>
+    call('/db', { action: 'createPetTransferRequest', petId, identifier }),
+  respondPetTransfer: (
+    requestId: string,
+    decision: 'accept' | 'reject'
+  ): Promise<{ ok: boolean; request: ApiPetTransferRequest; pet?: ApiPet; adoptedIncrement?: boolean }> =>
+    call('/db', { action: 'respondPetTransfer', requestId, decision }),
+  cancelPetTransferRequest: (requestId: string): Promise<{ ok: boolean; request: ApiPetTransferRequest }> =>
+    call('/db', { action: 'cancelPetTransferRequest', requestId }),
+  petTransferDetail: (
+    requestId: string
+  ): Promise<{
+    ok: boolean;
+    request: ApiPetTransferRequest;
+    pet: ApiPet | null;
+    sender: ApiTransferUser | null;
+    sourcePageName: string | null;
+  }> => call('/db', { action: 'petTransferDetail', requestId }),
+  pendingPetTransfer: (
+    petId: string
+  ): Promise<{ ok: boolean; request: ApiPetTransferRequest | null; recipient?: ApiTransferUser | null }> =>
+    call('/db', { action: 'pendingPetTransfer', petId }),
   setPhone: (phone: string | null, ticket?: string) =>
     call('/db', { action: 'setPhone', phone, ticket: ticket || undefined }),
   registerImage: (url: string, cfId?: string, kind?: string) =>

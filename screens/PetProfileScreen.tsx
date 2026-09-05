@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -45,7 +45,10 @@ import type { PublicProfile } from '../features/profiles/profileTypes';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 import { openHumanProfile } from '../lib/publicHandles';
 import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
-import type { ApiReel } from '../lib/db';
+import type { ApiReel, ApiPetTransferRequest, ApiTransferUser } from '../lib/db';
+import TransferPetSheet from '../components/TransferPetSheet';
+import { pendingBannerCopy } from '../lib/petTransfer';
+import { useProfiles } from '../features/profiles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'PetProfile'>;
@@ -56,6 +59,7 @@ export default function PetProfileScreen() {
   const { width } = useWindowDimensions();
   const { desktopWeb } = useBreakpoint();
   const { followedPets, toggleFollowPet, user, refreshMyPets, deletedPostIds, editedCaptions } = useStore();
+  const { profiles } = useProfiles();
   const { guest, cameFromLink, requireLogin, inviteBar, closeExternal, goBackOrClose } = useGuestAccess();
 
   const petId = route.params.petId;
@@ -73,6 +77,9 @@ export default function PetProfileScreen() {
   const [locationDone, setLocationDone] = useState(false);
   const [galleryTab, setGalleryTab] = useState<'posts' | 'reels'>('posts');
   const [qrLostOpen, setQrLostOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [pendingTransfer, setPendingTransfer] = useState<ApiPetTransferRequest | null>(null);
+  const [pendingRecipient, setPendingRecipient] = useState<ApiTransferUser | null>(null);
   const qrLostArmed = useRef(false);
 
   useEffect(() => {
@@ -94,8 +101,39 @@ export default function PetProfileScreen() {
     })();
   }, [petId, demoPet]);
 
+  const reloadPet = useCallback(async () => {
+    if (demoPet) return;
+    try {
+      const [prof, petPosts] = await Promise.all([db.petProfile(petId), db.petPosts(petId)]);
+      setRealPet(prof.pet);
+      setRealOwner(prof.owner);
+      setShelter(prof.shelter || null);
+      setRealStats(prof.stats);
+      setPosts(petPosts.posts.map(apiPostToPost));
+    } catch {}
+  }, [demoPet, petId]);
+
   const following = followedPets.includes(petId);
   const isMyPet = !demoPet && !!realPet && realPet.userId === user?.id;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isMyPet || !realPet?.id) {
+        setPendingTransfer(null);
+        setPendingRecipient(null);
+        return;
+      }
+      db.pendingPetTransfer(realPet.id)
+        .then((res) => {
+          setPendingTransfer(res.request);
+          setPendingRecipient(res.recipient || null);
+        })
+        .catch(() => {
+          setPendingTransfer(null);
+          setPendingRecipient(null);
+        });
+    }, [isMyPet, realPet?.id])
+  );
 
   useEffect(() => {
     if (qrLostArmed.current) return;
@@ -357,6 +395,35 @@ export default function PetProfileScreen() {
         />
       </View>
 
+      {isMyPet && pendingTransfer && (
+        <View style={styles.pendingBanner}>
+          <Text style={styles.pendingTitle}>Transferencia pendiente</Text>
+          <Text style={styles.pendingHint}>{pendingBannerCopy(pendingRecipient?.name || pendingRecipient?.username)}</Text>
+          <Pressable
+            onPress={() => {
+              Alert.alert('Cancelar solicitud', '¿Cancelar la transferencia pendiente?', [
+                { text: 'No', style: 'cancel' },
+                {
+                  text: 'Cancelar solicitud',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await db.cancelPetTransferRequest(pendingTransfer.id);
+                      setPendingTransfer(null);
+                      setPendingRecipient(null);
+                    } catch (e: any) {
+                      Alert.alert('Error', e?.message || 'No se pudo cancelar');
+                    }
+                  },
+                },
+              ]);
+            }}
+          >
+            <Text style={styles.pendingCancel}>Cancelar solicitud</Text>
+          </Pressable>
+        </View>
+      )}
+
       {isMyPet && (
         <View style={styles.adminRow}>
           <Pressable
@@ -365,34 +432,18 @@ export default function PetProfileScreen() {
           >
             <Text style={styles.adminText}>Editar</Text>
           </Pressable>
-          {isProtectorPet && (
-            <Pressable
-              style={styles.adminBtn}
-              onPress={() => {
-                Alert.alert(
-                  'Archivar',
-                  `¿Archivar a ${name}? El perfil se conserva, pero deja de verse en la página de Bienestar Animal.`,
-                  [
-                    { text: 'Cancelar', style: 'cancel' },
-                    {
-                      text: 'Archivar',
-                      onPress: async () => {
-                        try {
-                          await db.archivePet(realPet?.id || petId);
-                          await refreshMyPets();
-                          navigation.goBack();
-                        } catch (e: any) {
-                          Alert.alert('Error', e?.message || 'No se pudo archivar');
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <Text style={styles.adminText}>Archivar</Text>
-            </Pressable>
-          )}
+          <Pressable
+            style={styles.adminBtn}
+            onPress={() => {
+              if (pendingTransfer) {
+                Alert.alert('Transferencia pendiente', 'Esta mascota ya tiene una transferencia pendiente.');
+                return;
+              }
+              setTransferOpen(true);
+            }}
+          >
+            <Text style={styles.adminText}>Transferir</Text>
+          </Pressable>
           <Pressable
             style={styles.adminBtn}
             onPress={() => {
@@ -422,6 +473,29 @@ export default function PetProfileScreen() {
           </Pressable>
         </View>
       )}
+
+      <TransferPetSheet
+        visible={transferOpen}
+        petId={realPet?.id || petId}
+        petName={name}
+        isPersonal={!shelter}
+        pageName={shelter?.name}
+        pages={profiles}
+        onClose={() => setTransferOpen(false)}
+        onTransferred={async () => {
+          setTransferOpen(false);
+          await refreshMyPets();
+          await reloadPet();
+          if (realPet?.id) {
+            db.pendingPetTransfer(realPet.id)
+              .then((res) => {
+                setPendingTransfer(res.request);
+                setPendingRecipient(res.recipient || null);
+              })
+              .catch(() => {});
+          }
+        }}
+      />
 
       {/* Owner / refugio */}
       {shelter ? (
@@ -672,20 +746,32 @@ const styles = StyleSheet.create({
   },
   adminRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: 6,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.md,
   },
   adminBtn: {
     flex: 1,
+    minWidth: 0,
     borderRadius: radius.full,
     borderWidth: 1.5,
     borderColor: colors.border,
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
     backgroundColor: colors.card,
   },
-  adminText: { fontWeight: '700', fontSize: 12, color: colors.text },
+  adminText: { fontWeight: '700', fontSize: 11, color: colors.text },
+  pendingBanner: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    backgroundColor: colors.primarysoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  pendingTitle: { fontSize: 13, fontWeight: '800', color: colors.text },
+  pendingHint: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  pendingCancel: { fontSize: 12, fontWeight: '800', color: colors.primary, marginTop: 8 },
   statsCard: {
     flexDirection: 'row',
     alignItems: 'center',
