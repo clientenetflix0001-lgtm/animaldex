@@ -91,6 +91,23 @@ import {
   parseManualTagCode,
 } from '../lib/tags.ts';
 import { acceptedBio } from '../lib/bio.ts';
+import {
+  PET_TRANSFER_FORBIDDEN,
+  PET_TRANSFER_IDENTIFIER_ERROR,
+  PET_TRANSFER_PAGE_FORBIDDEN,
+  PET_TRANSFER_PAGE_REQUIRED,
+  PET_TRANSFER_PENDING_EXISTS,
+  PET_TRANSFER_SELF_ERROR,
+  PET_TRANSFER_STALE,
+  PET_TRANSFER_USER_NOT_FOUND,
+  countsAsPageAdoption,
+  remappedCareStatus,
+  sameOwnerSnapshot,
+  transferAcceptedCopy,
+  transferLookupAllowed,
+  transferRejectedCopy,
+  transferRequestedCopy,
+} from '../lib/petTransfer.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -266,7 +283,28 @@ async function ensureProfilesSchema(env) {
   )`);
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pet_transfers_from ON pet_transfers (from_profile_id)');
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pet_transfers_pet ON pet_transfers (pet_id)');
+  await ensurePetTransferRequestsSchema(env);
   env._profilesReady = true;
+}
+
+async function ensurePetTransferRequestsSchema(env) {
+  if (env._petTransferRequestsReady) return;
+  await d1(env, `CREATE TABLE IF NOT EXISTS pet_transfer_requests (
+    id TEXT PRIMARY KEY,
+    pet_id TEXT NOT NULL,
+    sender_user_id TEXT NOT NULL,
+    source_profile_id TEXT,
+    recipient_user_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    responded_at INTEGER,
+    completed_at INTEGER,
+    cancelled_at INTEGER
+  )`);
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_ptr_recipient_status ON pet_transfer_requests (recipient_user_id, status)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_ptr_sender_status ON pet_transfer_requests (sender_user_id, status)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_ptr_pet_status ON pet_transfer_requests (pet_id, status)');
+  env._petTransferRequestsReady = true;
 }
 
 // Keep in sync with lib/publicHandles.ts and cf-pages-worker.src.js
@@ -275,7 +313,8 @@ const RESERVED_PUBLIC_USERNAMES = new Set([
   'marketplace', 'mercado', 'admin', 'api', 'crear', 'mascotas', 'actividad', 'perfil', 'explorar',
   'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
   'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
-  'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
+  'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mercado-favoritos', 'transfer',
+  'favicon.ico', 'robots.txt',
   'well-known',
 ]);
 
@@ -1339,6 +1378,87 @@ async function findOwnedPet(env, petId, userId) {
   if (!id) return null;
   const rows = await d1(env, 'SELECT * FROM pets WHERE (id = ? OR LOWER(username) = LOWER(?)) AND user_id = ? LIMIT 1', [id, id, userId]);
   return rows[0] || null;
+}
+
+function publicTransferUser(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    username: row.username || null,
+    name: row.name || row.username || null,
+    avatarUrl: row.avatar_url || null,
+  };
+}
+
+function transferRequestRow(r) {
+  return {
+    id: r.id,
+    petId: r.pet_id,
+    senderUserId: r.sender_user_id,
+    sourceProfileId: r.source_profile_id || null,
+    recipientUserId: r.recipient_user_id,
+    status: r.status,
+    createdAt: r.created_at,
+    respondedAt: r.responded_at || null,
+    completedAt: r.completed_at || null,
+    cancelledAt: r.cancelled_at || null,
+  };
+}
+
+async function findTransferRecipient(env, raw) {
+  const classified = classifyIdentifier(raw);
+  if (!transferLookupAllowed(classified.kind)) {
+    return { error: PET_TRANSFER_IDENTIFIER_ERROR };
+  }
+  let rows = [];
+  if (classified.kind === 'email') {
+    rows = await d1(env, 'SELECT * FROM users WHERE email IS NOT NULL AND LOWER(email) = ?', [classified.value]);
+  } else {
+    rows = await findUsersByPhone(env, classified.value);
+  }
+  if (!rows[0]) return { error: PET_TRANSFER_USER_NOT_FOUND };
+  return { user: rows[0] };
+}
+
+async function recordTransferActivity(env, input) {
+  await ensureActivityEventsSchema(env);
+  await d1(
+    env,
+    `INSERT OR IGNORE INTO activity_events
+      (id, type, user_id, pet_id, idempotency_key, title, body, metadata, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      input.id,
+      input.type,
+      input.userId,
+      input.petId,
+      input.idempotencyKey,
+      input.title,
+      input.body,
+      JSON.stringify(input.metadata || {}),
+      input.now,
+    ]
+  ).catch(() => {});
+  await notifyUserPush(env, {
+    userId: input.userId,
+    type: 'adoption',
+    idempotencyKey: `push:${input.idempotencyKey}`,
+    nowMs: input.now,
+    buildMessage: (token) => ({
+      to: token,
+      title: input.title,
+      body: input.body,
+      sound: 'default',
+      priority: 'default',
+      channelId: 'mascotas',
+      data: {
+        type: 'pet_transfer',
+        requestId: input.requestId,
+        petId: input.petId,
+        url: `/transfer/${input.requestId}`,
+      },
+    }),
+  }).catch(() => {});
 }
 
 const POST_SELECT = `
@@ -3034,6 +3154,249 @@ async function handleDb(request, env) {
       return json({ ok: true, petId: p.id });
     }
 
+    if (action === 'transferPetInternal') {
+      await ensurePetTransferRequestsSchema(env);
+      const p = await findOwnedPet(env, body.petId, userId);
+      if (!p) return json({ error: PET_TRANSFER_FORBIDDEN }, 403);
+      const target = clean(body.target, 20);
+      if (target === 'page') {
+        const profileId = clean(body.profileId, 80);
+        if (!profileId) return json({ error: PET_TRANSFER_PAGE_REQUIRED }, 400);
+        const owned = await d1(env, "SELECT id, type FROM profiles WHERE id = ? AND account_id = ?", [profileId, userId]);
+        if (!owned[0] || owned[0].type !== 'protector') {
+          return json({ error: PET_TRANSFER_PAGE_FORBIDDEN }, 403);
+        }
+        const mapped = remappedCareStatus(p.care_status, 'page');
+        const adoptionStartedAt = mapped.careStatus === 'en_adopcion'
+          ? (mapped.keepExistingAdoptionStart ? (p.adoption_started_at || now) : now)
+          : null;
+        await d1(
+          env,
+          'UPDATE pets SET profile_id = ?, care_status = ?, adoption_started_at = ? WHERE id = ? AND user_id = ?',
+          [profileId, mapped.careStatus, adoptionStartedAt, p.id, userId]
+        );
+      } else if (target === 'personal') {
+        if (!p.profile_id) return json({ error: 'Esta mascota ya está en Mis mascotas' }, 400);
+        const mapped = remappedCareStatus(p.care_status, 'personal');
+        await d1(
+          env,
+          'UPDATE pets SET profile_id = NULL, care_status = ?, adoption_started_at = NULL WHERE id = ? AND user_id = ?',
+          [mapped.careStatus, p.id, userId]
+        );
+      } else {
+        return json({ error: 'Destino inválido' }, 400);
+      }
+      await d1(
+        env,
+        "UPDATE pet_transfer_requests SET status = 'cancelled', cancelled_at = ? WHERE pet_id = ? AND status = 'pending'",
+        [now, p.id]
+      ).catch(() => {});
+      const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [p.id]);
+      return json({ ok: true, pet: petRow(rows[0]), adoptedIncrement: false });
+    }
+
+    if (action === 'lookupTransferRecipient') {
+      const found = await findTransferRecipient(env, body.identifier);
+      if (found.error) return json({ error: found.error }, found.error === PET_TRANSFER_USER_NOT_FOUND ? 404 : 400);
+      if (found.user.id === userId) return json({ error: PET_TRANSFER_SELF_ERROR }, 400);
+      return json({ ok: true, user: publicTransferUser(found.user) });
+    }
+
+    if (action === 'createPetTransferRequest') {
+      await ensurePetTransferRequestsSchema(env);
+      const p = await findOwnedPet(env, body.petId, userId);
+      if (!p) return json({ error: PET_TRANSFER_FORBIDDEN }, 403);
+      const found = await findTransferRecipient(env, body.identifier);
+      if (found.error) return json({ error: found.error }, found.error === PET_TRANSFER_USER_NOT_FOUND ? 404 : 400);
+      if (found.user.id === userId) return json({ error: PET_TRANSFER_SELF_ERROR }, 400);
+      const pending = await d1(env, "SELECT id FROM pet_transfer_requests WHERE pet_id = ? AND status = 'pending' LIMIT 1", [p.id]);
+      if (pending[0]) return json({ error: PET_TRANSFER_PENDING_EXISTS }, 409);
+      const id = `ptr-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(
+        env,
+        `INSERT INTO pet_transfer_requests
+          (id, pet_id, sender_user_id, source_profile_id, recipient_user_id, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+        [id, p.id, userId, p.profile_id || null, found.user.id, now]
+      );
+      const sender = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [userId]);
+      const senderName = (sender[0] && (sender[0].name || sender[0].username)) || 'Alguien';
+      const copy = transferRequestedCopy(senderName, p.name);
+      await recordTransferActivity(env, {
+        id: `act-${id}-req`,
+        type: 'pet_transfer_requested',
+        userId: found.user.id,
+        petId: p.id,
+        requestId: id,
+        idempotencyKey: `pet-transfer-requested:${id}`,
+        title: copy.title,
+        body: copy.body,
+        now,
+        metadata: { requestId: id, petName: p.name, petUsername: p.username, petAvatar: p.avatar_url, senderName },
+      });
+      const rows = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [id]);
+      return json({ ok: true, request: transferRequestRow(rows[0]), user: publicTransferUser(found.user) });
+    }
+
+    if (action === 'respondPetTransfer') {
+      await ensurePetTransferRequestsSchema(env);
+      const requestId = clean(body.requestId, 80);
+      const decision = clean(body.decision, 20);
+      const rows = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [requestId]);
+      const req = rows[0];
+      if (!req) return json({ error: PET_TRANSFER_STALE }, 404);
+      if (req.recipient_user_id !== userId) return json({ error: 'No podés responder esta solicitud' }, 403);
+      if (req.status !== 'pending') return json({ error: PET_TRANSFER_STALE }, 409);
+      const petRows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [req.pet_id]);
+      const pet = petRows[0];
+      if (!pet) return json({ error: PET_TRANSFER_STALE }, 409);
+      if (decision === 'reject') {
+        await d1(
+          env,
+          "UPDATE pet_transfer_requests SET status = 'rejected', responded_at = ? WHERE id = ? AND status = 'pending'",
+          [now, req.id]
+        );
+        const actor = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [userId]);
+        const who = (actor[0] && (actor[0].username || actor[0].name)) || 'El usuario';
+        const copy = transferRejectedCopy(who, pet.name);
+        await recordTransferActivity(env, {
+          id: `act-${req.id}-rej`,
+          type: 'pet_transfer_rejected',
+          userId: req.sender_user_id,
+          petId: pet.id,
+          requestId: req.id,
+          idempotencyKey: `pet-transfer-rejected:${req.id}`,
+          title: copy.title,
+          body: copy.body,
+          now,
+          metadata: { requestId: req.id, petName: pet.name, petUsername: pet.username },
+        });
+        const updated = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [req.id]);
+        return json({ ok: true, request: transferRequestRow(updated[0]), pet: petRow(pet) });
+      }
+      if (decision !== 'accept') return json({ error: 'Decisión inválida' }, 400);
+      if (!sameOwnerSnapshot(
+        { userId: pet.user_id, profileId: pet.profile_id },
+        { senderUserId: req.sender_user_id, sourceProfileId: req.source_profile_id }
+      )) {
+        return json({ error: PET_TRANSFER_STALE }, 409);
+      }
+      const mapped = remappedCareStatus(pet.care_status, 'personal');
+      const statements = [
+        env.DB.prepare('UPDATE pets SET user_id = ?, profile_id = NULL, care_status = ?, adoption_started_at = NULL WHERE id = ?').bind(userId, mapped.careStatus, pet.id),
+        env.DB.prepare(
+          "UPDATE pet_transfer_requests SET status = 'accepted', responded_at = ?, completed_at = ? WHERE id = ? AND status = 'pending'"
+        ).bind(now, now, req.id),
+      ];
+      if (countsAsPageAdoption({ sourceProfileId: req.source_profile_id, kind: 'external' })) {
+        const histId = `pt-${now}-${Math.random().toString(36).slice(2, 8)}`;
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO pet_transfers (id, pet_id, from_profile_id, from_user_id, to_user_id, to_profile_id, created_at)
+             VALUES (?, ?, ?, ?, ?, NULL, ?)`
+          ).bind(histId, pet.id, req.source_profile_id, req.sender_user_id, userId, now)
+        );
+      }
+      if (typeof env.DB.batch === 'function') {
+        await env.DB.batch(statements);
+      } else {
+        await d1(env, 'UPDATE pets SET user_id = ?, profile_id = NULL, care_status = ?, adoption_started_at = NULL WHERE id = ?', [userId, mapped.careStatus, pet.id]);
+        await d1(
+          env,
+          "UPDATE pet_transfer_requests SET status = 'accepted', responded_at = ?, completed_at = ? WHERE id = ? AND status = 'pending'",
+          [now, now, req.id]
+        );
+        if (countsAsPageAdoption({ sourceProfileId: req.source_profile_id, kind: 'external' })) {
+          const histId = `pt-${now}-${Math.random().toString(36).slice(2, 8)}`;
+          await d1(
+            env,
+            `INSERT INTO pet_transfers (id, pet_id, from_profile_id, from_user_id, to_user_id, to_profile_id, created_at)
+             VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+            [histId, pet.id, req.source_profile_id, req.sender_user_id, userId, now]
+          );
+        }
+      }
+      const actor = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [userId]);
+      const who = (actor[0] && (actor[0].username || actor[0].name)) || 'El usuario';
+      const copy = transferAcceptedCopy(who, pet.name);
+      await recordTransferActivity(env, {
+        id: `act-${req.id}-acc`,
+        type: 'pet_transfer_accepted',
+        userId: req.sender_user_id,
+        petId: pet.id,
+        requestId: req.id,
+        idempotencyKey: `pet-transfer-accepted:${req.id}`,
+        title: copy.title,
+        body: copy.body,
+        now,
+        metadata: { requestId: req.id, petName: pet.name, petUsername: pet.username },
+      });
+      const nextPet = await d1(env, 'SELECT * FROM pets WHERE id = ?', [pet.id]);
+      const nextReq = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [req.id]);
+      return json({
+        ok: true,
+        request: transferRequestRow(nextReq[0]),
+        pet: petRow(nextPet[0]),
+        adoptedIncrement: countsAsPageAdoption({ sourceProfileId: req.source_profile_id, kind: 'external' }),
+      });
+    }
+
+    if (action === 'cancelPetTransferRequest') {
+      await ensurePetTransferRequestsSchema(env);
+      const requestId = clean(body.requestId, 80);
+      const rows = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [requestId]);
+      const req = rows[0];
+      if (!req) return json({ error: PET_TRANSFER_STALE }, 404);
+      if (req.sender_user_id !== userId) return json({ error: PET_TRANSFER_FORBIDDEN }, 403);
+      if (req.status !== 'pending') return json({ error: PET_TRANSFER_STALE }, 409);
+      await d1(
+        env,
+        "UPDATE pet_transfer_requests SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND status = 'pending'",
+        [now, req.id]
+      );
+      const updated = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [req.id]);
+      return json({ ok: true, request: transferRequestRow(updated[0]) });
+    }
+
+    if (action === 'petTransferDetail') {
+      await ensurePetTransferRequestsSchema(env);
+      const requestId = clean(body.requestId, 80);
+      const rows = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [requestId]);
+      const req = rows[0];
+      if (!req) return json({ error: PET_TRANSFER_STALE }, 404);
+      if (req.sender_user_id !== userId && req.recipient_user_id !== userId) {
+        return json({ error: 'No podés ver esta solicitud' }, 403);
+      }
+      const petRows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [req.pet_id]);
+      const sender = await d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE id = ?', [req.sender_user_id]);
+      let pageName = null;
+      if (req.source_profile_id) {
+        const page = await d1(env, 'SELECT name FROM profiles WHERE id = ?', [req.source_profile_id]);
+        pageName = page[0]?.name || null;
+      }
+      return json({
+        ok: true,
+        request: transferRequestRow(req),
+        pet: petRows[0] ? petRow(petRows[0]) : null,
+        sender: publicTransferUser(sender[0]),
+        sourcePageName: pageName,
+      });
+    }
+
+    if (action === 'pendingPetTransfer') {
+      await ensurePetTransferRequestsSchema(env);
+      const p = await findOwnedPet(env, body.petId, userId);
+      if (!p) return json({ error: PET_TRANSFER_FORBIDDEN }, 403);
+      const rows = await d1(
+        env,
+        "SELECT * FROM pet_transfer_requests WHERE pet_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+        [p.id]
+      );
+      if (!rows[0]) return json({ ok: true, request: null });
+      const rec = await d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE id = ?', [rows[0].recipient_user_id]);
+      return json({ ok: true, request: transferRequestRow(rows[0]), recipient: publicTransferUser(rec[0]) });
+    }
+
     if (action === 'notifications') {
       const [likes, comments, reelLikes, reelComments, followsUser, followsPet, locations, birthdays] = await Promise.all([
         d1(env, `SELECT l.created_at, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url, p.id AS post_id, p.image AS post_image
@@ -3064,7 +3427,7 @@ async function handleDb(request, env) {
            WHERE ls.owner_id = ? ORDER BY ls.created_at DESC LIMIT 20`, [userId]),
         d1(env, `SELECT id, type, user_id, pet_id, title, body, metadata, created_at
            FROM activity_events
-           WHERE user_id = ? AND type = 'birthday'
+           WHERE user_id = ? AND type IN ('birthday', 'pet_transfer_requested', 'pet_transfer_accepted', 'pet_transfer_rejected')
            ORDER BY created_at DESC LIMIT 20`, [userId]),
       ]);
       const items = [
@@ -3094,7 +3457,7 @@ async function handleDb(request, env) {
             createdAt: r.created_at,
           };
         }),
-        ...birthdays.map((r) => {
+        ...birthdays.filter((r) => r.type === 'birthday').map((r) => {
           let meta = {};
           try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { meta = {}; }
           return {
@@ -3111,6 +3474,25 @@ async function handleDb(request, env) {
             title: r.title,
             text: r.body || '',
             years: meta.years || null,
+            createdAt: r.created_at,
+          };
+        }),
+        ...birthdays.filter((r) => String(r.type || '').startsWith('pet_transfer_')).map((r) => {
+          let meta = {};
+          try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { meta = {}; }
+          return {
+            id: r.id,
+            type: r.type,
+            actorId: r.user_id,
+            actorName: meta.senderName || '',
+            actorUsername: '',
+            actorAvatar: meta.petAvatar || null,
+            petId: r.pet_id || meta.petId || null,
+            petUsername: meta.petUsername || null,
+            petName: meta.petName || null,
+            requestId: meta.requestId || null,
+            title: r.title,
+            text: r.body || '',
             createdAt: r.created_at,
           };
         }),
