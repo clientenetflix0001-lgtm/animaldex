@@ -22,6 +22,7 @@ import { useStore } from '../lib/store';
 import { userFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
+import { PUBLIC_WEB_HOST } from '../lib/publicWeb';
 import BioField from '../components/BioField';
 import { BIO_WORD_LIMIT_ERROR, isBioWithinWordLimit } from '../lib/bio';
 
@@ -142,7 +143,7 @@ export default function EditProfileScreen() {
             placeholder="tuusuario"
             placeholderTextColor={colors.textMuted}
           />
-          <Text style={styles.hint}>Tu perfil público será animaldex-web.pages.dev/{username.trim().replace(/^@/, '').toLowerCase() || 'usuario'}</Text>
+          <Text style={styles.hint}>Tu perfil público será {PUBLIC_WEB_HOST}/{username.trim().replace(/^@/, '').toLowerCase() || 'usuario'}</Text>
 
           <Text style={styles.label}>Biografía</Text>
           <BioField

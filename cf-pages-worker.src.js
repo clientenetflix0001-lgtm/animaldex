@@ -34,6 +34,10 @@
 // 1) EAS/Preview (upload)
 // 2) SHA copiado de Play Console
 // 3) SHA del APK instalado desde Play Internal Testing (pm get-app-links)
+// Dominio público oficial. OG/canonical siempre usan este origin,
+// aunque la visita llegue por animaldex-web.pages.dev (legacy, sin redirect).
+const PUBLIC_WEB_ORIGIN = 'https://animaldex.com';
+
 const ASSETLINKS_JSON = JSON.stringify([
   {
     relation: ['delegate_permission/common.handle_all_urls'],
@@ -225,6 +229,7 @@ function ogHtml({ title, description, image, url }) {
   <meta property="og:image:width" content="600" />
   <meta property="og:image:height" content="600" />
   <meta property="og:url" content="${esc(url)}" />
+  <link rel="canonical" href="${esc(url)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${esc(title)}" />
   <meta name="twitter:description" content="${esc(description)}" />
@@ -262,7 +267,7 @@ async function d1Query(env, sql, params) {
 }
 
 async function buildOgMeta(request, env, url) {
-  const origin = url.origin;
+  const origin = PUBLIC_WEB_ORIGIN;
   const pathname = url.pathname;
   let meta = null;
 
@@ -651,6 +656,7 @@ function injectOgIntoSpa(html, meta) {
   <meta property="og:image:width" content="600" />
   <meta property="og:image:height" content="600" />
   <meta property="og:url" content="${esc(meta.url)}" />
+  <link rel="canonical" href="${esc(meta.url)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${esc(meta.title)}" />
   <meta name="twitter:description" content="${esc(meta.description)}" />
