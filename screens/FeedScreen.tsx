@@ -20,6 +20,8 @@ import { RootStackParamList, TabParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ProfileSwitcher } from '../features/profiles';
 import WantToAdoptButton from '../components/WantToAdoptButton';
+import HeaderQrButton from '../components/HeaderQrButton';
+import { HEADER_QR_ROUTE } from '../lib/headerQr';
 import { feedMediaPerfNoteRenderItem } from '../lib/feedMediaPerf';
 
 type Nav = CompositeNavigationProp<
@@ -343,14 +345,7 @@ export default function FeedScreen() {
             contentFit="contain"
           />
           <Text style={styles.logo}>nimaldex</Text>
-          <Pressable
-            style={styles.qrBtn}
-            onPress={() => navigation.navigate('QRScanner')}
-            hitSlop={8}
-            accessibilityLabel="Escanear código QR"
-          >
-            <Ionicons name="qr-code-outline" size={22} color={colors.primary} />
-          </Pressable>
+          <HeaderQrButton onPress={() => navigation.navigate(HEADER_QR_ROUTE)} />
         </View>
         <View style={styles.headerRight}>
           <Pressable
@@ -407,20 +402,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
+    overflow: 'visible',
   },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 0, overflow: 'visible' },
   logoMark: { width: 24, height: 24 },
   logo: { fontSize: 26, fontWeight: '900', color: colors.primary, letterSpacing: -0.5 },
-  qrBtn: {
-    marginLeft: 2,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primarysoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   switcherRow: {
     flexDirection: 'row',
