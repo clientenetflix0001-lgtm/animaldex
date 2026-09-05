@@ -11,7 +11,6 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -33,6 +32,7 @@ import {
   storyDestinations,
   storyTrimEditorConfig,
 } from '../lib/stories';
+import { SelectedImagePreview } from '../components/SelectedImagePreview';
 import { fileToUpload } from '../lib/reelTrim';
 import { normalizeLocalFileUri } from '../lib/reelUri';
 import { notifyStoriesChanged } from '../lib/storyRailRefresh';
@@ -287,7 +287,7 @@ export default function CreateStoryScreen() {
           </Pressable>
         </View>
         {uri ? (
-          <Image source={{ uri: trimmedUri || uri }} style={styles.preview} contentFit="cover" />
+          <SelectedImagePreview uri={trimmedUri || uri} />
         ) : (
           <View style={styles.placeholder}>
             <Text style={styles.placeholderText}>Elegí una foto o un video corto.</Text>
@@ -360,7 +360,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pickText: { fontWeight: '700', color: colors.text },
-  preview: { width: '100%', height: 280, borderRadius: radius.lg, backgroundColor: '#111' },
   placeholder: {
     height: 160,
     borderRadius: radius.lg,
