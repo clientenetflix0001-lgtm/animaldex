@@ -1,12 +1,19 @@
 import { hasPetSuffix, isValidPetUsername } from './petHandles.ts';
+import {
+  ACCEPTED_PUBLIC_WEB_HOSTS,
+  LEGACY_WEB_ORIGIN,
+  PUBLIC_WEB_ORIGIN,
+} from './publicWeb.ts';
 
 /** Prefijos que React Navigation y el parser público reconocen. */
 export const APP_LINK_PREFIXES = [
   'animaldex://',
-  'https://animaldex-web.pages.dev',
+  PUBLIC_WEB_ORIGIN,
+  LEGACY_WEB_ORIGIN,
+  'https://www.animaldex.com',
 ] as const;
 
-export const APP_LINK_HTTPS_HOSTS = ['animaldex-web.pages.dev'] as const;
+export const APP_LINK_HTTPS_HOSTS = ACCEPTED_PUBLIC_WEB_HOSTS;
 
 export type AppLinkTab = 'Inicio' | 'Reels' | 'Alertas' | 'Mercado' | 'Crear' | 'Mascotas' | 'Actividad' | 'Perfil';
 

@@ -71,6 +71,7 @@ import {
   rememberIncomingAppLink,
   resolveAppLink,
 } from './lib/appLinks';
+import { PUBLIC_WEB_ORIGIN } from './lib/publicWeb';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -280,7 +281,7 @@ const linking: LinkingOptions<RootStackParamList> = {
   getStateFromPath(path, options) {
     const href = path.startsWith('http')
       ? path
-      : `https://animaldex-web.pages.dev${path.startsWith('/') ? path : `/${path}`}`;
+      : `${PUBLIC_WEB_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`;
     const target = resolveAppLink(href);
     if (target?.screen === 'PetProfile') {
       return {
