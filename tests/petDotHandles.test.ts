@@ -527,7 +527,13 @@ describe('delete reserva username permanente', () => {
     assert.doesNotMatch(update, /PET_DELETE_TOMBSTONE_SQL/);
     assert.doesNotMatch(update, /petDeleteTombstoneRows/);
     assert.equal(worker.includes("action === 'transferPet'"), false);
-    assert.doesNotMatch(worker, /INSERT INTO pet_transfers/);
+    const internal = action('transferPetInternal');
+    assert.doesNotMatch(internal, /PET_DELETE_TOMBSTONE_SQL/);
+    assert.doesNotMatch(internal, /petDeleteTombstoneRows/);
+    assert.doesNotMatch(internal, /INSERT INTO pet_transfers/);
+    const respond = action('respondPetTransfer');
+    assert.doesNotMatch(respond, /PET_DELETE_TOMBSTONE_SQL/);
+    assert.match(respond, /countsAsPageAdoption/);
   });
 
   it('14–17. ownership, duplicate 409 y namespace humano/Página intactos', () => {
