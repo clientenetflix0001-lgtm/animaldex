@@ -17,6 +17,7 @@ export type AppLinkTarget =
   | { screen: 'ListingDetail'; params: { listingId: string } }
   | { screen: 'ReelViewer'; params: { reelId: string } }
   | { screen: 'PublicProfile'; params: { username: string } }
+  | { screen: 'PetTransferRequest'; params: { requestId: string } }
   | { screen: 'Tabs'; params: { screen: AppLinkTab } };
 
 const TAB_SEGMENTS: Record<string, AppLinkTab> = {
@@ -74,6 +75,7 @@ const RESERVED_SEGMENTS = new Set([
   'crear-alerta',
   'mis-alertas',
   'mercado-favoritos',
+  'transfer',
   'favicon.ico',
   'robots.txt',
   'well-known',
@@ -141,6 +143,9 @@ export function resolveAppLink(url: string | null | undefined): AppLinkTarget | 
   if (head === 'r' && id) {
     return { screen: 'ReelViewer', params: { reelId: id } };
   }
+  if (head === 'transfer' && id) {
+    return { screen: 'PetTransferRequest', params: { requestId: id } };
+  }
 
   if (parts.length === 1) {
     const seg = head.toLowerCase();
@@ -187,7 +192,7 @@ export function applyAppLinkIfReady(input: {
   }
   if (!input.authReady || !input.navReady) return 'wait';
   if (input.isReady && !input.isReady()) return 'wait';
-  if (target.screen === 'Tabs' && !input.hasUser) return 'wait';
+  if ((target.screen === 'Tabs' || target.screen === 'PetTransferRequest') && !input.hasUser) return 'wait';
   input.navigate(target.screen, target.params);
   pendingUrl = null;
   return 'applied';

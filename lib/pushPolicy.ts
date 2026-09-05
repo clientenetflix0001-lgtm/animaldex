@@ -380,14 +380,16 @@ export type PushData = {
   url?: string;
   reelId?: string;
   alertId?: string;
+  requestId?: string;
 };
 
 export type PushNavTarget = {
-  kind: 'pet' | 'activity' | 'reel' | 'alert' | 'none';
+  kind: 'pet' | 'activity' | 'reel' | 'alert' | 'pet_transfer' | 'none';
   petId?: string;
   shareId?: string;
   reelId?: string;
   alertId?: string;
+  requestId?: string;
 };
 
 function asPushField(value: unknown): string | undefined {
@@ -420,6 +422,7 @@ export function normalizePushData(raw: unknown): PushData {
     url: asPushField(inner.url),
     reelId: asPushField(inner.reelId),
     alertId: asPushField(inner.alertId),
+    requestId: asPushField(inner.requestId),
   };
 }
 
@@ -445,8 +448,23 @@ function alertIdFromPushUrl(url: string | undefined): string | undefined {
   }
 }
 
+function transferRequestIdFromPushUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const m = String(url).match(/\/transfer\/([^/?#]+)/);
+  if (!m) return undefined;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
 export function parsePushNav(data: unknown): PushNavTarget {
   const d = normalizePushData(data);
+  const requestId = d.requestId || transferRequestIdFromPushUrl(d.url);
+  if (d.type === 'pet_transfer' || requestId) {
+    if (requestId) return { kind: 'pet_transfer', requestId };
+  }
   const reelId = d.reelId || reelIdFromPushUrl(d.url);
   if (d.type === 'reel_like' || d.type === 'reel_comment' || reelId) {
     if (reelId) return { kind: 'reel', reelId };
@@ -489,8 +507,12 @@ export function pushNavDestination(
   | { name: 'Tabs'; params: { screen: 'Actividad' } }
   | { name: 'ReelViewer'; params: { reelId: string } }
   | { name: 'AlertDetail'; params: { alertId: string } }
+  | { name: 'PetTransferRequest'; params: { requestId: string } }
   | null {
   const nav = parsePushNav(data);
+  if (nav.kind === 'pet_transfer' && nav.requestId) {
+    return { name: 'PetTransferRequest', params: { requestId: nav.requestId } };
+  }
   if (nav.kind === 'pet' && nav.petId) {
     return { name: 'PetProfile', params: { petId: nav.petId } };
   }
