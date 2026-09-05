@@ -261,8 +261,8 @@ describe('paginación, like, comments, URLs', () => {
     assert.match(getMuxThumbnail('abc', { width: 240, height: 426 }) || '', /width=240/);
     assert.doesNotMatch(muxGridThumbnailUrl('abc') || '', /width=720/);
     assert.doesNotMatch(muxGridThumbnailUrl('abc') || '', /stream\.mux\.com/);
-    assert.equal(reelShareUrl('reel-9'), 'https://animaldex-web.pages.dev/r/reel-9');
-    assert.doesNotMatch(reelShareUrl('x'), /animaldex\.com/);
+    assert.equal(reelShareUrl('reel-9'), 'https://animaldex.com/r/reel-9');
+    assert.doesNotMatch(reelShareUrl('x'), /www\.animaldex\.com/);
   });
 });
 
@@ -313,7 +313,8 @@ describe('esquema D1: migración vs ensureReelsSchema', () => {
 
 describe('aislamiento Animaldex', () => {
   it('no reutiliza POST /upload ni CreatePost para video', () => {
-    assert.match(createPost, /mediaTypes: \['images'\]/);
+    assert.match(createPost, /GALLERY_IMAGE_PICKER_OPTIONS/);
+    assert.match(readFileSync(join(root, 'lib/galleryImagePicker.ts'), 'utf8'), /mediaTypes: \['images'\]/);
     assert.doesNotMatch(createPost, /createReelUpload/);
     assert.match(createReel, /createReelUpload/);
     assert.match(createReel, /method: 'PUT'/);
@@ -463,7 +464,7 @@ describe('like, comentarios, share, perfiles', () => {
   });
 
   it('share /r/:id, perfil correcto y mascota protagonista', () => {
-    assert.equal(reelShareUrl('reel-9'), 'https://animaldex-web.pages.dev/r/reel-9');
+    assert.equal(reelShareUrl('reel-9'), 'https://animaldex.com/r/reel-9');
     assert.match(reelsScreen, /shareReel/);
     assert.match(reelsScreen, /openHumanProfile/);
     assert.match(reelsScreen, /PetProfile/);

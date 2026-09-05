@@ -1,10 +1,19 @@
+import { hasPetSuffix, isValidPetUsername } from './petHandles.ts';
+import {
+  ACCEPTED_PUBLIC_WEB_HOSTS,
+  LEGACY_WEB_ORIGIN,
+  PUBLIC_WEB_ORIGIN,
+} from './publicWeb.ts';
+
 /** Prefijos que React Navigation y el parser público reconocen. */
 export const APP_LINK_PREFIXES = [
   'animaldex://',
-  'https://animaldex-web.pages.dev',
+  PUBLIC_WEB_ORIGIN,
+  LEGACY_WEB_ORIGIN,
+  'https://www.animaldex.com',
 ] as const;
 
-export const APP_LINK_HTTPS_HOSTS = ['animaldex-web.pages.dev'] as const;
+export const APP_LINK_HTTPS_HOSTS = ACCEPTED_PUBLIC_WEB_HOSTS;
 
 export type AppLinkTab = 'Inicio' | 'Reels' | 'Alertas' | 'Mercado' | 'Crear' | 'Mascotas' | 'Actividad' | 'Perfil';
 
@@ -15,6 +24,7 @@ export type AppLinkTarget =
   | { screen: 'ListingDetail'; params: { listingId: string } }
   | { screen: 'ReelViewer'; params: { reelId: string } }
   | { screen: 'PublicProfile'; params: { username: string } }
+  | { screen: 'PetTransferRequest'; params: { requestId: string } }
   | { screen: 'Tabs'; params: { screen: AppLinkTab } };
 
 const TAB_SEGMENTS: Record<string, AppLinkTab> = {
@@ -70,7 +80,9 @@ const RESERVED_SEGMENTS = new Set([
   'editar-perfil',
   'editar-perfil-publico',
   'crear-alerta',
+  'mis-alertas',
   'mercado-favoritos',
+  'transfer',
   'favicon.ico',
   'robots.txt',
   'well-known',
@@ -138,11 +150,17 @@ export function resolveAppLink(url: string | null | undefined): AppLinkTarget | 
   if (head === 'r' && id) {
     return { screen: 'ReelViewer', params: { reelId: id } };
   }
+  if (head === 'transfer' && id) {
+    return { screen: 'PetTransferRequest', params: { requestId: id } };
+  }
 
   if (parts.length === 1) {
     const seg = head.toLowerCase();
     const tab = TAB_SEGMENTS[seg];
     if (tab) return { screen: 'Tabs', params: { screen: tab } };
+    if (hasPetSuffix(seg) && (isValidPetUsername(seg) || USERNAME_RE.test(seg))) {
+      return { screen: 'PetProfile', params: { petId: seg } };
+    }
     if (USERNAME_RE.test(seg) && !RESERVED_SEGMENTS.has(seg)) {
       return { screen: 'PublicProfile', params: { username: seg } };
     }
@@ -181,7 +199,7 @@ export function applyAppLinkIfReady(input: {
   }
   if (!input.authReady || !input.navReady) return 'wait';
   if (input.isReady && !input.isReady()) return 'wait';
-  if (target.screen === 'Tabs' && !input.hasUser) return 'wait';
+  if ((target.screen === 'Tabs' || target.screen === 'PetTransferRequest') && !input.hasUser) return 'wait';
   input.navigate(target.screen, target.params);
   pendingUrl = null;
   return 'applied';

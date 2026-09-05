@@ -210,6 +210,7 @@ describe('13–16. App Links, +, Mercado y Alertas', () => {
 
   it('+ abre chooser; Mercado y Alertas siguen registrados', () => {
     assert.equal(createChooserDestination('post'), 'CreatePost');
+    assert.equal(createChooserDestination('story'), 'CreateStory');
     assert.equal(createChooserDestination('reel'), 'CreateReel');
     assert.match(app, /CreateChooserScreen/);
     assert.match(app, /name="CreatePost"/);

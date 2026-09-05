@@ -182,6 +182,14 @@ function navigatePushDestination(dest: NonNullable<ReturnType<typeof pushNavDest
     navigationRef.navigate('ReelViewer', dest.params);
     return true;
   }
+  if (dest.name === 'AlertDetail') {
+    navigationRef.navigate('AlertDetail', dest.params);
+    return true;
+  }
+  if (dest.name === 'PetTransferRequest') {
+    navigationRef.navigate('PetTransferRequest', dest.params);
+    return true;
+  }
   navigationRef.navigate('Tabs', dest.params as never);
   return true;
 }

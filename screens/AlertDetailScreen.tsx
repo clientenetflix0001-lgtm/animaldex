@@ -18,12 +18,17 @@ import { useRoute, RouteProp } from '@react-navigation/native';
 import { db, ApiAlert, ApiComment, timeAgoMinutes } from '../lib/db';
 import { useStore } from '../lib/store';
 import { shareAlert } from '../lib/share';
-import { ALERT_TYPES, speciesEmoji, speciesLabel } from '../lib/alerts';
-import { thumb, large, userFallbackAvatar } from '../lib/images';
+import { alertBadgeColor, alertBadgeText, alertContextLine, alertFoundSafeNote, isAlertResolved } from '../lib/alerts';
+import { thumb, userFallbackAvatar } from '../lib/images';
+import { AdaptivePostImage } from '../components/AdaptivePostImage';
+import { useImageNaturalSize } from '../lib/imageNaturalSize';
 import { formatCount, formatTime } from '../lib/data';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
+import WantToAdoptButton from '../components/WantToAdoptButton';
 import { CommentKeyboardView } from '../components/CommentKeyboardView';
+import { adoptCtaLabel } from '../lib/adoptionContact';
+import { openAlertAdoption } from '../lib/openAlertAdoption';
 import { useGuestAccess } from '../lib/guestAccess';
 
 type Rt = RouteProp<RootStackParamList, 'AlertDetail'>;
@@ -40,6 +45,7 @@ export default function AlertDetailScreen() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [adopting, setAdopting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +66,8 @@ export default function AlertDetailScreen() {
     load();
   }, [load]);
 
+  const natural = useImageNaturalSize(alert?.image);
+
   const handleToggleLike = useCallback(() => {
     if (guest) { requireLogin(); return; }
     setAlert((prev) =>
@@ -77,6 +85,16 @@ export default function AlertDetailScreen() {
       setSharing(false);
     }
   }, [alert, sharing]);
+
+  const handleAdopt = useCallback(async () => {
+    if (!alert || adopting) return;
+    setAdopting(true);
+    try {
+      await openAlertAdoption(alert);
+    } finally {
+      setAdopting(false);
+    }
+  }, [alert, adopting]);
 
   const send = useCallback(async () => {
     if (guest) { requireLogin(); return; }
@@ -97,7 +115,7 @@ export default function AlertDetailScreen() {
     () =>
       comments.map((c) => ({
         id: c.id,
-        name: c.userName,
+        name: c.username,
         avatarUri: c.avatarUrl ?? userFallbackAvatar(c.username),
         text: c.text,
         minutesAgo: timeAgoMinutes(c.createdAt),
@@ -134,37 +152,39 @@ export default function AlertDetailScreen() {
     );
   }
 
-  const typeConfig = ALERT_TYPES[alert.type] ?? ALERT_TYPES.lost;
   const avatar = alert.userAvatar ?? userFallbackAvatar(alert.username ?? 'usuario');
+  const resolved = isAlertResolved(alert);
+  const badgeColor = alertBadgeColor(alert);
 
   const header = (
     <View>
-      <View style={[styles.badgeRow, { backgroundColor: `${typeConfig.color}14` }]}>
-        <Text style={[styles.badgeText, { color: typeConfig.color }]}>
-          {typeConfig.emoji} {speciesLabel(alert.species).toUpperCase()} {typeConfig.label}
+      <View style={[styles.badgeRow, { backgroundColor: `${badgeColor}14` }]}>
+        <Text style={[styles.badgeText, { color: badgeColor }]}>
+          {alertBadgeText(alert)}
         </Text>
       </View>
 
       <View style={styles.userRow}>
         <Image source={{ uri: thumb(avatar, 100) }} style={styles.avatar} transition={200} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.petName}>
-            {alert.petName ? alert.petName : speciesLabel(alert.species)} {speciesEmoji(alert.species)}
-          </Text>
+          <Text style={styles.petName}>{alertContextLine(alert)}</Text>
           <View style={styles.locRow}>
             <Ionicons name="location" size={12} color={colors.textMuted} />
             <Text style={styles.locText}>{alert.locality}</Text>
           </View>
+          {alertFoundSafeNote(alert) ? (
+            <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text>
+          ) : null}
         </View>
         <Text style={styles.time}>{formatTime(timeAgoMinutes(alert.createdAt))}</Text>
       </View>
 
-      <Image
-        source={{ uri: large(alert.image) }}
-        style={styles.image}
-        contentFit="cover"
-        transition={300}
-        placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
+      <AdaptivePostImage
+        uri={alert.image}
+        imageWidth={natural?.width}
+        imageHeight={natural?.height}
+        layout="feed"
+        recyclingKey={alert.id}
       />
 
       <View style={styles.actions}>
@@ -181,14 +201,22 @@ export default function AlertDetailScreen() {
           <Text style={styles.actionCount}>{formatCount(alert.commentCount)}</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
-        <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
-          <Ionicons name="paw" size={15} color="#fff" />
-          <Text style={styles.difundirText}>DIFUNDIR</Text>
-        </Pressable>
+        {resolved ? (
+          <Pressable onPress={handleShare} disabled={sharing} hitSlop={8} accessibilityLabel="Compartir">
+            <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
+          </Pressable>
+        ) : alert.type === 'adoption' && !resolved ? (
+          <WantToAdoptButton label={adoptCtaLabel(alert.sex)} onPress={handleAdopt} />
+        ) : (
+          <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
+            <Ionicons name="paw" size={15} color="#fff" />
+            <Text style={styles.difundirText}>DIFUNDIR</Text>
+          </Pressable>
+        )}
       </View>
 
       <Text style={styles.description}>{alert.description}</Text>
-      {alert.username && <Text style={styles.postedBy}>Publicado por @{alert.username}</Text>}
+      {alert.username && <Text style={styles.postedBy}>Publicado por {alert.username}</Text>}
 
       <Text style={styles.commentsTitle}>
         Comentarios {displayComments.length > 0 ? `(${displayComments.length})` : ''}
@@ -299,8 +327,8 @@ const styles = StyleSheet.create({
   petName: { fontWeight: '700', fontSize: 15, color: colors.text },
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   locText: { fontSize: 12, color: colors.textMuted },
+  safeNote: { fontSize: 11, color: '#2EA65A', fontWeight: '700', marginTop: 3 },
   time: { fontSize: 11, color: colors.textMuted },
-  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   actions: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.lg },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   actionCount: { fontSize: 13, fontWeight: '700', color: colors.text },

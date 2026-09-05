@@ -22,7 +22,7 @@ afterEach(() => {
   clearPendingAppLink();
 });
 
-const HOSTS = ['https://animaldex-web.pages.dev'];
+const HOSTS = ['https://animaldex.com', 'https://animaldex-web.pages.dev', 'https://www.animaldex.com'];
 const SHA_RE = /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/;
 const EAS_SHA = 'AF:CE:8E:B1:04:D3:4C:6F:DF:61:C3:5F:15:73:3D:58:D9:F3:AE:90:41:2F:BA:BE:0C:FC:FB:C9:C0:C5:17:E6';
 const PLAY_SHA = '9D:2A:54:C2:2D:DA:99:C0:39:BB:A2:73:B5:B3:8A:80:2D:22:05:D8:E2:7B:1D:6C:20:30:F9:58:51:8B:44:46';
@@ -37,7 +37,7 @@ function parseAssetLinksFromSource(src: string) {
   return Function(`"use strict"; return (${literal});`)();
 }
 
-describe('resolveAppLink: recursos públicos pages.dev', () => {
+describe('resolveAppLink: recursos públicos animaldex.com + pages.dev', () => {
   it('publicación /p/:id → PostDetail', () => {
     for (const host of HOSTS) {
       assert.deepEqual(resolveAppLink(`${host}/p/post-abc`), {
@@ -99,6 +99,21 @@ describe('resolveAppLink: recursos públicos pages.dev', () => {
     }
   });
 
+  it('mascota /nina.pet → PetProfile (no PublicProfile)', () => {
+    assert.deepEqual(resolveAppLink('https://animaldex-web.pages.dev/nina.pet'), {
+      screen: 'PetProfile',
+      params: { petId: 'nina.pet' },
+    });
+    assert.deepEqual(resolveAppLink('https://animaldex-web.pages.dev/toby.pet/'), {
+      screen: 'PetProfile',
+      params: { petId: 'toby.pet' },
+    });
+    assert.deepEqual(resolveAppLink('animaldex://nina.pet'), {
+      screen: 'PetProfile',
+      params: { petId: 'nina.pet' },
+    });
+  });
+
   it('usuario / empresa / refugio /:username → PublicProfile', () => {
     assert.deepEqual(resolveAppLink('https://animaldex-web.pages.dev/lucasfuentes'), {
       screen: 'PublicProfile',
@@ -121,8 +136,14 @@ describe('resolveAppLink: recursos públicos pages.dev', () => {
     });
     assert.equal(resolveAppLink('https://animaldex-web.pages.dev/entrar'), null);
     assert.equal(resolveAppLink('https://otro-dominio.com/p/x'), null);
-    assert.equal(resolveAppLink('https://animaldex.com/p/post-abc'), null);
-    assert.equal(resolveAppLink('https://www.animaldex.com/lucasfuentes'), null);
+    assert.deepEqual(resolveAppLink('https://animaldex.com/p/post-abc'), {
+      screen: 'PostDetail',
+      params: { postId: 'post-abc' },
+    });
+    assert.deepEqual(resolveAppLink('https://www.animaldex.com/lucasfuentes'), {
+      screen: 'PublicProfile',
+      params: { username: 'lucasfuentes' },
+    });
   });
 });
 
@@ -199,12 +220,21 @@ describe('cola cold start / background / foreground', () => {
   });
 });
 
-describe('App.tsx y app.json solo pages.dev', () => {
-  it('linking usa scheme + pages.dev y conserva las rutas públicas', () => {
+describe('App.tsx y app.json: animaldex.com + pages.dev', () => {
+  it('linking usa scheme + dominio oficial + legacy y conserva las rutas públicas', () => {
     assert.match(app, /APP_LINK_PREFIXES/);
     assert.match(app, /prefixes: \[\.\.\.APP_LINK_PREFIXES\]/);
-    assert.deepEqual([...APP_LINK_PREFIXES], ['animaldex://', 'https://animaldex-web.pages.dev']);
-    assert.deepEqual([...APP_LINK_HTTPS_HOSTS], ['animaldex-web.pages.dev']);
+    assert.deepEqual([...APP_LINK_PREFIXES], [
+      'animaldex://',
+      'https://animaldex.com',
+      'https://animaldex-web.pages.dev',
+      'https://www.animaldex.com',
+    ]);
+    assert.deepEqual([...APP_LINK_HTTPS_HOSTS], [
+      'animaldex.com',
+      'animaldex-web.pages.dev',
+      'www.animaldex.com',
+    ]);
     assert.match(app, /PostDetail: 'p\/:postId'/);
     assert.match(app, /PetProfile: 'pet\/:petId'/);
     assert.match(app, /AlertDetail: 'a\/:alertId'/);
@@ -214,15 +244,15 @@ describe('App.tsx y app.json solo pages.dev', () => {
     assert.match(app, /function AppLinkHandler/);
     assert.match(app, /name="ListingDetail"/);
     assert.match(app, /getInitialURL/);
-    assert.doesNotMatch(app, /animaldex\.com/);
+    assert.match(app, /PUBLIC_WEB_ORIGIN/);
   });
 
-  it('intentFilters de pages.dev intactos y sin animaldex.com', () => {
+  it('intentFilters agregan animaldex.com y conservan pages.dev', () => {
     const filters = appJson.expo.android.intentFilters;
     const hosts = [
       ...new Set(filters.flatMap((f: { data: Array<{ host: string }> }) => f.data.map((d) => d.host))),
     ];
-    assert.deepEqual(hosts, ['animaldex-web.pages.dev']);
+    assert.deepEqual(hosts, ['animaldex-web.pages.dev', 'animaldex.com']);
     const serialized = JSON.stringify(filters);
     assert.match(serialized, /"pathPrefix":"\/p\/"/);
     assert.match(serialized, /"pathPrefix":"\/pet\/"/);
@@ -230,12 +260,20 @@ describe('App.tsx y app.json solo pages.dev', () => {
     assert.match(serialized, /"pathPrefix":"\/m\/"/);
     assert.match(serialized, /"pathPrefix":"\/r\/"/);
     assert.match(serialized, /pathAdvancedPattern/);
-    assert.doesNotMatch(serialized, /animaldex\.com/);
+    assert.match(serialized, /animaldex-web\.pages\.dev/);
+    assert.match(serialized, /"host":"animaldex\.com"/);
+    assert.doesNotMatch(serialized, /www\.animaldex\.com/);
     assert.equal(filters.length, 2);
     assert.equal(
       filters.every((f: { autoVerify: boolean }) => f.autoVerify === true),
       true
     );
+    const prefixFilter = filters[0].data;
+    const usernameFilter = filters[1].data;
+    assert.equal(prefixFilter.filter((d: { host: string }) => d.host === 'animaldex-web.pages.dev').length, 5);
+    assert.equal(prefixFilter.filter((d: { host: string }) => d.host === 'animaldex.com').length, 5);
+    assert.equal(usernameFilter.filter((d: { host: string }) => d.host === 'animaldex-web.pages.dev').length, 2);
+    assert.equal(usernameFilter.filter((d: { host: string }) => d.host === 'animaldex.com').length, 2);
   });
 });
 

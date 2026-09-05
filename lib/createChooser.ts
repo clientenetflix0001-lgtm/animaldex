@@ -1,5 +1,7 @@
-export type CreateChooserKind = 'post' | 'reel';
+export type CreateChooserKind = 'post' | 'story' | 'reel';
 
-export function createChooserDestination(kind: CreateChooserKind): 'CreatePost' | 'CreateReel' {
-  return kind === 'reel' ? 'CreateReel' : 'CreatePost';
+export function createChooserDestination(kind: CreateChooserKind): 'CreatePost' | 'CreateStory' | 'CreateReel' {
+  if (kind === 'story') return 'CreateStory';
+  if (kind === 'reel') return 'CreateReel';
+  return 'CreatePost';
 }

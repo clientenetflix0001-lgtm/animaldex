@@ -74,8 +74,8 @@ interface StoreState {
   // Chapita QR pendiente: código detectado al abrir un link ?qr=xx antes
   // de saber si el usuario ya está autenticado. Persiste en disco para
   // sobrevivir al flujo de registro/login (incluso si la app se recarga).
-  pendingTagCode: number | null;
-  setPendingTagCode: (code: number | null) => void;
+  pendingTagCode: string | null;
+  setPendingTagCode: (code: string | null) => void;
 }
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -97,7 +97,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
   const [deletedPostIds, setDeletedPostIds] = useState<string[]>([]);
   const [editedCaptions, setEditedCaptions] = useState<Record<string, string>>({});
-  const [pendingTagCode, setPendingTagCodeState] = useState<number | null>(null);
+  const [pendingTagCode, setPendingTagCodeState] = useState<string | null>(null);
 
   const loadMyState = useCallback(async () => {
     try {
@@ -128,7 +128,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // a mitad del registro después de escanear una chapita).
       try {
         const saved = await AsyncStorage.getItem(PENDING_TAG_KEY);
-        if (saved) setPendingTagCodeState(Number(saved));
+        if (saved) setPendingTagCodeState(saved);
       } catch {}
       // limpiar almacenamiento legado
       AsyncStorage.removeItem(LEGACY_KEY).catch(() => {});
@@ -137,7 +137,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })();
   }, [loadMyState]);
 
-  const setPendingTagCode = useCallback((code: number | null) => {
+  const setPendingTagCode = useCallback((code: string | null) => {
     setPendingTagCodeState(code);
     if (code == null) AsyncStorage.removeItem(PENDING_TAG_KEY).catch(() => {});
     else AsyncStorage.setItem(PENDING_TAG_KEY, String(code)).catch(() => {});

@@ -9,11 +9,16 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { ApiAlert, timeAgoMinutes } from '../lib/db';
-import { ALERT_TYPES, speciesEmoji, speciesLabel } from '../lib/alerts';
+import { alertBadgeColor, alertBadgeText, alertContextLine, alertFoundSafeNote, isAlertResolved } from '../lib/alerts';
 import { shareAlert } from '../lib/share';
-import { thumb, large, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
 import { formatCount, formatTime } from '../lib/data';
-import { colors, radius, shadow, spacing } from '../lib/theme';
+import { colors, radius, spacing } from '../lib/theme';
+import { AdaptivePostImage } from './AdaptivePostImage';
+import { useImageNaturalSize } from '../lib/imageNaturalSize';
+import { adoptCtaLabel } from '../lib/adoptionContact';
+import { openAlertAdoption } from '../lib/openAlertAdoption';
+import WantToAdoptButton from './WantToAdoptButton';
 
 interface Props {
   alert: ApiAlert;
@@ -22,7 +27,8 @@ interface Props {
 }
 
 function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
-  const typeConfig = ALERT_TYPES[alert.type] ?? ALERT_TYPES.lost;
+  const resolved = isAlertResolved(alert);
+  const badgeColor = alertBadgeColor(alert);
   const heartScale = useSharedValue(1);
   const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heartScale.value }] }));
 
@@ -34,6 +40,7 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
   }, [alert.id, alert.isLiked, onToggleLike, heartScale]);
 
   const [sharing, setSharing] = useState(false);
+  const [adopting, setAdopting] = useState(false);
   const handleShare = useCallback(async () => {
     if (sharing) return;
     setSharing(true);
@@ -44,15 +51,26 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
     }
   }, [alert, sharing]);
 
+  const handleAdopt = useCallback(async () => {
+    if (adopting) return;
+    setAdopting(true);
+    try {
+      await openAlertAdoption(alert);
+    } finally {
+      setAdopting(false);
+    }
+  }, [alert, adopting]);
+
   const avatar = alert.userAvatar ?? userFallbackAvatar(alert.username ?? 'usuario');
   const minutesAgo = timeAgoMinutes(alert.createdAt);
+  const natural = useImageNaturalSize(alert.image);
 
   return (
     <View style={styles.card}>
       {/* Badge de tipo de alerta */}
-      <View style={[styles.badgeRow, { backgroundColor: `${typeConfig.color}14` }]}>
-        <Text style={[styles.badgeText, { color: typeConfig.color }]}>
-          {typeConfig.emoji} {speciesLabel(alert.species).toUpperCase()} {typeConfig.label}
+      <View style={[styles.badgeRow, { backgroundColor: `${badgeColor}14` }]}>
+        <Text style={[styles.badgeText, { color: badgeColor }]}>
+          {alertBadgeText(alert)}
         </Text>
       </View>
 
@@ -62,7 +80,7 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
             <Text style={styles.petName}>
-              {alert.petName ? alert.petName : speciesLabel(alert.species)} {speciesEmoji(alert.species)}
+              {alertContextLine(alert)}
             </Text>
           </View>
           <View style={styles.locRow}>
@@ -71,17 +89,19 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
               {alert.locality}
             </Text>
           </View>
+          {alertFoundSafeNote(alert) ? (
+            <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text>
+          ) : null}
         </View>
         <Text style={styles.time}>{formatTime(minutesAgo)}</Text>
       </View>
 
-      {/* Foto */}
-      <Image
-        source={{ uri: large(alert.image) }}
-        style={styles.image}
-        contentFit="cover"
-        transition={300}
-        placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
+      <AdaptivePostImage
+        uri={alert.image}
+        imageWidth={natural?.width}
+        imageHeight={natural?.height}
+        layout="feed"
+        recyclingKey={alert.id}
       />
 
       {/* Acciones */}
@@ -104,10 +124,18 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
 
         <View style={{ flex: 1 }} />
 
-        <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
-          <Ionicons name="paw" size={15} color="#fff" />
-          <Text style={styles.difundirText}>DIFUNDIR</Text>
-        </Pressable>
+        {resolved ? (
+          <Pressable onPress={handleShare} disabled={sharing} hitSlop={8} accessibilityLabel="Compartir">
+            <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
+          </Pressable>
+        ) : alert.type === 'adoption' && !resolved ? (
+          <WantToAdoptButton label={adoptCtaLabel(alert.sex)} onPress={handleAdopt} />
+        ) : (
+          <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
+            <Ionicons name="paw" size={15} color="#fff" />
+            <Text style={styles.difundirText}>DIFUNDIR</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Descripción */}
@@ -116,7 +144,7 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
       ) : null}
 
       {alert.userName && (
-        <Text style={styles.postedBy}>Publicado por @{alert.username}</Text>
+        <Text style={styles.postedBy}>Publicado por {alert.username}</Text>
       )}
     </View>
   );
@@ -127,11 +155,12 @@ export const AlertCard = memo(AlertCardInner);
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    marginHorizontal: spacing.lg,
+    width: '100%',
     marginBottom: spacing.xl,
     overflow: 'hidden',
-    ...shadow.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   badgeRow: {
     paddingHorizontal: spacing.md,
@@ -156,8 +185,8 @@ const styles = StyleSheet.create({
   petName: { fontWeight: '700', fontSize: 15, color: colors.text },
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   locText: { fontSize: 12, color: colors.textMuted, flexShrink: 1 },
+  safeNote: { fontSize: 11, color: '#2EA65A', fontWeight: '700', marginTop: 3 },
   time: { fontSize: 11, color: colors.textMuted },
-  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',

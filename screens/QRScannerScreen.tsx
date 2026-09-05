@@ -19,7 +19,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
@@ -52,6 +52,7 @@ const ZOOM_STEPS = [
 
 export default function QRScannerScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [zoom, setZoom] = useState(0);
@@ -246,7 +247,7 @@ export default function QRScannerScreen() {
 
       {/* Resultado del escaneo */}
       {scanned && result && (
-        <View style={styles.resultSheet}>
+        <View style={[styles.resultSheet, { paddingBottom: Math.max(insets.bottom + 12, 20) }]}>
           <View style={styles.resultHandle} />
           <View style={styles.resultIconWrap}>
             <Ionicons

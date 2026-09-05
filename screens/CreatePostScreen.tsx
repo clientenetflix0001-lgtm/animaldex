@@ -24,6 +24,8 @@ import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ProfileSwitcher, useProfiles } from '../features/profiles';
 import { PostBackgroundCard, PostBackgroundChip } from '../components/PostBackgroundCard';
+import { SelectedImagePreview } from '../components/SelectedImagePreview';
+import { GALLERY_IMAGE_PICKER_OPTIONS } from '../lib/galleryImagePicker';
 import {
   DEFAULT_POST_BACKGROUND_ID,
   POST_CAPTION_MAX,
@@ -45,6 +47,7 @@ export default function CreatePostScreen() {
   const [selectedPet, setSelectedPet] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [photoDimensions, setPhotoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [backgroundId, setBackgroundId] = useState(DEFAULT_POST_BACKGROUND_ID);
   const [uploading, setUploading] = useState(false);
@@ -80,14 +83,15 @@ export default function CreatePostScreen() {
     }
     // Importante: NO usar allowsEditing ni aspect ni legacy.
     // En Android, legacy:true abre el editor de recorte de la galería OEM.
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      quality: 0.9,
-      base64: true,
-    });
+    const result = await ImagePicker.launchImageLibraryAsync(GALLERY_IMAGE_PICKER_OPTIONS);
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
+    setPreviewUri(asset.uri);
+    if (asset.width && asset.height && asset.width > 0 && asset.height > 0) {
+      setPhotoDimensions({ width: asset.width, height: asset.height });
+    } else {
+      setPhotoDimensions(null);
+    }
     const mime = asset.mimeType || 'image/jpeg';
     const dataUrl = asset.base64 ? `data:${mime};base64,${asset.base64}` : asset.uri;
     if (!dataUrl.startsWith('data:')) {
@@ -102,11 +106,6 @@ export default function CreatePostScreen() {
         Alert.alert('Error', 'No se pudo subir la imagen a Cloudflare Images');
       } else {
         setPhoto(up.url);
-        if (asset.width && asset.height && asset.width > 0 && asset.height > 0) {
-          setPhotoDimensions({ width: asset.width, height: asset.height });
-        } else {
-          setPhotoDimensions(null);
-        }
         setUploadNote('Subida a Cloudflare Images ☁️✓');
         db.registerImage(up.url, undefined, 'post').catch(() => {});
       }
@@ -142,6 +141,7 @@ export default function CreatePostScreen() {
       notifyPostCreated(apiPostToPost(post));
       setCaption('');
       setPhoto(null);
+      setPreviewUri(null);
       setPhotoDimensions(null);
       setBackgroundId(DEFAULT_POST_BACKGROUND_ID);
       setUploadNote('');
@@ -235,15 +235,10 @@ export default function CreatePostScreen() {
           </ScrollView>
 
           <Text style={styles.sectionLabel}>Foto (opcional)</Text>
-          {photo ? (
+          {previewUri || photo ? (
             <>
               <Pressable style={styles.preview} onPress={pickFromGallery}>
-                <Image source={{ uri: photo }} style={styles.previewImg} contentFit="contain" transition={300} />
-                {uploading && (
-                  <View style={styles.uploadOverlay}>
-                    <ActivityIndicator color="#fff" size="large" />
-                  </View>
-                )}
+                <SelectedImagePreview uri={previewUri || photo!} loading={uploading} />
               </Pressable>
               {uploadNote !== '' && <Text style={styles.uploadNote}>{uploadNote}</Text>}
               <View style={styles.photoActions}>
@@ -255,6 +250,7 @@ export default function CreatePostScreen() {
                   style={styles.changePhotoBtn}
                   onPress={() => {
                     setPhoto(null);
+                    setPreviewUri(null);
                     setPhotoDimensions(null);
                     setUploadNote('');
                     setBackgroundId((id) => id || DEFAULT_POST_BACKGROUND_ID);
@@ -395,25 +391,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     ...shadow.card,
-  },
-  previewImg: { width: '100%', minHeight: 180, maxHeight: 420, backgroundColor: colors.border },
-  previewEmpty: {
-    backgroundColor: colors.primarysoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.md,
-  },
-  previewHint: { color: colors.textMuted, fontSize: 12, marginTop: 6, fontWeight: '600' },
-  previewEmptyText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
-  uploadOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   uploadNote: {
     marginHorizontal: spacing.lg,

@@ -156,6 +156,59 @@ export interface ApiReel {
   overlays?: import('./reelOverlays').ReelTextOverlay[];
 }
 
+export interface ApiStory {
+  id: string;
+  authorUserId: string;
+  authorProfileId?: string | null;
+  authorProfileType?: string | null;
+  authorPetId?: string | null;
+  protagonistPetId?: string | null;
+  mediaType: 'image' | 'video';
+  imageUrl?: string | null;
+  muxPlaybackId?: string | null;
+  hlsUrl?: string | null;
+  thumbnailUrl?: string | null;
+  durationMs?: number | null;
+  caption?: string;
+  status: string;
+  audience: 'normal' | 'breed' | 'both';
+  breedSpecies?: string | null;
+  breedKey?: string | null;
+  breedLabel?: string | null;
+  createdAt: number;
+  expiresAt: number;
+  username?: string | null;
+  userName?: string | null;
+  userAvatar?: string | null;
+  authorProfileName?: string | null;
+  authorProfileUsername?: string | null;
+  authorProfileAvatar?: string | null;
+  authorPetName?: string | null;
+  authorPetUsername?: string | null;
+  authorPetAvatar?: string | null;
+  protagonistName?: string | null;
+  protagonistAvatar?: string | null;
+  viewed?: boolean;
+}
+
+export interface ApiStoryRailItem {
+  kind: 'self' | 'identity' | 'breed' | 'more';
+  id: string;
+  label: string;
+  emoji?: string | null;
+  thumbUrl?: string | null;
+  hasStory: boolean;
+  hasUnseen: boolean;
+  count?: number;
+  authorUserId?: string | null;
+  authorProfileId?: string | null;
+  authorProfileType?: string | null;
+  authorPetId?: string | null;
+  breedSpecies?: string | null;
+  breedKey?: string | null;
+  breedLabel?: string | null;
+}
+
 export interface ApiComment {
   id: string;
   userId: string;
@@ -169,7 +222,7 @@ export interface ApiComment {
 export interface ApiAlert {
   id: string;
   userId: string;
-  type: 'lost' | 'found';
+  type: 'lost' | 'sighting' | 'found' | 'adoption';
   status: 'active' | 'resolved';
   petName: string | null;
   species: string;
@@ -183,6 +236,12 @@ export interface ApiAlert {
   lon: number | null;
   eventDate: number | null;
   createdAt: number;
+  renewedAt?: number | null;
+  bumpedAt?: number | null;
+  resolvedAt?: number | null;
+  resolutionType?: 'found' | 'reunited' | 'adopted' | null;
+  sex?: 'macho' | 'hembra' | null;
+  authorProfileId?: string | null;
   likeCount: number;
   commentCount: number;
   isLiked: boolean;
@@ -252,7 +311,7 @@ export interface ApiSellerReview {
 }
 
 export interface ApiTag {
-  code: number;
+  code: string;
   status: 'unclaimed' | 'claimed';
   petId: string | null;
   petName: string | null;
@@ -264,7 +323,7 @@ export interface ApiTag {
 
 export interface ApiNotification {
   id: string;
-  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday' | 'reel_like' | 'reel_comment';
+  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday' | 'reel_like' | 'reel_comment' | 'pet_transfer_requested' | 'pet_transfer_accepted' | 'pet_transfer_rejected';
   actorId: string | null;
   actorName: string;
   actorUsername: string;
@@ -276,6 +335,7 @@ export interface ApiNotification {
   petUsername?: string | null;
   petName?: string;
   petEmoji?: string;
+  requestId?: string | null;
   title?: string;
   text?: string;
   years?: number | null;
@@ -284,6 +344,26 @@ export interface ApiNotification {
   accuracy?: number | null;
   smsStatus?: string;
   createdAt: number;
+}
+
+export interface ApiTransferUser {
+  id: string;
+  username: string | null;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+export interface ApiPetTransferRequest {
+  id: string;
+  petId: string;
+  senderUserId: string;
+  sourceProfileId: string | null;
+  recipientUserId: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  createdAt: number;
+  respondedAt: number | null;
+  completedAt: number | null;
+  cancelledAt: number | null;
 }
 
 // ---------- Auth ----------
@@ -338,11 +418,20 @@ export const db = {
         shelterId?: string | null;
         shelterName?: string | null;
         shelterUsername?: string | null;
+        shelterAvatar?: string | null;
         shelterLocation?: string | null;
       }
     >;
     hasMore: boolean;
   }> => call('/db', { action: 'adoptionFeed', ...params }),
+  adoptionContact: (petId: string): Promise<{
+    petId: string;
+    petName: string;
+    petUsername: string | null;
+    shelterProfileId: string;
+    adoptionWhatsapp: string | null;
+    adoptionPhone: string | null;
+  }> => call('/db', { action: 'adoptionContact', petId }),
   comments: (postId: string): Promise<{ comments: ApiComment[] }> =>
     call('/db', { action: 'comments', postId }),
   myState: (): Promise<{ state: { likedPosts: string[]; savedPosts: string[]; followedPets: string[]; followedUsers: string[]; myPets: ApiPet[] } }> =>
@@ -354,7 +443,9 @@ export const db = {
   follow: (targetType: 'pet' | 'user' | 'profile', targetId: string, value: boolean) =>
     call('/db', { action: 'follow', targetType, targetId, value }),
   publicProfile: (idOrUsername: { profileId?: string; username?: string }): Promise<{
-    profile: import('../features/profiles/profileTypes').PublicProfile;
+    kind?: 'profile' | 'pet';
+    pet?: ApiPet;
+    profile?: import('../features/profiles/profileTypes').PublicProfile;
     pets: ApiPet[];
     stats: { pets: number; adoption: number; adopted: number; recovering: number; followers: number };
     transferredPets?: ApiPet[];
@@ -392,6 +483,8 @@ export const db = {
     username: string;
     bio?: string;
     avatar?: string | null;
+    adoptionWhatsapp?: string | null;
+    adoptionPhone?: string | null;
   }): Promise<{ profile: import('../features/profiles/profileTypes').PublicProfile }> =>
     call('/db', { action: 'createProfile', ...input }),
   checkProfileUsername: (username: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>
@@ -405,6 +498,8 @@ export const db = {
     locality?: string | null;
     phone?: string;
     avatar?: string | null;
+    adoptionWhatsapp?: string | null;
+    adoptionPhone?: string | null;
   }): Promise<{ profile: import('../features/profiles/profileTypes').PublicProfile }> =>
     call('/db', { action: 'updatePublicProfile', ...input }),
   updatePost: (postId: string, caption: string): Promise<{ caption: string }> =>
@@ -426,12 +521,48 @@ export const db = {
     sex?: 'macho' | 'hembra' | null;
     neutered?: boolean | null;
   }): Promise<{ pet: ApiPet }> => call('/db', { action: 'createPet', ...pet }),
-  checkPetUsername: (username: string, excludePetId?: string): Promise<{ ok: boolean; available: boolean; reason?: string }> =>
+  checkPetUsername: (
+    username: string,
+    excludePetId?: string
+  ): Promise<{ ok: boolean; available: boolean; reason?: string; suggestion?: string | null }> =>
     call('/db', { action: 'checkPetUsername', username, excludePetId }),
   updatePet: (petId: string, fields: Partial<ApiPet>) =>
     call('/db', { action: 'updatePet', petId, ...fields }),
   archivePet: (petId: string): Promise<{ ok: boolean }> => call('/db', { action: 'archivePet', petId }),
   deletePet: (petId: string): Promise<{ ok: boolean }> => call('/db', { action: 'deletePet', petId }),
+  transferPetInternal: (
+    petId: string,
+    target: 'page' | 'personal',
+    profileId?: string
+  ): Promise<{ ok: boolean; pet: ApiPet; adoptedIncrement: boolean }> =>
+    call('/db', { action: 'transferPetInternal', petId, target, profileId }),
+  lookupTransferRecipient: (identifier: string): Promise<{ ok: boolean; user: ApiTransferUser }> =>
+    call('/db', { action: 'lookupTransferRecipient', identifier }),
+  createPetTransferRequest: (
+    petId: string,
+    identifier: string
+  ): Promise<{ ok: boolean; request: ApiPetTransferRequest; user: ApiTransferUser }> =>
+    call('/db', { action: 'createPetTransferRequest', petId, identifier }),
+  respondPetTransfer: (
+    requestId: string,
+    decision: 'accept' | 'reject'
+  ): Promise<{ ok: boolean; request: ApiPetTransferRequest; pet?: ApiPet; adoptedIncrement?: boolean }> =>
+    call('/db', { action: 'respondPetTransfer', requestId, decision }),
+  cancelPetTransferRequest: (requestId: string): Promise<{ ok: boolean; request: ApiPetTransferRequest }> =>
+    call('/db', { action: 'cancelPetTransferRequest', requestId }),
+  petTransferDetail: (
+    requestId: string
+  ): Promise<{
+    ok: boolean;
+    request: ApiPetTransferRequest;
+    pet: ApiPet | null;
+    sender: ApiTransferUser | null;
+    sourcePageName: string | null;
+  }> => call('/db', { action: 'petTransferDetail', requestId }),
+  pendingPetTransfer: (
+    petId: string
+  ): Promise<{ ok: boolean; request: ApiPetTransferRequest | null; recipient?: ApiTransferUser | null }> =>
+    call('/db', { action: 'pendingPetTransfer', petId }),
   setPhone: (phone: string | null, ticket?: string) =>
     call('/db', { action: 'setPhone', phone, ticket: ticket || undefined }),
   registerImage: (url: string, cfId?: string, kind?: string) =>
@@ -471,14 +602,14 @@ export const db = {
   // ---------- Chapitas QR (links de invitación) ----------
   // Público: no requiere sesión (se llama antes de que el usuario se registre).
   tagStatus: (
-    code: number
+    code: string | number
   ): Promise<{ ok: boolean; exists: boolean; status?: 'unclaimed' | 'claimed'; pet?: ApiPet | null }> =>
-    call('/db', { action: 'tagStatus', code }),
+    call('/db', { action: 'tagStatus', code: String(code) }),
   // Requiere sesión: vincula la chapita a una mascota recién creada.
-  claimTag: (code: number, petId: string): Promise<{ ok: boolean }> =>
-    call('/db', { action: 'claimTag', code, petId }),
+  claimTag: (code: string | number, petId: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'claimTag', code: String(code), petId }),
   // Solo admin (lucasfuentes): genera un nuevo código y lista todos los existentes.
-  createTag: (): Promise<{ ok: boolean; code: number }> => call('/db', { action: 'createTag' }),
+  createTag: (code: string): Promise<{ ok: boolean; code: string }> => call('/db', { action: 'createTag', code }),
   listTags: (): Promise<{ ok: boolean; tags: ApiTag[] }> => call('/db', { action: 'listTags' }),
 
   // ---------- Alertas (animales perdidos/encontrados) ----------
@@ -488,7 +619,7 @@ export const db = {
   alertComments: (alertId: string): Promise<{ comments: ApiComment[] }> =>
     call('/db', { action: 'alertComments', alertId }),
   createAlert: (alert: {
-    type: 'lost' | 'found';
+    type: 'lost' | 'sighting' | 'found' | 'adoption';
     petName?: string;
     species: string;
     breed?: string;
@@ -499,11 +630,30 @@ export const db = {
     lat?: number | null;
     lon?: number | null;
     eventDate?: number;
+    sex?: 'macho' | 'hembra' | null;
+    authorProfileId?: string | null;
+    contactWhatsapp?: string | null;
+    contactPhone?: string | null;
   }): Promise<{ alert: ApiAlert }> => call('/db', { action: 'createAlert', ...alert }),
+  myAlerts: (tab: 'active' | 'resolved', before?: number, limit = 20): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
+    call('/db', { action: 'myAlerts', tab, before, limit }),
+  resolveAlert: (alertId: string, resolutionType?: string): Promise<{ alert: ApiAlert }> =>
+    call('/db', { action: 'resolveAlert', alertId, resolutionType }),
+  renewAlert: (alertId: string): Promise<{ alert: ApiAlert }> =>
+    call('/db', { action: 'renewAlert', alertId }),
+  deleteAlert: (alertId: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'deleteAlert', alertId }),
   alertLike: (alertId: string, value: boolean): Promise<{ likeCount: number }> =>
     call('/db', { action: 'alertLike', alertId, value }),
   alertComment: (alertId: string, text: string): Promise<{ id: string; createdAt: number }> =>
     call('/db', { action: 'alertComment', alertId, text }),
+  alertAdoptionContact: (alertId: string): Promise<{
+    alertId: string;
+    petName: string | null;
+    shelterProfileId: string | null;
+    adoptionWhatsapp: string | null;
+    adoptionPhone: string | null;
+  }> => call('/db', { action: 'alertAdoptionContact', alertId }),
 
   // ---------- Mercado (productos y servicios) ----------
   listingsFeed: (params: {
@@ -588,6 +738,56 @@ export const db = {
     call('/db', { action: 'reelComment', reelId, text }),
   deleteReel: (reelId: string): Promise<{ ok: boolean; muxDeleted?: boolean }> =>
     call('/db', { action: 'deleteReel', reelId }),
+
+  storyRail: (input?: {
+    authorProfileId?: string | null;
+    authorPetId?: string | null;
+  }): Promise<{ items: ApiStoryRailItem[] }> => call('/db', { action: 'storyRail', ...input }),
+  storyGroup: (input: {
+    source?: 'self' | 'identity';
+    authorUserId?: string | null;
+    authorProfileId?: string | null;
+    authorProfileType?: string | null;
+    authorPetId?: string | null;
+  }): Promise<{ stories: ApiStory[] }> => call('/db', { action: 'storyGroup', ...input }),
+  storyBreedFeed: (breedSpecies: string, breedKey: string): Promise<{ stories: ApiStory[] }> =>
+    call('/db', { action: 'storyBreedFeed', breedSpecies, breedKey }),
+  storyMoreBreeds: (): Promise<{
+    channels: Array<{ species: string; breedKey: string; breedLabel: string; count: number }>;
+  }> => call('/db', { action: 'storyMoreBreeds' }),
+  storyComments: (storyId: string): Promise<{ comments: ApiComment[] }> =>
+    call('/db', { action: 'storyComments', storyId }),
+  createStory: (input: {
+    imageUrl: string;
+    cfId?: string | null;
+    caption?: string;
+    audience?: 'normal' | 'breed' | 'both';
+    protagonistPetId?: string | null;
+    authorProfileId?: string | null;
+    authorPetId?: string | null;
+  }): Promise<{ storyId: string; expiresAt: number; audience: string; status: string }> =>
+    call('/db', { action: 'createStory', ...input }),
+  createStoryUpload: (input: {
+    mime: string;
+    byteSize?: number | null;
+    durationMs?: number | null;
+    caption?: string;
+    audience?: 'normal' | 'breed' | 'both';
+    protagonistPetId?: string | null;
+    authorProfileId?: string | null;
+    authorPetId?: string | null;
+  }): Promise<{ storyId: string; uploadUrl: string; expiresAt: number; audience: string; status: string }> =>
+    call('/db', { action: 'createStoryUpload', ...input }),
+  completeStoryUpload: (storyId: string): Promise<{ status: string }> =>
+    call('/db', { action: 'completeStoryUpload', storyId }),
+  deleteStory: (storyId: string): Promise<{ ok: boolean; mediaDeleted?: boolean }> =>
+    call('/db', { action: 'deleteStory', storyId }),
+  markStoryViewed: (storyId: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'markStoryViewed', storyId }),
+  createStoryComment: (storyId: string, text: string): Promise<{ id: string; createdAt: number }> =>
+    call('/db', { action: 'createStoryComment', storyId, text }),
+  reportStory: (storyId: string): Promise<{ ok: boolean; reportType: string; targetId: string }> =>
+    call('/db', { action: 'reportStory', storyId }),
 };
 
 // ---------- Helpers ----------

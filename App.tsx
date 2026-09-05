@@ -6,6 +6,7 @@ import {
   DefaultTheme,
   RouteProp,
   LinkingOptions,
+  getStateFromPath as rnGetStateFromPath,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -23,6 +24,7 @@ import UserProfileScreen from './screens/UserProfileScreen';
 import PublicProfileScreen from './screens/PublicProfileScreen';
 import EditPublicProfileScreen from './screens/EditPublicProfileScreen';
 import PetProfileScreen from './screens/PetProfileScreen';
+import PetTransferRequestScreen from './screens/PetTransferRequestScreen';
 import PostDetailScreen from './screens/PostDetailScreen';
 import VerifyPhoneScreen from './screens/VerifyPhoneScreen';
 import AuthScreen from './screens/AuthScreen';
@@ -33,9 +35,13 @@ import TagWelcomeScreen from './screens/TagWelcomeScreen';
 import AdminTagsScreen from './screens/AdminTagsScreen';
 import AlertsScreen from './screens/AlertsScreen';
 import CreateAlertScreen from './screens/CreateAlertScreen';
+import MyAlertsScreen from './screens/MyAlertsScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
 import FeedReelsSwiper from './screens/FeedReelsSwiper';
 import CreateReelScreen from './screens/CreateReelScreen';
+import CreateStoryScreen from './screens/CreateStoryScreen';
+import StoryViewerScreen from './screens/StoryViewerScreen';
+import StoryMoreBreedsScreen from './screens/StoryMoreBreedsScreen';
 import ReelViewerScreen from './screens/ReelViewerScreen';
 import MarketScreen from './screens/MarketScreen';
 import CreateListingScreen from './screens/CreateListingScreen';
@@ -63,7 +69,9 @@ import {
   APP_LINK_PREFIXES,
   applyAppLinkIfReady,
   rememberIncomingAppLink,
+  resolveAppLink,
 } from './lib/appLinks';
+import { PUBLIC_WEB_ORIGIN } from './lib/publicWeb';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -251,6 +259,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       Explorar: 'explorar',
       PostDetail: 'p/:postId',
       PetProfile: 'pet/:petId',
+      PetTransferRequest: 'transfer/:requestId',
       PublicProfile: ':username',
       EditPublicProfile: 'editar-perfil-publico',
       VerifyPhone: 'verificar',
@@ -259,6 +268,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       QRScanner: 'escanear',
       AdminTags: 'admin/chapitas',
       CreateAlert: 'crear-alerta',
+      MyAlerts: 'mis-alertas',
       AlertDetail: 'a/:alertId',
       CreateListing: 'vender',
       ListingDetail: 'm/:listingId',
@@ -267,6 +277,29 @@ const linking: LinkingOptions<RootStackParamList> = {
       MarketFavorites: 'mercado-favoritos',
       Auth: 'entrar',
     },
+  },
+  getStateFromPath(path, options) {
+    const href = path.startsWith('http')
+      ? path
+      : `${PUBLIC_WEB_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`;
+    const target = resolveAppLink(href);
+    if (target?.screen === 'PetProfile') {
+      return {
+        routes: [
+          { name: 'Tabs' },
+          { name: 'PetProfile', params: target.params },
+        ],
+      };
+    }
+    if (target?.screen === 'PetTransferRequest') {
+      return {
+        routes: [
+          { name: 'Tabs' },
+          { name: 'PetTransferRequest', params: target.params },
+        ],
+      };
+    }
+    return rnGetStateFromPath(path, options);
   },
   async getInitialURL() {
     const url = await Linking.getInitialURL();
@@ -438,6 +471,7 @@ function RootNavigator() {
         options={{ title: 'Explorar', ...screenHeaderOptions }}
       />
       <Stack.Screen name="PetProfile" component={PetProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="PetTransferRequest" component={PetTransferRequestScreen} options={{ headerShown: false }} />
       <Stack.Screen name="UserProfile" component={UserProfileRoute} options={{ headerShown: false }} />
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen
@@ -486,6 +520,11 @@ function RootNavigator() {
         options={{ title: 'Crear alerta', ...screenHeaderOptions }}
       />
       <Stack.Screen
+        name="MyAlerts"
+        component={MyAlertsScreen}
+        options={{ title: 'Mis alertas', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
         name="AlertDetail"
         component={AlertDetailScreen}
         options={{ title: 'Alerta', ...screenHeaderOptions }}
@@ -508,6 +547,21 @@ function RootNavigator() {
       <Stack.Screen
         name="CreateReel"
         component={CreateReelScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreateStory"
+        component={CreateStoryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="StoryViewer"
+        component={StoryViewerScreen}
+        options={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#000' } }}
+      />
+      <Stack.Screen
+        name="StoryMoreBreeds"
+        component={StoryMoreBreedsScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

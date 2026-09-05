@@ -2,6 +2,7 @@ import React from 'react';
 import { RouteProp, useRoute } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import PetProfileScreen from '../screens/PetProfileScreen';
+import PetTransferRequestScreen from '../screens/PetTransferRequestScreen';
 import PublicProfileScreen from '../screens/PublicProfileScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import AdoptionDiscoveryScreen from '../screens/AdoptionDiscoveryScreen';
@@ -39,6 +40,7 @@ export function createTabProfileStack(Root: React.ComponentType) {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="TabRoot" component={Root} />
         <Stack.Screen name="PetProfile" component={PetProfileScreen} />
+        <Stack.Screen name="PetTransferRequest" component={PetTransferRequestScreen} />
         <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
         <Stack.Screen name="UserProfile" component={NestedUserProfile} />
         <Stack.Screen

@@ -1,5 +1,7 @@
 import { Platform, Share } from 'react-native';
 import { Post, PETS, hashStr, makePost } from './data';
+import { isValidPetUsername } from './petHandles.ts';
+import { PUBLIC_WEB_ORIGIN } from './publicWeb.ts';
 
 // ---------- Base64 URL-safe (UTF-8) ----------
 const B64C = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -154,17 +156,9 @@ export function postNavParams(post: Post): { postId: string; d?: string } {
     : { postId: post.id };
 }
 
-// En web siempre se usa el dominio real donde est\u00e1 publicada la app
-// (funciona autom\u00e1ticamente con tu dominio propio cuando lo conectes).
-// FALLBACK_ORIGIN solo aplica en la app nativa (iOS/Android): es el
-// dominio que se usa al generar links para compartir desde el celular.
-const FALLBACK_ORIGIN = 'https://animaldex-web.pages.dev';
-
+/** Origen canónico de share. Nunca pages.dev ni www. */
 export function siteOrigin(): string {
-  if (typeof window !== 'undefined' && window.location?.origin?.startsWith('http')) {
-    return window.location.origin;
-  }
-  return FALLBACK_ORIGIN;
+  return PUBLIC_WEB_ORIGIN;
 }
 
 export function postShareUrl(post: Post): string {
@@ -186,10 +180,15 @@ export async function sharePublicProfile(name: string, username: string, bio?: s
   await shareLink(title, text, url);
 }
 
+export function petProfileShareUrl(petId: string, handle?: string | null): string {
+  const raw = String(handle || '').replace(/^@/, '').toLowerCase();
+  if (isValidPetUsername(raw)) return `${siteOrigin()}/${encodeURIComponent(raw)}`;
+  return `${siteOrigin()}/pet/${encodeURIComponent(petId)}`;
+}
+
 export async function sharePetProfile(petId: string, handle?: string | null): Promise<void> {
   const demoPet = PETS.find((p) => p.id === petId);
-  const slug = (handle || demoPet?.name || petId).toString().toLowerCase();
-  const url = `${siteOrigin()}/pet/${encodeURIComponent(slug)}`;
+  const url = petProfileShareUrl(petId, handle || demoPet?.name || null);
   const title = demoPet
     ? `${demoPet.name} ${demoPet.emoji} en Animaldex`
     : 'Una mascota adorable en Animaldex 🐾';
@@ -210,6 +209,7 @@ export async function sharePost(post: Post): Promise<void> {
 // del sistema (WhatsApp, Estado de WhatsApp, Facebook, Instagram, copiar
 // enlace, etc.) con un link directo a la alerta dentro de Animaldex.
 import type { ApiAlert, ApiListing, ApiReel } from './db';
+import { alertShareMeta } from './alerts';
 import { REEL_SHARE_MESSAGE, reelSharePayload, reelShareUrl } from './reels';
 
 export function alertShareUrl(alertId: string): string {
@@ -217,12 +217,9 @@ export function alertShareUrl(alertId: string): string {
 }
 
 export async function shareAlert(alert: ApiAlert): Promise<void> {
-  const typeLabel = alert.type === 'found' ? 'ENCONTRADO' : 'PERDIDO';
-  const name = alert.petName ? ` ${alert.petName}` : '';
-  const title = `🚨 ${typeLabel}${name} · Animaldex`;
-  const text = `${alert.description}\n📍 ${alert.locality}`;
+  const meta = alertShareMeta(alert);
   const url = alertShareUrl(alert.id);
-  await shareLink(title, text, url);
+  await shareLink(meta.title, meta.shareText || meta.title, url);
 }
 
 // ---------- Mercado: compartir una publicación (producto/servicio) ----------

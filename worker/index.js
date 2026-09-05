@@ -23,12 +23,20 @@ import {
   handlePublicReelAction,
   runReelCleanup,
 } from './reelsMux.js';
+import {
+  ensureStoriesSchema,
+  handleAuthStoryAction,
+  handlePublicStoryAction,
+  runStoryCleanup,
+} from './stories.js';
 import { getMuxThumbnail } from '../lib/reels.ts';
 import {
   EXPO_PUSH_BATCH_MAX,
   EXPO_PUSH_RECEIPTS_URL,
   EXPO_PUSH_SEND_URL,
   assignPushToken,
+  alertRenewalPushIdempotencyKey,
+  alertRenewalPushMessage,
   birthdayPushIdempotencyKey,
   birthdayPushMessage,
   displayPersonName,
@@ -45,6 +53,61 @@ import {
   POST_PET_NOT_OWNED_ERROR,
   petAllowedForAuthorIdentity,
 } from '../lib/petOwnership.ts';
+import {
+  PET_SUFFIX_RESERVED_ERROR,
+  PET_TAKEN_ERROR,
+  PET_USERNAME_INVALID_ERROR,
+  hasPetSuffix,
+  isValidPetUsername,
+  parsePetUsernameInput,
+  petUsernameCandidates,
+  PET_DELETE_TOMBSTONE_SQL,
+  petDeleteTombstoneRows,
+  resolvePetUsernameUpdate,
+  suggestPetUsernameBase,
+} from '../lib/petHandles.ts';
+import {
+  ADOPTION_CONTACT_REQUIRED,
+  parseProtectorAdoptionContact,
+} from '../lib/adoptionContact.ts';
+import {
+  ALERT_ALREADY_RESOLVED,
+  ALERT_RENEW_MS,
+  ALERT_RESOLVE_OWNER_ERROR,
+  ALERT_RESOLVE_TYPE_ERROR,
+  ALERT_RESOLVED_NOT_RENEWABLE,
+  alertNeedsRenewalNotice,
+  alertRenewalPushCopy,
+  alertRenewalPushType,
+  allowedResolutionForType,
+  parseAlertResolutionType,
+  parseAlertType,
+} from '../lib/alerts.ts';
+import {
+  TAG_CODE_INVALID,
+  TAG_CODE_REQUIRED,
+  TAG_CODE_TAKEN,
+  parseIncomingTagCode,
+  parseManualTagCode,
+} from '../lib/tags.ts';
+import { acceptedBio } from '../lib/bio.ts';
+import {
+  PET_TRANSFER_FORBIDDEN,
+  PET_TRANSFER_IDENTIFIER_ERROR,
+  PET_TRANSFER_PAGE_FORBIDDEN,
+  PET_TRANSFER_PAGE_REQUIRED,
+  PET_TRANSFER_PENDING_EXISTS,
+  PET_TRANSFER_SELF_ERROR,
+  PET_TRANSFER_STALE,
+  PET_TRANSFER_USER_NOT_FOUND,
+  countsAsPageAdoption,
+  remappedCareStatus,
+  sameOwnerSnapshot,
+  transferAcceptedCopy,
+  transferLookupAllowed,
+  transferRejectedCopy,
+  transferRequestedCopy,
+} from '../lib/petTransfer.ts';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -146,8 +209,8 @@ async function authUser(request, env, body) {
 }
 
 
-function profileRow(r) {
-  return {
+function profileRow(r, opts = {}) {
+  const row = {
     id: r.id,
     accountId: r.account_id,
     type: r.type,
@@ -160,6 +223,11 @@ function profileRow(r) {
     phone: r.phone || '',
     createdAt: r.created_at,
   };
+  if (opts.includeAdoptionContact) {
+    row.adoptionWhatsapp = r.adoption_whatsapp || null;
+    row.adoptionPhone = r.adoption_phone || null;
+  }
+  return row;
 }
 
 async function ensureProfilesSchema(env) {
@@ -193,6 +261,8 @@ async function ensureProfilesSchema(env) {
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN location TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN phone TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN locality TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN adoption_whatsapp TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE profiles ADD COLUMN adoption_phone TEXT').run(); } catch (_) {}
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_profile ON pets (profile_id)');
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pets_birth_date ON pets (birth_date)');
   // Historial de adopciones completadas. Una fila = una transferencia real del
@@ -213,7 +283,28 @@ async function ensureProfilesSchema(env) {
   )`);
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pet_transfers_from ON pet_transfers (from_profile_id)');
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pet_transfers_pet ON pet_transfers (pet_id)');
+  await ensurePetTransferRequestsSchema(env);
   env._profilesReady = true;
+}
+
+async function ensurePetTransferRequestsSchema(env) {
+  if (env._petTransferRequestsReady) return;
+  await d1(env, `CREATE TABLE IF NOT EXISTS pet_transfer_requests (
+    id TEXT PRIMARY KEY,
+    pet_id TEXT NOT NULL,
+    sender_user_id TEXT NOT NULL,
+    source_profile_id TEXT,
+    recipient_user_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    responded_at INTEGER,
+    completed_at INTEGER,
+    cancelled_at INTEGER
+  )`);
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_ptr_recipient_status ON pet_transfer_requests (recipient_user_id, status)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_ptr_sender_status ON pet_transfer_requests (sender_user_id, status)');
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_ptr_pet_status ON pet_transfer_requests (pet_id, status)');
+  env._petTransferRequestsReady = true;
 }
 
 // Keep in sync with lib/publicHandles.ts and cf-pages-worker.src.js
@@ -222,7 +313,8 @@ const RESERVED_PUBLIC_USERNAMES = new Set([
   'marketplace', 'mercado', 'admin', 'api', 'crear', 'mascotas', 'actividad', 'perfil', 'explorar',
   'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
   'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
-  'editar-perfil-publico', 'crear-alerta', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
+  'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mercado-favoritos', 'transfer',
+  'favicon.ico', 'robots.txt',
   'well-known',
 ]);
 
@@ -230,7 +322,7 @@ function isReservedPublicUsername(username) {
   return RESERVED_PUBLIC_USERNAMES.has(String(username || '').toLowerCase());
 }
 
-async function usernameTaken(env, username, allowAccountId, allowProfileId) {
+async function usernameTaken(env, username, allowAccountId, allowProfileId, allowPetId) {
   const handle = String(username || '').toLowerCase();
   if (isReservedPublicUsername(handle) || usernameLooksLikePhone(handle)) return true;
   const users = await d1(env, 'SELECT id FROM users WHERE LOWER(username) = ?', [handle]);
@@ -238,7 +330,85 @@ async function usernameTaken(env, username, allowAccountId, allowProfileId) {
   const profiles = await d1(env, 'SELECT id FROM profiles WHERE LOWER(username) = ?', [handle]);
   if (profiles[0] && profiles[0].id !== allowProfileId) return true;
   const pets = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ?', [handle]);
-  return pets.length > 0;
+  if (pets[0] && pets[0].id !== allowPetId) return true;
+  try {
+    const aliases = await d1(env, 'SELECT pet_id FROM pet_username_aliases WHERE LOWER(old_username) = ?', [handle]);
+    if (aliases[0]) return true;
+  } catch (_) {}
+  return false;
+}
+
+function humanPetSuffixBlocked(username) {
+  return hasPetSuffix(username) ? PET_SUFFIX_RESERVED_ERROR : null;
+}
+
+async function findPetByHandleOrAlias(env, ref) {
+  const key = String(ref || '').trim();
+  if (!key) return null;
+  const pets = await d1(env, 'SELECT * FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1', [key, key]);
+  if (pets[0]) return pets[0];
+  try {
+    const aliases = await d1(env, 'SELECT pet_id FROM pet_username_aliases WHERE LOWER(old_username) = LOWER(?) LIMIT 1', [key]);
+    if (aliases[0] && aliases[0].pet_id) {
+      const rows = await d1(env, 'SELECT * FROM pets WHERE id = ? LIMIT 1', [aliases[0].pet_id]);
+      return rows[0] || null;
+    }
+  } catch (_) {}
+  return null;
+}
+
+function isUniqueConstraintError(err) {
+  return /UNIQUE/i.test(String(err && err.message ? err.message : err || ''));
+}
+
+async function takenPetHandleSet(env, candidates, excludePetId) {
+  const set = new Set();
+  if (!candidates.length) return set;
+  const ph = candidates.map(() => '?').join(',');
+  const [pets, users, profiles] = await Promise.all([
+    d1(env, `SELECT id, LOWER(username) AS u FROM pets WHERE LOWER(username) IN (${ph})`, candidates),
+    d1(env, `SELECT LOWER(username) AS u FROM users WHERE LOWER(username) IN (${ph})`, candidates),
+    d1(env, `SELECT LOWER(username) AS u FROM profiles WHERE LOWER(username) IN (${ph})`, candidates),
+  ]);
+  for (const r of pets) {
+    if (excludePetId && r.id === excludePetId) continue;
+    if (r.u) set.add(r.u);
+  }
+  for (const r of users) if (r.u) set.add(r.u);
+  for (const r of profiles) if (r.u) set.add(r.u);
+  try {
+    const aliases = await d1(
+      env,
+      `SELECT pet_id, LOWER(old_username) AS u FROM pet_username_aliases WHERE LOWER(old_username) IN (${ph})`,
+      candidates
+    );
+    for (const r of aliases) {
+      if (r.u) set.add(r.u);
+    }
+  } catch (_) {}
+  return set;
+}
+
+/** Aliases de migración inicial + tombstone de delete. No se usan para renombres. */
+async function ensurePetHandleAliasSchema(env) {
+  if (env._petAliasSchemaReady) return;
+  await d1(env, `CREATE TABLE IF NOT EXISTS pet_username_aliases (
+    old_username TEXT PRIMARY KEY,
+    pet_id TEXT NOT NULL,
+    new_username TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`);
+  await d1(env, 'CREATE INDEX IF NOT EXISTS idx_pet_username_aliases_pet ON pet_username_aliases (pet_id)');
+  env._petAliasSchemaReady = true;
+}
+
+async function suggestFreePetUsername(env, base, excludePetId) {
+  const candidates = petUsernameCandidates(base || 'mascota', 40);
+  const taken = await takenPetHandleSet(env, candidates, excludePetId);
+  for (const c of candidates) {
+    if (!taken.has(c)) return c;
+  }
+  return null;
 }
 
 async function ensureAuthSchema(env) {
@@ -287,6 +457,26 @@ async function ensureActivityEventsSchema(env) {
   await d1(env, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_events_key ON activity_events (idempotency_key)');
   await d1(env, 'CREATE INDEX IF NOT EXISTS idx_activity_events_user ON activity_events (user_id, created_at DESC)');
   env._activityEventsReady = true;
+}
+
+async function ensureAlertsSchema(env) {
+  if (env._alertsSchemaReady) return;
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN resolved_at INTEGER').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN resolution_type TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN renewed_at INTEGER').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN sex TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN author_profile_id TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN contact_whatsapp TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN contact_phone TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE alerts ADD COLUMN renewal_notified_at INTEGER').run(); } catch (_) {}
+  env._alertsSchemaReady = true;
+}
+
+async function ensurePetTagsPublicCode(env) {
+  if (env._petTagsPublicCodeReady) return;
+  try { await env.DB.prepare('ALTER TABLE pet_tags ADD COLUMN public_code TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_pet_tags_public_code ON pet_tags (public_code)').run(); } catch (_) {}
+  env._petTagsPublicCodeReady = true;
 }
 
 async function ensurePushSchema(env) {
@@ -537,6 +727,53 @@ async function runPersonalPetBirthdays(env, nowMs = Date.now()) {
   return { considered: rows.length, inserted, skipped, date: `${today.year}-${monthDay}` };
 }
 
+async function runAlertRenewalReminders(env, nowMs = Date.now()) {
+  await ensureAlertsSchema(env);
+  await ensurePushSchema(env);
+  const dueBefore = nowMs - ALERT_RENEW_MS;
+  let rows = [];
+  try {
+    rows = await d1(
+      env,
+      `SELECT id, user_id, type, pet_name, species, created_at, renewed_at, renewal_notified_at, resolved_at, status
+         FROM alerts
+        WHERE (status IS NULL OR status = 'active')
+          AND resolved_at IS NULL
+          AND COALESCE(renewed_at, created_at) <= ?
+          AND (renewal_notified_at IS NULL OR renewal_notified_at < COALESCE(renewed_at, created_at))
+        LIMIT 40`,
+      [dueBefore]
+    );
+  } catch (_) {
+    return { considered: 0, notified: 0 };
+  }
+
+  let notified = 0;
+  for (const row of rows) {
+    try {
+      if (!alertNeedsRenewalNotice(row, nowMs)) continue;
+      const bump = Number(row.renewed_at || row.created_at || 0);
+      const copy = alertRenewalPushCopy(row);
+      await notifyUserPush(env, {
+        userId: row.user_id,
+        type: alertRenewalPushType(row.type),
+        idempotencyKey: alertRenewalPushIdempotencyKey(row.id, bump),
+        nowMs,
+        buildMessage: (token) =>
+          alertRenewalPushMessage({
+            token,
+            title: copy.title,
+            body: copy.body,
+            alertId: row.id,
+          }),
+      });
+      await d1(env, 'UPDATE alerts SET renewal_notified_at = ? WHERE id = ?', [nowMs, row.id]);
+      notified += 1;
+    } catch (_) {}
+  }
+  return { considered: rows.length, notified };
+}
+
 async function ensurePersonalProfile(env, userId) {
   const existing = await d1(env, "SELECT * FROM profiles WHERE account_id = ? AND type = 'personal'", [userId]);
   if (existing[0]) return existing[0];
@@ -544,8 +781,8 @@ async function ensurePersonalProfile(env, userId) {
   if (!users[0]) return null;
   const u = users[0];
   let username = String(u.username || 'user').toLowerCase();
-  if (await usernameTaken(env, username, userId)) {
-    username = (username.slice(0, 14) + Date.now().toString(36).slice(-4)).slice(0, 20);
+  if (hasPetSuffix(username) || await usernameTaken(env, username, userId)) {
+    username = (username.replace(/\.pet$/i, '').slice(0, 14) + Date.now().toString(36).slice(-4)).slice(0, 20);
   }
   const id = `prf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   await d1(
@@ -839,6 +1076,9 @@ async function handleAuth(request, env) {
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
       }
+      if (humanPetSuffixBlocked(username)) {
+        return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
+      }
       if (isReservedPublicUsername(username) || usernameLooksLikePhone(username)) {
         return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
       }
@@ -857,6 +1097,9 @@ async function handleAuth(request, env) {
       const password = String(body.password || '');
       if (!isValidEmail(email)) return json({ error: 'Escribe un correo válido' }, 400);
       if (password.length < PASSWORD_MIN) return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
+      if (humanPetSuffixBlocked(username)) {
+        return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
+      }
       if (!USERNAME_RE.test(username) || isReservedPublicUsername(username) || usernameLooksLikePhone(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres y no puede parecer un teléfono ni una ruta del sistema' }, 400);
       }
@@ -881,6 +1124,9 @@ async function handleAuth(request, env) {
         return json({ error: 'Verificá tu teléfono antes de crear la cuenta' }, 400);
       }
       if (password.length < PASSWORD_MIN) return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
+      if (humanPetSuffixBlocked(username)) {
+        return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
+      }
       if (!USERNAME_RE.test(username) || isReservedPublicUsername(username) || usernameLooksLikePhone(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres y no puede parecer un teléfono ni una ruta del sistema' }, 400);
       }
@@ -940,7 +1186,9 @@ async function handleAuth(request, env) {
       const userId = await authUser(request, env, body);
       if (!userId) return json({ error: 'Sesión inválida' }, 401);
       const name = clean(body.name, 60);
-      const bio = clean(body.bio, 200);
+      const bioRes = acceptedBio(body.bio);
+      if (!bioRes.ok) return json({ error: bioRes.error }, 400);
+      const bio = bioRes.bio;
       const location = clean(body.location, 60);
       const avatarUrl = clean(body.avatarUrl, 500) || null;
       const nextUsername = body.username != null
@@ -949,6 +1197,9 @@ async function handleAuth(request, env) {
       if (nextUsername) {
         if (!USERNAME_RE.test(nextUsername)) {
           return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
+        }
+        if (humanPetSuffixBlocked(nextUsername)) {
+          return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
         }
         if (isReservedPublicUsername(nextUsername) || usernameLooksLikePhone(nextUsername)) {
           return json({ error: 'Ese nombre de usuario no está disponible' }, 400);
@@ -1129,6 +1380,87 @@ async function findOwnedPet(env, petId, userId) {
   return rows[0] || null;
 }
 
+function publicTransferUser(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    username: row.username || null,
+    name: row.name || row.username || null,
+    avatarUrl: row.avatar_url || null,
+  };
+}
+
+function transferRequestRow(r) {
+  return {
+    id: r.id,
+    petId: r.pet_id,
+    senderUserId: r.sender_user_id,
+    sourceProfileId: r.source_profile_id || null,
+    recipientUserId: r.recipient_user_id,
+    status: r.status,
+    createdAt: r.created_at,
+    respondedAt: r.responded_at || null,
+    completedAt: r.completed_at || null,
+    cancelledAt: r.cancelled_at || null,
+  };
+}
+
+async function findTransferRecipient(env, raw) {
+  const classified = classifyIdentifier(raw);
+  if (!transferLookupAllowed(classified.kind)) {
+    return { error: PET_TRANSFER_IDENTIFIER_ERROR };
+  }
+  let rows = [];
+  if (classified.kind === 'email') {
+    rows = await d1(env, 'SELECT * FROM users WHERE email IS NOT NULL AND LOWER(email) = ?', [classified.value]);
+  } else {
+    rows = await findUsersByPhone(env, classified.value);
+  }
+  if (!rows[0]) return { error: PET_TRANSFER_USER_NOT_FOUND };
+  return { user: rows[0] };
+}
+
+async function recordTransferActivity(env, input) {
+  await ensureActivityEventsSchema(env);
+  await d1(
+    env,
+    `INSERT OR IGNORE INTO activity_events
+      (id, type, user_id, pet_id, idempotency_key, title, body, metadata, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      input.id,
+      input.type,
+      input.userId,
+      input.petId,
+      input.idempotencyKey,
+      input.title,
+      input.body,
+      JSON.stringify(input.metadata || {}),
+      input.now,
+    ]
+  ).catch(() => {});
+  await notifyUserPush(env, {
+    userId: input.userId,
+    type: 'adoption',
+    idempotencyKey: `push:${input.idempotencyKey}`,
+    nowMs: input.now,
+    buildMessage: (token) => ({
+      to: token,
+      title: input.title,
+      body: input.body,
+      sound: 'default',
+      priority: 'default',
+      channelId: 'mascotas',
+      data: {
+        type: 'pet_transfer',
+        requestId: input.requestId,
+        petId: input.petId,
+        url: `/transfer/${input.requestId}`,
+      },
+    }),
+  }).catch(() => {});
+}
+
 const POST_SELECT = `
   SELECT p.*,
     (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count,
@@ -1152,11 +1484,12 @@ const POST_SELECT = `
 // ============================================================
 
 function alertRow(r, viewerLiked) {
+  const renewedAt = r.renewed_at || r.created_at;
   return {
     id: r.id,
     userId: r.user_id,
-    type: r.type, // 'lost' | 'found' (futuro: 'sighting', 'reunited')
-    status: r.status, // 'active' (futuro: 'resolved')
+    type: r.type,
+    status: r.resolved_at || r.status === 'resolved' ? 'resolved' : (r.status || 'active'),
     petName: r.pet_name || null,
     species: r.species,
     breed: r.breed || '',
@@ -1169,6 +1502,12 @@ function alertRow(r, viewerLiked) {
     lon: r.lon ?? null,
     eventDate: r.event_date ?? null,
     createdAt: r.created_at,
+    renewedAt,
+    bumpedAt: renewedAt,
+    resolvedAt: r.resolved_at || null,
+    resolutionType: r.resolution_type || null,
+    sex: r.sex || null,
+    authorProfileId: r.author_profile_id || null,
     likeCount: r.like_count || 0,
     commentCount: r.comment_count || 0,
     isLiked: !!viewerLiked,
@@ -1278,12 +1617,20 @@ async function handleDb(request, env) {
     await ensurePushSchema(env);
     await ensureLocationActorColumn(env);
     await ensureReelsSchema(env);
+    await ensureStoriesSchema(env);
+    await ensurePetHandleAliasSchema(env);
+    await ensureAlertsSchema(env);
+    await ensurePetTagsPublicCode(env);
 
     const publicReel = await handlePublicReelAction(env, body, json, clean, request, authUser);
     if (publicReel) return publicReel;
 
+    const publicStory = await handlePublicStoryAction(env, body, json, clean, request, authUser);
+    if (publicStory) return publicStory;
+
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
+      if (humanPetSuffixBlocked(username)) return json({ ok: true, available: false, reason: 'reserved_pet' });
       if (isReservedPublicUsername(username)) return json({ ok: true, available: false, reason: 'reserved' });
       if (!USERNAME_RE.test(username) || usernameLooksLikePhone(username)) {
         return json({ ok: true, available: false, reason: 'invalid' });
@@ -1298,6 +1645,11 @@ async function handleDb(request, env) {
       if (username && isReservedPublicUsername(username)) {
         return json({ error: 'Perfil no encontrado' }, 404);
       }
+      if (username && !profileId && hasPetSuffix(username)) {
+        const petHit = await findPetByHandleOrAlias(env, username);
+        if (petHit) return json({ ok: true, kind: 'pet', pet: petRow(petHit) });
+        return json({ error: 'Perfil no encontrado' }, 404);
+      }
       let rows = profileId
         ? await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId])
         : username
@@ -1305,7 +1657,11 @@ async function handleDb(request, env) {
           : [];
       if (!rows[0] && username && !profileId) {
         const users = await d1(env, 'SELECT * FROM users WHERE LOWER(username) = ?', [username]);
-        if (!users[0]) return json({ error: 'Perfil no encontrado' }, 404);
+        if (!users[0]) {
+          const petHit = await findPetByHandleOrAlias(env, username);
+          if (petHit) return json({ ok: true, kind: 'pet', pet: petRow(petHit) });
+          return json({ error: 'Perfil no encontrado' }, 404);
+        }
         const u = users[0];
         const viewerId = await authUser(request, env, body);
         const [pets, followers, following] = await Promise.all([
@@ -1369,7 +1725,7 @@ async function handleDb(request, env) {
       const recoveringN = recovering[0]?.n || 0;
       return json({
         ok: true,
-        profile: profileRow(pr),
+        profile: profileRow(pr, { includeAdoptionContact: viewerId === pr.account_id }),
         pets: pets.map(petRow),
         transferredPets: transferred.map(petRow),
         stats: {
@@ -1464,7 +1820,11 @@ async function handleDb(request, env) {
 
     if (action === 'petProfile') {
       const petId = clean(body.petId, 80);
-      const pets = await d1(env, 'SELECT * FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1', [petId, petId]);
+      let pets = await d1(env, 'SELECT * FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1', [petId, petId]);
+      if (!pets[0]) {
+        const aliased = await findPetByHandleOrAlias(env, petId);
+        pets = aliased ? [aliased] : [];
+      }
       if (!pets[0]) return json({ error: 'Mascota no encontrada' }, 404);
       const pet = pets[0];
       const [owners, postCount, followerCount, shelterRows] = await Promise.all([
@@ -1487,20 +1847,25 @@ async function handleDb(request, env) {
     if (action === 'search') {
       const q = `%${clean(body.q, 40).toLowerCase()}%`;
       const [pets, users] = await Promise.all([
-        d1(env, 'SELECT * FROM pets WHERE archived_at IS NULL AND (LOWER(name) LIKE ? OR LOWER(breed) LIKE ? OR LOWER(species) LIKE ?) LIMIT 20', [q, q, q]),
+        d1(env, 'SELECT * FROM pets WHERE archived_at IS NULL AND (LOWER(name) LIKE ? OR LOWER(breed) LIKE ? OR LOWER(species) LIKE ? OR LOWER(username) LIKE ?) LIMIT 20', [q, q, q, q]),
         d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE LOWER(username) LIKE ? OR LOWER(name) LIKE ? LIMIT 20', [q, q]),
       ]);
       return json({ ok: true, pets: pets.map(petRow), users: users.map((u) => ({ id: u.id, username: u.username, name: u.name, avatarUrl: u.avatar_url || null })) });
     }
 
     if (action === 'checkPetUsername') {
-      const username = clean(body.username, 20).toLowerCase();
-      if (!USERNAME_RE.test(username)) return json({ ok: true, available: false, reason: 'invalid' });
-      const excludeId = clean(body.excludePetId, 80);
-      const rows = excludeId
-        ? await d1(env, 'SELECT id FROM pets WHERE (LOWER(username) = ? OR LOWER(name) = ?) AND id != ? AND LOWER(username) != LOWER(?)', [username, username, excludeId, excludeId])
-        : await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ? OR LOWER(name) = ?', [username, username]);
-      return json({ ok: true, available: rows.length === 0 });
+      const raw = clean(body.username, 24);
+      const excludeId = clean(body.excludePetId, 80) || null;
+      const username = parsePetUsernameInput(raw)
+        || parsePetUsernameInput(`${suggestPetUsernameBase(raw)}.pet`);
+      if (!username || !isValidPetUsername(username)) {
+        const suggestion = await suggestFreePetUsername(env, suggestPetUsernameBase(raw), excludeId);
+        return json({ ok: true, available: false, reason: 'invalid', suggestion });
+      }
+      const taken = await usernameTaken(env, username, null, null, excludeId);
+      if (!taken) return json({ ok: true, available: true, suggestion: username });
+      const suggestion = await suggestFreePetUsername(env, suggestPetUsernameBase(username), excludeId);
+      return json({ ok: true, available: false, reason: 'taken', suggestion });
     }
     if (action === 'featuredPets') {
       const rows = await d1(env, 'SELECT * FROM pets WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 20');
@@ -1549,7 +1914,7 @@ async function handleDb(request, env) {
       const rows = await d1(
         env,
         `SELECT p.*, pr.id AS shelter_id, pr.name AS shelter_name, pr.username AS shelter_username,
-                pr.location AS shelter_location, pr.locality AS shelter_locality
+                pr.avatar_url AS shelter_avatar, pr.location AS shelter_location, pr.locality AS shelter_locality
          FROM pets p
          INNER JOIN profiles pr ON pr.id = p.profile_id AND pr.type = 'protector'
          WHERE ${conditions.join(' AND ')}
@@ -1567,10 +1932,37 @@ async function handleDb(request, env) {
           shelterId: r.shelter_id,
           shelterName: r.shelter_name,
           shelterUsername: r.shelter_username,
+          shelterAvatar: r.shelter_avatar || null,
           shelterLocation: r.shelter_location || null,
           shelterLocality: r.shelter_locality || null,
         })),
         hasMore,
+      });
+    }
+
+    if (action === 'adoptionContact') {
+      const petId = clean(body.petId, 80);
+      if (!petId) return json({ error: 'Falta la mascota' }, 400);
+      const pets = await d1(
+        env,
+        'SELECT id, profile_id, name, username FROM pets WHERE id = ? OR LOWER(username) = LOWER(?) LIMIT 1',
+        [petId, petId]
+      );
+      if (!pets[0] || !pets[0].profile_id) return json({ error: 'Mascota no encontrada' }, 404);
+      const prs = await d1(
+        env,
+        "SELECT id, type, adoption_whatsapp, adoption_phone FROM profiles WHERE id = ? AND type = 'protector' LIMIT 1",
+        [pets[0].profile_id]
+      );
+      if (!prs[0]) return json({ error: 'Esta mascota no pertenece a un refugio' }, 404);
+      return json({
+        ok: true,
+        petId: pets[0].id,
+        petName: pets[0].name,
+        petUsername: pets[0].username || null,
+        shelterProfileId: prs[0].id,
+        adoptionWhatsapp: prs[0].adoption_whatsapp || null,
+        adoptionPhone: prs[0].adoption_phone || null,
       });
     }
 
@@ -1652,7 +2044,12 @@ async function handleDb(request, env) {
       const viewerId = await authUser(request, env, body);
       const rows = await d1(
         env,
-        `${ALERT_SELECT} WHERE LOWER(a.locality) = LOWER(?) AND a.created_at < ? ORDER BY a.created_at DESC LIMIT ?`,
+        `${ALERT_SELECT} WHERE LOWER(a.locality) = LOWER(?)
+           AND (a.status IS NULL OR a.status = 'active')
+           AND a.resolved_at IS NULL
+           AND COALESCE(a.renewed_at, a.created_at) < ?
+         ORDER BY COALESCE(a.renewed_at, a.created_at) DESC
+         LIMIT ?`,
         [locality, before, limit + 1]
       );
       const hasMore = rows.length > limit;
@@ -1685,6 +2082,39 @@ async function handleDb(request, env) {
           id: c.id, userId: c.user_id, username: c.username || 'usuario', userName: c.user_name || 'Usuario',
           avatarUrl: c.avatar_url || null, text: c.text, createdAt: c.created_at,
         })),
+      });
+    }
+
+    if (action === 'alertAdoptionContact') {
+      const alertId = clean(body.alertId, 80);
+      if (!alertId) return json({ error: 'Falta la alerta' }, 400);
+      const rows = await d1(env, 'SELECT * FROM alerts WHERE id = ?', [alertId]);
+      if (!rows[0]) return json({ error: 'Alerta no encontrada' }, 404);
+      if (rows[0].type !== 'adoption') return json({ error: 'Esta alerta no es de adopción' }, 400);
+      const alert = rows[0];
+      let shelterProfileId = null;
+      let adoptionWhatsapp = alert.contact_whatsapp || null;
+      let adoptionPhone = alert.contact_phone || null;
+      const profileId = alert.author_profile_id;
+      if (profileId) {
+        const prs = await d1(
+          env,
+          "SELECT id, type, adoption_whatsapp, adoption_phone FROM profiles WHERE id = ? AND type = 'protector' LIMIT 1",
+          [profileId]
+        );
+        if (prs[0]) {
+          shelterProfileId = prs[0].id;
+          adoptionWhatsapp = prs[0].adoption_whatsapp || null;
+          adoptionPhone = prs[0].adoption_phone || null;
+        }
+      }
+      return json({
+        ok: true,
+        alertId: alert.id,
+        petName: alert.pet_name || null,
+        shelterProfileId,
+        adoptionWhatsapp,
+        adoptionPhone,
       });
     }
 
@@ -1825,9 +2255,9 @@ async function handleDb(request, env) {
     // Público: cualquiera que escanee una chapita puede consultar su estado,
     // incluso sin haber iniciado sesión todavía (primera vez que se escanea).
     if (action === 'tagStatus') {
-      const code = Number(body.code);
-      if (!Number.isInteger(code)) return json({ error: 'Código inválido' }, 400);
-      const rows = await d1(env, 'SELECT * FROM pet_tags WHERE code = ?', [code]);
+      const code = parseIncomingTagCode(body.code);
+      if (!code) return json({ error: 'Código inválido' }, 400);
+      const rows = await d1(env, 'SELECT * FROM pet_tags WHERE CAST(code AS TEXT) = ? OR public_code = ?', [code, code]);
       if (!rows[0]) return json({ ok: true, exists: false });
       const tag = rows[0];
       if (tag.status === 'claimed' && tag.pet_id) {
@@ -1924,6 +2354,9 @@ async function handleDb(request, env) {
     const authReel = await handleAuthReelAction(env, body, json, clean, userId, notifyUserPush);
     if (authReel) return authReel;
 
+    const authStory = await handleAuthStoryAction(env, body, json, clean, userId, notifyUserPush);
+    if (authStory) return authStory;
+
     if (action === 'registerPushToken') {
       const expoPushToken = clean(body.expoPushToken, 200);
       const platform = clean(body.platform, 20) || 'android';
@@ -1982,10 +2415,10 @@ async function handleDb(request, env) {
     // autenticado. Se usa justo después de crear la mascota en el flujo de
     // "escaneé una chapita → me registro → registro a mi mascota".
     if (action === 'claimTag') {
-      const code = Number(body.code);
+      const code = parseIncomingTagCode(body.code);
       const petId = clean(body.petId, 80);
-      if (!Number.isInteger(code)) return json({ error: 'Código inválido' }, 400);
-      const tags = await d1(env, 'SELECT * FROM pet_tags WHERE code = ?', [code]);
+      if (!code) return json({ error: 'Código inválido' }, 400);
+      const tags = await d1(env, 'SELECT * FROM pet_tags WHERE CAST(code AS TEXT) = ? OR public_code = ?', [code, code]);
       if (!tags[0]) return json({ error: 'Chapita no encontrada' }, 404);
       if (tags[0].status === 'claimed') return json({ error: 'Esta chapita ya fue asignada a una mascota' }, 409);
       const pets = await d1(env, 'SELECT id FROM pets WHERE id = ? AND user_id = ?', [petId, userId]);
@@ -1993,7 +2426,7 @@ async function handleDb(request, env) {
       await d1(
         env,
         "UPDATE pet_tags SET status = 'claimed', pet_id = ?, claimed_by_user_id = ?, claimed_at = ? WHERE code = ?",
-        [petId, userId, now, code]
+        [petId, userId, now, tags[0].code]
       );
       return json({ ok: true });
     }
@@ -2005,12 +2438,27 @@ async function handleDb(request, env) {
       if (!ADMIN_USERNAMES.includes(username)) return json({ error: 'No autorizado' }, 403);
 
       if (action === 'createTag') {
+        const publicCode = parseManualTagCode(body.code);
+        if (!String(body.code ?? '').trim()) return json({ error: TAG_CODE_REQUIRED }, 400);
+        if (!publicCode) return json({ error: TAG_CODE_INVALID }, 400);
+        const existing = await d1(
+          env,
+          'SELECT code FROM pet_tags WHERE public_code = ? OR CAST(code AS TEXT) = ? LIMIT 1',
+          [publicCode, publicCode]
+        );
+        if (existing[0]) return json({ error: TAG_CODE_TAKEN }, 409);
         const maxRows = await d1(env, 'SELECT MAX(code) AS m FROM pet_tags');
         const nextCode = (maxRows[0].m || 0) + 1;
-        await d1(env, 'INSERT INTO pet_tags (code, status, created_by, created_at) VALUES (?, ?, ?, ?)', [
-          nextCode, 'unclaimed', userId, now,
-        ]);
-        return json({ ok: true, code: nextCode });
+        try {
+          await d1(env, 'INSERT INTO pet_tags (code, public_code, status, created_by, created_at) VALUES (?, ?, ?, ?, ?)', [
+            nextCode, publicCode, 'unclaimed', userId, now,
+          ]);
+        } catch (e) {
+          const msg = String(e && e.message || '');
+          if (/UNIQUE|constraint/i.test(msg)) return json({ error: TAG_CODE_TAKEN }, 409);
+          throw e;
+        }
+        return json({ ok: true, code: publicCode });
       }
 
       // listTags
@@ -2023,7 +2471,7 @@ async function handleDb(request, env) {
       return json({
         ok: true,
         tags: rows.map((r) => ({
-          code: r.code,
+          code: r.public_code || String(r.code),
           status: r.status,
           petId: r.pet_id || null,
           petName: r.pet_name || null,
@@ -2094,7 +2542,7 @@ async function handleDb(request, env) {
     // ---------- Alertas: escrituras (requieren sesión) ----------
 
     if (action === 'createAlert') {
-      const type = body.type === 'found' ? 'found' : 'lost';
+      const type = parseAlertType(body.type) || 'lost';
       const petName = clean(body.petName, 40);
       const species = clean(body.species, 20) || 'perro';
       const breed = clean(body.breed, 60);
@@ -2106,22 +2554,124 @@ async function handleDb(request, env) {
       const lat = body.lat != null && Number.isFinite(Number(body.lat)) ? Number(body.lat) : null;
       const lon = body.lon != null && Number.isFinite(Number(body.lon)) ? Number(body.lon) : null;
       const eventDate = body.eventDate != null && Number.isFinite(Number(body.eventDate)) ? Number(body.eventDate) : now;
+      const sexParsed = parsePetSex(body.sex);
+      const sex = sexParsed.ok ? sexParsed.value : null;
 
       if (!image) return json({ error: 'Falta la foto del animal' }, 400);
       if (image.startsWith('data:')) return json({ error: 'La imagen debe subirse primero a Cloudflare' }, 400);
       if (!description) return json({ error: 'Agrega una descripción' }, 400);
       if (!locality) return json({ error: 'Falta la localidad del hecho' }, 400);
 
+      let authorProfileId = null;
+      let contactWhatsapp = null;
+      let contactPhone = null;
+      if (type === 'adoption') {
+        const profileId = clean(body.authorProfileId, 80);
+        if (profileId) {
+          const prs = await d1(env, 'SELECT * FROM profiles WHERE id = ? AND account_id = ? LIMIT 1', [profileId, userId]);
+          if (!prs[0]) return json({ error: 'Página no encontrada' }, 400);
+          authorProfileId = prs[0].id;
+          if (prs[0].type === 'protector') {
+            const parsed = parseProtectorAdoptionContact('protector', prs[0].adoption_whatsapp, prs[0].adoption_phone);
+            if (!parsed.ok) return json({ error: parsed.error || ADOPTION_CONTACT_REQUIRED }, 400);
+          } else {
+            const parsed = parseProtectorAdoptionContact('protector', body.contactWhatsapp, body.contactPhone);
+            if (!parsed.ok) return json({ error: parsed.error || ADOPTION_CONTACT_REQUIRED }, 400);
+            contactWhatsapp = parsed.whatsapp;
+            contactPhone = parsed.phone;
+          }
+        } else {
+          const parsed = parseProtectorAdoptionContact('protector', body.contactWhatsapp, body.contactPhone);
+          if (!parsed.ok) return json({ error: parsed.error || ADOPTION_CONTACT_REQUIRED }, 400);
+          contactWhatsapp = parsed.whatsapp;
+          contactPhone = parsed.phone;
+        }
+      }
+
       const id = `alert-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(
         env,
-        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at)
-         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now]
+        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at, renewed_at, sex, author_profile_id, contact_whatsapp, contact_phone)
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now, now, sex, authorProfileId, contactWhatsapp, contactPhone]
       );
       const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [id]);
       const [alert] = await attachLikedFlags(env, rows, userId);
       return json({ ok: true, alert });
+    }
+
+    if (action === 'myAlerts') {
+      const tab = clean(body.tab, 20) === 'resolved' ? 'resolved' : 'active';
+      const before = Number(body.before) || now + 1000;
+      const limit = Math.min(Number(body.limit) || 20, 40);
+      const conditions = tab === 'resolved'
+        ? "(a.status = 'resolved' OR a.resolved_at IS NOT NULL)"
+        : "(a.status IS NULL OR a.status = 'active') AND a.resolved_at IS NULL";
+      const rows = await d1(
+        env,
+        `${ALERT_SELECT} WHERE a.user_id = ? AND ${conditions}
+           AND COALESCE(a.renewed_at, a.created_at, a.resolved_at) < ?
+         ORDER BY COALESCE(a.resolved_at, a.renewed_at, a.created_at) DESC
+         LIMIT ?`,
+        [userId, before, limit + 1]
+      );
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const alerts = await attachLikedFlags(env, page, userId);
+      return json({ ok: true, alerts, hasMore });
+    }
+
+    if (action === 'resolveAlert') {
+      const alertId = clean(body.alertId, 80);
+      if (!alertId) return json({ error: 'Falta la alerta' }, 400);
+      const owned = await d1(env, 'SELECT * FROM alerts WHERE id = ?', [alertId]);
+      if (!owned[0]) return json({ error: 'Alerta no encontrada' }, 404);
+      if (owned[0].user_id !== userId) return json({ error: ALERT_RESOLVE_OWNER_ERROR }, 403);
+      if (owned[0].resolved_at || owned[0].status === 'resolved') {
+        return json({ error: ALERT_ALREADY_RESOLVED }, 400);
+      }
+      const allowed = allowedResolutionForType(owned[0].type);
+      if (!allowed) return json({ error: ALERT_RESOLVE_TYPE_ERROR }, 400);
+      const requested = parseAlertResolutionType(body.resolutionType);
+      if (requested && requested !== allowed) return json({ error: ALERT_RESOLVE_TYPE_ERROR }, 400);
+      await d1(
+        env,
+        "UPDATE alerts SET status = 'resolved', resolved_at = ?, resolution_type = ? WHERE id = ?",
+        [now, allowed, alertId]
+      );
+      const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [alertId]);
+      const [alert] = await attachLikedFlags(env, rows, userId);
+      return json({ ok: true, alert });
+    }
+
+    if (action === 'renewAlert') {
+      const alertId = clean(body.alertId, 80);
+      if (!alertId) return json({ error: 'Falta la alerta' }, 400);
+      const owned = await d1(env, 'SELECT * FROM alerts WHERE id = ?', [alertId]);
+      if (!owned[0]) return json({ error: 'Alerta no encontrada' }, 404);
+      if (owned[0].user_id !== userId) return json({ error: 'Esa alerta no es tuya' }, 403);
+      if (owned[0].resolved_at || owned[0].status === 'resolved') {
+        return json({ error: ALERT_RESOLVED_NOT_RENEWABLE }, 400);
+      }
+      const last = owned[0].renewed_at || owned[0].created_at;
+      if (now - last < ALERT_RENEW_MS) {
+        return json({ error: 'Todavía no pasaron 7 días desde la última renovación.' }, 400);
+      }
+      await d1(env, 'UPDATE alerts SET renewed_at = ?, renewal_notified_at = NULL WHERE id = ?', [now, alertId]);
+      const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [alertId]);
+      const [alert] = await attachLikedFlags(env, rows, userId);
+      return json({ ok: true, alert });
+    }
+
+    if (action === 'deleteAlert') {
+      const alertId = clean(body.alertId, 80);
+      if (!alertId) return json({ error: 'Falta la alerta' }, 400);
+      const owned = await d1(env, 'SELECT id FROM alerts WHERE id = ? AND user_id = ?', [alertId, userId]);
+      if (!owned[0]) return json({ error: 'Esa alerta no es tuya' }, 403);
+      await d1(env, 'DELETE FROM alert_likes WHERE alert_id = ?', [alertId]);
+      await d1(env, 'DELETE FROM alert_comments WHERE alert_id = ?', [alertId]);
+      await d1(env, 'DELETE FROM alerts WHERE id = ?', [alertId]);
+      return json({ ok: true });
     }
 
     if (action === 'alertLike') {
@@ -2296,19 +2846,24 @@ async function handleDb(request, env) {
     if (action === 'listProfiles') {
       await ensurePersonalProfile(env, userId);
       const rows = await d1(env, 'SELECT * FROM profiles WHERE account_id = ? ORDER BY created_at ASC', [userId]);
-      return json({ ok: true, profiles: rows.map(profileRow) });
+      return json({ ok: true, profiles: rows.map((r) => profileRow(r)) });
     }
 
     if (action === 'createProfile') {
       const type = clean(body.type, 20);
       const name = clean(body.name, 60);
       const username = clean(body.username, 20).toLowerCase();
-      const bio = clean(body.bio, 200);
+      const bioRes = acceptedBio(body.bio);
+      if (!bioRes.ok) return json({ error: bioRes.error }, 400);
+      const bio = bioRes.bio;
       const avatar = clean(body.avatar, 500) || null;
       if (type !== 'business' && type !== 'protector') {
         return json({ error: 'Solo se pueden crear perfiles de tienda o proteccionista' }, 400);
       }
       if (name.length < 2) return json({ error: 'Escribe el nombre del perfil' }, 400);
+      if (humanPetSuffixBlocked(username)) {
+        return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
+      }
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
       }
@@ -2330,14 +2885,16 @@ async function handleDb(request, env) {
       if (await usernameTaken(env, username, null)) {
         return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
       }
+      const contact = parseProtectorAdoptionContact(type, body.adoptionWhatsapp, body.adoptionPhone);
+      if (!contact.ok) return json({ error: contact.error || ADOPTION_CONTACT_REQUIRED }, 400);
       const id = `prf-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(
         env,
-        'INSERT INTO profiles (id, account_id, type, name, username, avatar_url, bio, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, userId, type, name, username, avatar, bio, now]
+        'INSERT INTO profiles (id, account_id, type, name, username, avatar_url, bio, created_at, adoption_whatsapp, adoption_phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, userId, type, name, username, avatar, bio, now, contact.whatsapp, contact.phone]
       );
       const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [id]);
-      return json({ ok: true, profile: profileRow(rows[0]) });
+      return json({ ok: true, profile: profileRow(rows[0], { includeAdoptionContact: true }) });
     }
 
     if (action === 'updatePublicProfile') {
@@ -2348,7 +2905,9 @@ async function handleDb(request, env) {
       if (owned[0].type === 'personal') return json({ error: 'El perfil personal se edita desde tu cuenta' }, 400);
       const name = clean(body.name, 60);
       const username = clean(String(body.username || '').replace(/^@/, ''), 20).toLowerCase();
-      const bio = clean(body.bio, 200);
+      const bioRes = acceptedBio(body.bio);
+      if (!bioRes.ok) return json({ error: bioRes.error }, 400);
+      const bio = bioRes.bio;
       const location = clean(body.location, 80);
       let locality = owned[0].locality || null;
       if (body.locality !== undefined) {
@@ -2357,6 +2916,9 @@ async function handleDb(request, env) {
       const phone = clean(body.phone, 30);
       const avatar = clean(body.avatar, 500) || null;
       if (name.length < 2) return json({ error: 'Escribe el nombre del perfil' }, 400);
+      if (humanPetSuffixBlocked(username)) {
+        return json({ error: PET_SUFFIX_RESERVED_ERROR }, 400);
+      }
       if (!USERNAME_RE.test(username)) {
         return json({ error: 'El usuario debe tener 3-20 caracteres: letras, números, punto o guion bajo' }, 400);
       }
@@ -2366,13 +2928,19 @@ async function handleDb(request, env) {
       if (await usernameTaken(env, username, userId, profileId)) {
         return json({ error: 'Ese nombre de usuario ya está en uso' }, 409);
       }
+      const contact = parseProtectorAdoptionContact(
+        owned[0].type,
+        body.adoptionWhatsapp !== undefined ? body.adoptionWhatsapp : owned[0].adoption_whatsapp,
+        body.adoptionPhone !== undefined ? body.adoptionPhone : owned[0].adoption_phone
+      );
+      if (!contact.ok) return json({ error: contact.error }, 400);
       await d1(
         env,
-        'UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, locality = ?, phone = ?, avatar_url = COALESCE(?, avatar_url) WHERE id = ?',
-        [name, username, bio, location, locality, phone, avatar, profileId]
+        'UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, locality = ?, phone = ?, avatar_url = COALESCE(?, avatar_url), adoption_whatsapp = ?, adoption_phone = ? WHERE id = ?',
+        [name, username, bio, location, locality, phone, avatar, contact.whatsapp, contact.phone, profileId]
       );
       const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId]);
-      return json({ ok: true, profile: profileRow(rows[0]) });
+      return json({ ok: true, profile: profileRow(rows[0], { includeAdoptionContact: true }) });
     }
 
     if (action === 'updatePost') {
@@ -2417,7 +2985,9 @@ async function handleDb(request, env) {
       const name = clean(body.name, 40);
       const species = normalizeSpecies(body.species) || 'perro';
       const breed = clean(body.breed, 60);
-      const bio = clean(body.bio, 200);
+      const bioRes = acceptedBio(body.bio);
+      if (!bioRes.ok) return json({ error: bioRes.error }, 400);
+      const bio = bioRes.bio;
       const emoji = clean(body.emoji, 8) || emojiForSpecies(species);
       const avatarUrl = clean(body.avatarUrl, 500) || null;
       const size = normalizeSize(body.size) || null;
@@ -2430,11 +3000,13 @@ async function handleDb(request, env) {
       if (birthDate && !isValidBirthDate(birthDate, now)) {
         return json({ error: 'La fecha de nacimiento no es válida' }, 400);
       }
-      let username = clean(body.username, 20).toLowerCase();
-      if (!USERNAME_RE.test(username)) username = slugHandle(name);
-      if (!USERNAME_RE.test(username)) return json({ error: 'El usuario de la mascota debe tener 3-20 caracteres: letras, números, punto o _' }, 400);
-      const takenUser = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ?', [username]);
-      if (takenUser.length) return json({ error: 'Ese @ de mascota ya está en uso. Probá otro.' }, 409);
+      let username = parsePetUsernameInput(clean(body.username, 24));
+      if (!username || !isValidPetUsername(username)) {
+        return json({ error: PET_USERNAME_INVALID_ERROR }, 400);
+      }
+      if (await usernameTaken(env, username, null, null, null)) {
+        return json({ error: PET_TAKEN_ERROR }, 409);
+      }
       const takenName = await d1(env, 'SELECT id FROM pets WHERE LOWER(name) = LOWER(?)', [name]);
       if (takenName.length) return json({ error: 'Ya existe una mascota con ese nombre. Elegí otro nombre o usuario.' }, 409);
 
@@ -2454,14 +3026,24 @@ async function handleDb(request, env) {
       const adoptionStartedAt = careStatus === 'en_adopcion' ? now : null;
 
       const id = `pet-${now}-${Math.random().toString(36).slice(2, 8)}`;
-      await d1(
-        env,
-        `INSERT INTO pets (
-          id, user_id, name, username, species, breed, age, bio, emoji, avatar_url, created_at,
-          profile_id, care_status, adoption_started_at, birth_date, size, sex, neutered
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, userId, name, username, species, breed, '', bio, emoji, avatarUrl, now, profileId, careStatus, adoptionStartedAt, birthDate, size, sex, neutered]
-      );
+      try {
+        await d1(
+          env,
+          `INSERT INTO pets (
+            id, user_id, name, username, species, breed, age, bio, emoji, avatar_url, created_at,
+            profile_id, care_status, adoption_started_at, birth_date, size, sex, neutered
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, userId, name, username, species, breed, '', bio, emoji, avatarUrl, now, profileId, careStatus, adoptionStartedAt, birthDate, size, sex, neutered]
+        );
+      } catch (err) {
+        if (isUniqueConstraintError(err)) return json({ error: PET_TAKEN_ERROR }, 409);
+        throw err;
+      }
+      const dups = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ?', [username]);
+      if (dups.length > 1) {
+        await d1(env, 'DELETE FROM pets WHERE id = ?', [id]);
+        return json({ error: PET_TAKEN_ERROR }, 409);
+      }
       const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [id]);
       return json({ ok: true, pet: petRow(rows[0]) });
     }
@@ -2472,7 +3054,12 @@ async function handleDb(request, env) {
       const name = clean(body.name, 40) || p.name;
       const species = normalizeSpecies(body.species) || p.species || 'perro';
       const breed = body.breed != null ? clean(body.breed, 60) : (p.breed || '');
-      const bio = body.bio != null ? clean(body.bio, 200) : (p.bio || '');
+      let bio = p.bio || '';
+      if (body.bio != null) {
+        const bioRes = acceptedBio(body.bio);
+        if (!bioRes.ok) return json({ error: bioRes.error }, 400);
+        bio = bioRes.bio;
+      }
       const emoji = clean(body.emoji, 8) || emojiForSpecies(species) || p.emoji;
       const avatarUrl = body.avatarUrl != null ? (clean(body.avatarUrl, 500) || p.avatar_url) : p.avatar_url;
       const size = body.size != null ? (normalizeSize(body.size) || null) : (p.size || null);
@@ -2489,15 +3076,11 @@ async function handleDb(request, env) {
         if (next && !isValidBirthDate(next, now)) return json({ error: 'La fecha de nacimiento no es válida' }, 400);
         birthDate = next;
       }
-      let username = p.username;
-      if (body.username != null) {
-        username = clean(body.username, 20).toLowerCase();
-        if (!USERNAME_RE.test(username)) return json({ error: 'El usuario de la mascota debe tener 3-20 caracteres: letras, números, punto o _' }, 400);
+      const resolvedUsername = resolvePetUsernameUpdate(p.username, body.username);
+      if (!resolvedUsername.ok) {
+        return json({ error: resolvedUsername.error }, resolvedUsername.status);
       }
-      if (username && username !== p.username) {
-        const takenUser = await d1(env, 'SELECT id FROM pets WHERE LOWER(username) = ? AND id != ?', [username, p.id]);
-        if (takenUser.length) return json({ error: 'Ese @ de mascota ya está en uso. Probá otro.' }, 409);
-      }
+      const username = resolvedUsername.username;
       if (name !== p.name) {
         const takenName = await d1(env, 'SELECT id FROM pets WHERE LOWER(name) = LOWER(?) AND id != ?', [name, p.id]);
         if (takenName.length) return json({ error: 'Ya existe una mascota con ese nombre. Elegí otro nombre o usuario.' }, 409);
@@ -2542,9 +3125,276 @@ async function handleDb(request, env) {
     if (action === 'deletePet') {
       const p = await findOwnedPet(env, body.petId, userId);
       if (!p) return json({ error: 'Esa mascota no es tuya' }, 403);
-      await d1(env, "DELETE FROM follows WHERE target_type = 'pet' AND target_id = ?", [p.id]);
-      await d1(env, 'DELETE FROM pets WHERE id = ?', [p.id]);
+      await ensurePetHandleAliasSchema(env);
+      let existingAliases = [];
+      try {
+        existingAliases = await d1(env, 'SELECT old_username FROM pet_username_aliases WHERE pet_id = ?', [p.id]);
+      } catch (_) {}
+      const tombstones = petDeleteTombstoneRows(
+        p.id,
+        p.username,
+        existingAliases.map((r) => r.old_username)
+      );
+      const reserve = tombstones.map((row) =>
+        env.DB.prepare(PET_DELETE_TOMBSTONE_SQL).bind(row.oldUsername, row.petId, row.newUsername, now)
+      );
+      const remove = [
+        env.DB.prepare("DELETE FROM follows WHERE target_type = 'pet' AND target_id = ?").bind(p.id),
+        env.DB.prepare('DELETE FROM pets WHERE id = ?').bind(p.id),
+      ];
+      if (typeof env.DB.batch === 'function') {
+        await env.DB.batch([...reserve, ...remove]);
+      } else {
+        for (const row of tombstones) {
+          await d1(env, PET_DELETE_TOMBSTONE_SQL, [row.oldUsername, row.petId, row.newUsername, now]);
+        }
+        await d1(env, "DELETE FROM follows WHERE target_type = 'pet' AND target_id = ?", [p.id]);
+        await d1(env, 'DELETE FROM pets WHERE id = ?', [p.id]);
+      }
       return json({ ok: true, petId: p.id });
+    }
+
+    if (action === 'transferPetInternal') {
+      await ensurePetTransferRequestsSchema(env);
+      const p = await findOwnedPet(env, body.petId, userId);
+      if (!p) return json({ error: PET_TRANSFER_FORBIDDEN }, 403);
+      const target = clean(body.target, 20);
+      if (target === 'page') {
+        const profileId = clean(body.profileId, 80);
+        if (!profileId) return json({ error: PET_TRANSFER_PAGE_REQUIRED }, 400);
+        const owned = await d1(env, "SELECT id, type FROM profiles WHERE id = ? AND account_id = ?", [profileId, userId]);
+        if (!owned[0] || owned[0].type !== 'protector') {
+          return json({ error: PET_TRANSFER_PAGE_FORBIDDEN }, 403);
+        }
+        const mapped = remappedCareStatus(p.care_status, 'page');
+        const adoptionStartedAt = mapped.careStatus === 'en_adopcion'
+          ? (mapped.keepExistingAdoptionStart ? (p.adoption_started_at || now) : now)
+          : null;
+        await d1(
+          env,
+          'UPDATE pets SET profile_id = ?, care_status = ?, adoption_started_at = ? WHERE id = ? AND user_id = ?',
+          [profileId, mapped.careStatus, adoptionStartedAt, p.id, userId]
+        );
+      } else if (target === 'personal') {
+        if (!p.profile_id) return json({ error: 'Esta mascota ya está en Mis mascotas' }, 400);
+        const mapped = remappedCareStatus(p.care_status, 'personal');
+        await d1(
+          env,
+          'UPDATE pets SET profile_id = NULL, care_status = ?, adoption_started_at = NULL WHERE id = ? AND user_id = ?',
+          [mapped.careStatus, p.id, userId]
+        );
+      } else {
+        return json({ error: 'Destino inválido' }, 400);
+      }
+      await d1(
+        env,
+        "UPDATE pet_transfer_requests SET status = 'cancelled', cancelled_at = ? WHERE pet_id = ? AND status = 'pending'",
+        [now, p.id]
+      ).catch(() => {});
+      const rows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [p.id]);
+      return json({ ok: true, pet: petRow(rows[0]), adoptedIncrement: false });
+    }
+
+    if (action === 'lookupTransferRecipient') {
+      const found = await findTransferRecipient(env, body.identifier);
+      if (found.error) return json({ error: found.error }, found.error === PET_TRANSFER_USER_NOT_FOUND ? 404 : 400);
+      if (found.user.id === userId) return json({ error: PET_TRANSFER_SELF_ERROR }, 400);
+      return json({ ok: true, user: publicTransferUser(found.user) });
+    }
+
+    if (action === 'createPetTransferRequest') {
+      await ensurePetTransferRequestsSchema(env);
+      const p = await findOwnedPet(env, body.petId, userId);
+      if (!p) return json({ error: PET_TRANSFER_FORBIDDEN }, 403);
+      const found = await findTransferRecipient(env, body.identifier);
+      if (found.error) return json({ error: found.error }, found.error === PET_TRANSFER_USER_NOT_FOUND ? 404 : 400);
+      if (found.user.id === userId) return json({ error: PET_TRANSFER_SELF_ERROR }, 400);
+      const pending = await d1(env, "SELECT id FROM pet_transfer_requests WHERE pet_id = ? AND status = 'pending' LIMIT 1", [p.id]);
+      if (pending[0]) return json({ error: PET_TRANSFER_PENDING_EXISTS }, 409);
+      const id = `ptr-${now}-${Math.random().toString(36).slice(2, 8)}`;
+      await d1(
+        env,
+        `INSERT INTO pet_transfer_requests
+          (id, pet_id, sender_user_id, source_profile_id, recipient_user_id, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+        [id, p.id, userId, p.profile_id || null, found.user.id, now]
+      );
+      const sender = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [userId]);
+      const senderName = (sender[0] && (sender[0].name || sender[0].username)) || 'Alguien';
+      const copy = transferRequestedCopy(senderName, p.name);
+      await recordTransferActivity(env, {
+        id: `act-${id}-req`,
+        type: 'pet_transfer_requested',
+        userId: found.user.id,
+        petId: p.id,
+        requestId: id,
+        idempotencyKey: `pet-transfer-requested:${id}`,
+        title: copy.title,
+        body: copy.body,
+        now,
+        metadata: { requestId: id, petName: p.name, petUsername: p.username, petAvatar: p.avatar_url, senderName },
+      });
+      const rows = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [id]);
+      return json({ ok: true, request: transferRequestRow(rows[0]), user: publicTransferUser(found.user) });
+    }
+
+    if (action === 'respondPetTransfer') {
+      await ensurePetTransferRequestsSchema(env);
+      const requestId = clean(body.requestId, 80);
+      const decision = clean(body.decision, 20);
+      const rows = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [requestId]);
+      const req = rows[0];
+      if (!req) return json({ error: PET_TRANSFER_STALE }, 404);
+      if (req.recipient_user_id !== userId) return json({ error: 'No podés responder esta solicitud' }, 403);
+      if (req.status !== 'pending') return json({ error: PET_TRANSFER_STALE }, 409);
+      const petRows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [req.pet_id]);
+      const pet = petRows[0];
+      if (!pet) return json({ error: PET_TRANSFER_STALE }, 409);
+      if (decision === 'reject') {
+        await d1(
+          env,
+          "UPDATE pet_transfer_requests SET status = 'rejected', responded_at = ? WHERE id = ? AND status = 'pending'",
+          [now, req.id]
+        );
+        const actor = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [userId]);
+        const who = (actor[0] && (actor[0].username || actor[0].name)) || 'El usuario';
+        const copy = transferRejectedCopy(who, pet.name);
+        await recordTransferActivity(env, {
+          id: `act-${req.id}-rej`,
+          type: 'pet_transfer_rejected',
+          userId: req.sender_user_id,
+          petId: pet.id,
+          requestId: req.id,
+          idempotencyKey: `pet-transfer-rejected:${req.id}`,
+          title: copy.title,
+          body: copy.body,
+          now,
+          metadata: { requestId: req.id, petName: pet.name, petUsername: pet.username },
+        });
+        const updated = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [req.id]);
+        return json({ ok: true, request: transferRequestRow(updated[0]), pet: petRow(pet) });
+      }
+      if (decision !== 'accept') return json({ error: 'Decisión inválida' }, 400);
+      if (!sameOwnerSnapshot(
+        { userId: pet.user_id, profileId: pet.profile_id },
+        { senderUserId: req.sender_user_id, sourceProfileId: req.source_profile_id }
+      )) {
+        return json({ error: PET_TRANSFER_STALE }, 409);
+      }
+      const mapped = remappedCareStatus(pet.care_status, 'personal');
+      const statements = [
+        env.DB.prepare('UPDATE pets SET user_id = ?, profile_id = NULL, care_status = ?, adoption_started_at = NULL WHERE id = ?').bind(userId, mapped.careStatus, pet.id),
+        env.DB.prepare(
+          "UPDATE pet_transfer_requests SET status = 'accepted', responded_at = ?, completed_at = ? WHERE id = ? AND status = 'pending'"
+        ).bind(now, now, req.id),
+      ];
+      if (countsAsPageAdoption({ sourceProfileId: req.source_profile_id, kind: 'external' })) {
+        const histId = `pt-${now}-${Math.random().toString(36).slice(2, 8)}`;
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO pet_transfers (id, pet_id, from_profile_id, from_user_id, to_user_id, to_profile_id, created_at)
+             VALUES (?, ?, ?, ?, ?, NULL, ?)`
+          ).bind(histId, pet.id, req.source_profile_id, req.sender_user_id, userId, now)
+        );
+      }
+      if (typeof env.DB.batch === 'function') {
+        await env.DB.batch(statements);
+      } else {
+        await d1(env, 'UPDATE pets SET user_id = ?, profile_id = NULL, care_status = ?, adoption_started_at = NULL WHERE id = ?', [userId, mapped.careStatus, pet.id]);
+        await d1(
+          env,
+          "UPDATE pet_transfer_requests SET status = 'accepted', responded_at = ?, completed_at = ? WHERE id = ? AND status = 'pending'",
+          [now, now, req.id]
+        );
+        if (countsAsPageAdoption({ sourceProfileId: req.source_profile_id, kind: 'external' })) {
+          const histId = `pt-${now}-${Math.random().toString(36).slice(2, 8)}`;
+          await d1(
+            env,
+            `INSERT INTO pet_transfers (id, pet_id, from_profile_id, from_user_id, to_user_id, to_profile_id, created_at)
+             VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+            [histId, pet.id, req.source_profile_id, req.sender_user_id, userId, now]
+          );
+        }
+      }
+      const actor = await d1(env, 'SELECT name, username FROM users WHERE id = ?', [userId]);
+      const who = (actor[0] && (actor[0].username || actor[0].name)) || 'El usuario';
+      const copy = transferAcceptedCopy(who, pet.name);
+      await recordTransferActivity(env, {
+        id: `act-${req.id}-acc`,
+        type: 'pet_transfer_accepted',
+        userId: req.sender_user_id,
+        petId: pet.id,
+        requestId: req.id,
+        idempotencyKey: `pet-transfer-accepted:${req.id}`,
+        title: copy.title,
+        body: copy.body,
+        now,
+        metadata: { requestId: req.id, petName: pet.name, petUsername: pet.username },
+      });
+      const nextPet = await d1(env, 'SELECT * FROM pets WHERE id = ?', [pet.id]);
+      const nextReq = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [req.id]);
+      return json({
+        ok: true,
+        request: transferRequestRow(nextReq[0]),
+        pet: petRow(nextPet[0]),
+        adoptedIncrement: countsAsPageAdoption({ sourceProfileId: req.source_profile_id, kind: 'external' }),
+      });
+    }
+
+    if (action === 'cancelPetTransferRequest') {
+      await ensurePetTransferRequestsSchema(env);
+      const requestId = clean(body.requestId, 80);
+      const rows = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [requestId]);
+      const req = rows[0];
+      if (!req) return json({ error: PET_TRANSFER_STALE }, 404);
+      if (req.sender_user_id !== userId) return json({ error: PET_TRANSFER_FORBIDDEN }, 403);
+      if (req.status !== 'pending') return json({ error: PET_TRANSFER_STALE }, 409);
+      await d1(
+        env,
+        "UPDATE pet_transfer_requests SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND status = 'pending'",
+        [now, req.id]
+      );
+      const updated = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [req.id]);
+      return json({ ok: true, request: transferRequestRow(updated[0]) });
+    }
+
+    if (action === 'petTransferDetail') {
+      await ensurePetTransferRequestsSchema(env);
+      const requestId = clean(body.requestId, 80);
+      const rows = await d1(env, 'SELECT * FROM pet_transfer_requests WHERE id = ?', [requestId]);
+      const req = rows[0];
+      if (!req) return json({ error: PET_TRANSFER_STALE }, 404);
+      if (req.sender_user_id !== userId && req.recipient_user_id !== userId) {
+        return json({ error: 'No podés ver esta solicitud' }, 403);
+      }
+      const petRows = await d1(env, 'SELECT * FROM pets WHERE id = ?', [req.pet_id]);
+      const sender = await d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE id = ?', [req.sender_user_id]);
+      let pageName = null;
+      if (req.source_profile_id) {
+        const page = await d1(env, 'SELECT name FROM profiles WHERE id = ?', [req.source_profile_id]);
+        pageName = page[0]?.name || null;
+      }
+      return json({
+        ok: true,
+        request: transferRequestRow(req),
+        pet: petRows[0] ? petRow(petRows[0]) : null,
+        sender: publicTransferUser(sender[0]),
+        sourcePageName: pageName,
+      });
+    }
+
+    if (action === 'pendingPetTransfer') {
+      await ensurePetTransferRequestsSchema(env);
+      const p = await findOwnedPet(env, body.petId, userId);
+      if (!p) return json({ error: PET_TRANSFER_FORBIDDEN }, 403);
+      const rows = await d1(
+        env,
+        "SELECT * FROM pet_transfer_requests WHERE pet_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+        [p.id]
+      );
+      if (!rows[0]) return json({ ok: true, request: null });
+      const rec = await d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE id = ?', [rows[0].recipient_user_id]);
+      return json({ ok: true, request: transferRequestRow(rows[0]), recipient: publicTransferUser(rec[0]) });
     }
 
     if (action === 'notifications') {
@@ -2577,7 +3427,7 @@ async function handleDb(request, env) {
            WHERE ls.owner_id = ? ORDER BY ls.created_at DESC LIMIT 20`, [userId]),
         d1(env, `SELECT id, type, user_id, pet_id, title, body, metadata, created_at
            FROM activity_events
-           WHERE user_id = ? AND type = 'birthday'
+           WHERE user_id = ? AND type IN ('birthday', 'pet_transfer_requested', 'pet_transfer_accepted', 'pet_transfer_rejected')
            ORDER BY created_at DESC LIMIT 20`, [userId]),
       ]);
       const items = [
@@ -2607,7 +3457,7 @@ async function handleDb(request, env) {
             createdAt: r.created_at,
           };
         }),
-        ...birthdays.map((r) => {
+        ...birthdays.filter((r) => r.type === 'birthday').map((r) => {
           let meta = {};
           try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { meta = {}; }
           return {
@@ -2624,6 +3474,25 @@ async function handleDb(request, env) {
             title: r.title,
             text: r.body || '',
             years: meta.years || null,
+            createdAt: r.created_at,
+          };
+        }),
+        ...birthdays.filter((r) => String(r.type || '').startsWith('pet_transfer_')).map((r) => {
+          let meta = {};
+          try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { meta = {}; }
+          return {
+            id: r.id,
+            type: r.type,
+            actorId: r.user_id,
+            actorName: meta.senderName || '',
+            actorUsername: '',
+            actorAvatar: meta.petAvatar || null,
+            petId: r.pet_id || meta.petId || null,
+            petUsername: meta.petUsername || null,
+            petName: meta.petName || null,
+            requestId: meta.requestId || null,
+            title: r.title,
+            text: r.body || '',
             createdAt: r.created_at,
           };
         }),
@@ -2861,6 +3730,11 @@ export default {
       console.log('pet-birthday-cron', e && e.message);
     }
     try {
+      await runAlertRenewalReminders(env, nowMs);
+    } catch (e) {
+      console.log('alert-renew-cron', e && e.message);
+    }
+    try {
       await processPushReceipts(env, nowMs);
     } catch (e) {
       console.log('push-receipts', e && e.message);
@@ -2869,6 +3743,11 @@ export default {
       await runReelCleanup(env, nowMs);
     } catch (e) {
       console.log('reel-cleanup', e && e.message);
+    }
+    try {
+      await runStoryCleanup(env, nowMs);
+    } catch (e) {
+      console.log('story-cleanup', e && e.message);
     }
   },
 };

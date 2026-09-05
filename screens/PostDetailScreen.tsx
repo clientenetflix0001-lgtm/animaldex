@@ -195,7 +195,7 @@ function PostDetailContent({ post }: { post: Post }) {
         }));
     const real: DisplayComment[] = dbComments.map((c) => ({
       id: c.id,
-      name: c.userName,
+      name: c.username,
       avatarUri: c.avatarUrl ?? userFallbackAvatar(c.username),
       text: c.text,
       minutesAgo: timeAgoMinutes(c.createdAt),
@@ -295,10 +295,10 @@ function PostDetailContent({ post }: { post: Post }) {
         <Image source={{ uri: thumb(disp.avatarUri, 100) }} style={styles.avatar} transition={200} />
         <View>
           <Text style={styles.petName}>
-            @{disp.petUsername || disp.petName.toLowerCase()}{disp.petEmoji}
+            {disp.petUsername || disp.petName.toLowerCase()}{disp.petEmoji}
           </Text>
           <Text style={styles.subText}>
-            {(disp.speciesLabel || 'mascota').toLowerCase()} de (@{disp.username})
+            {(disp.speciesLabel || 'mascota').toLowerCase()} de ({disp.username})
           </Text>
         </View>
       </Pressable>

@@ -9,14 +9,15 @@
 // Nota: se evita `new URL()` (no siempre disponible/estable en Hermes
 // para RN) y en su lugar se usan expresiones regulares livianas.
 
-import { isReservedPublicUsername, USERNAME_RE } from './publicHandles';
+import { isReservedPublicUsername, USERNAME_RE } from './publicHandles.ts';
+import { hasPetSuffix } from './petHandles.ts';
 
 export type ScanResolution =
   | { kind: 'pet'; id: string; raw: string }
   | { kind: 'user'; id: string; raw: string }
   | { kind: 'handle'; username: string; raw: string }
   | { kind: 'post'; id: string; raw: string }
-  | { kind: 'tag'; code: number; raw: string }
+  | { kind: 'tag'; code: string; raw: string }
   | { kind: 'url'; url: string; raw: string }
   | { kind: 'text'; raw: string };
 
@@ -32,6 +33,9 @@ function matchKnownPath(path: string): { kind: 'pet' | 'user' | 'handle' | 'post
   if (m) return { kind: 'user', id: decodeURIComponent(m[1]) };
   m = clean.match(/^p\/([^/?#]+)/i);
   if (m) return { kind: 'post', id: decodeURIComponent(m[1]) };
+  if (hasPetSuffix(clean) && USERNAME_RE.test(clean)) {
+    return { kind: 'pet', id: decodeURIComponent(clean.toLowerCase()) };
+  }
   if (USERNAME_RE.test(clean) && !isReservedPublicUsername(clean)) {
     return { kind: 'handle', username: clean.toLowerCase() };
   }
@@ -41,13 +45,12 @@ function matchKnownPath(path: string): { kind: 'pet' | 'user' | 'handle' | 'post
 export function resolveScannedValue(rawValue: string): ScanResolution {
   const value = (rawValue || '').trim();
 
-  // 0) Chapita QR de mascota: cualquier URL con ?qr=<código numérico>,
-  //    sin importar el dominio (funciona con el dominio final del usuario
-  //    o con el de preview mientras tanto).
-  const tagMatch = value.match(/[?&]qr=(\d+)/);
+  // 0) Chapita QR de mascota: cualquier URL con ?qr=<código>,
+  //    numérico antiguo (17) o alfanumérico nuevo (AAA123).
+  const tagMatch = value.match(/[?&]qr=([A-Za-z0-9]+)/i);
   if (tagMatch) {
-    const code = Number(tagMatch[1]);
-    if (Number.isInteger(code)) return { kind: 'tag', code, raw: value };
+    const code = String(tagMatch[1] || '').toUpperCase();
+    if (code) return { kind: 'tag', code, raw: value };
   }
 
   // 1) Deep link con esquema propio de la app: animaldex://pet/xxx
