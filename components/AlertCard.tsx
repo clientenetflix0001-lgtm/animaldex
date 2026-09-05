@@ -11,9 +11,11 @@ import Animated, {
 import { ApiAlert, timeAgoMinutes } from '../lib/db';
 import { alertBadgeColor, alertBadgeText, alertContextLine, alertFoundSafeNote, isAlertResolved } from '../lib/alerts';
 import { shareAlert } from '../lib/share';
-import { thumb, large, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
 import { formatCount, formatTime } from '../lib/data';
-import { colors, radius, shadow, spacing } from '../lib/theme';
+import { colors, radius, spacing } from '../lib/theme';
+import { AdaptivePostImage } from './AdaptivePostImage';
+import { useImageNaturalSize } from '../lib/imageNaturalSize';
 import { adoptCtaLabel } from '../lib/adoptionContact';
 import { openAlertAdoption } from '../lib/openAlertAdoption';
 import WantToAdoptButton from './WantToAdoptButton';
@@ -61,6 +63,7 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
 
   const avatar = alert.userAvatar ?? userFallbackAvatar(alert.username ?? 'usuario');
   const minutesAgo = timeAgoMinutes(alert.createdAt);
+  const natural = useImageNaturalSize(alert.image);
 
   return (
     <View style={styles.card}>
@@ -93,13 +96,12 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
         <Text style={styles.time}>{formatTime(minutesAgo)}</Text>
       </View>
 
-      {/* Foto */}
-      <Image
-        source={{ uri: large(alert.image) }}
-        style={styles.image}
-        contentFit="cover"
-        transition={300}
-        placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
+      <AdaptivePostImage
+        uri={alert.image}
+        imageWidth={natural?.width}
+        imageHeight={natural?.height}
+        layout="feed"
+        recyclingKey={alert.id}
       />
 
       {/* Acciones */}
@@ -153,11 +155,12 @@ export const AlertCard = memo(AlertCardInner);
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    marginHorizontal: spacing.lg,
+    width: '100%',
     marginBottom: spacing.xl,
     overflow: 'hidden',
-    ...shadow.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   badgeRow: {
     paddingHorizontal: spacing.md,
@@ -184,7 +187,6 @@ const styles = StyleSheet.create({
   locText: { fontSize: 12, color: colors.textMuted, flexShrink: 1 },
   safeNote: { fontSize: 11, color: '#2EA65A', fontWeight: '700', marginTop: 3 },
   time: { fontSize: 11, color: colors.textMuted },
-  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',

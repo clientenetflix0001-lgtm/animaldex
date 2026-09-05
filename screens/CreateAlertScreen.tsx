@@ -15,7 +15,6 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -41,6 +40,8 @@ import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
 import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib/adoptionContact';
+import { SelectedImagePreview } from '../components/SelectedImagePreview';
+import { GALLERY_IMAGE_PICKER_OPTIONS } from '../lib/galleryImagePicker';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -55,6 +56,7 @@ export default function CreateAlertScreen() {
   const [sex, setSex] = useState<'macho' | 'hembra' | null>(null);
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<string | null>(null);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [contactWhatsapp, setContactWhatsapp] = useState('');
@@ -95,15 +97,10 @@ export default function CreateAlertScreen() {
       Alert.alert('Permiso requerido', 'Necesitamos acceso a tu galería.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-      base64: true,
-    });
+    const result = await ImagePicker.launchImageLibraryAsync(GALLERY_IMAGE_PICKER_OPTIONS);
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
+    setPreviewUri(asset.uri);
     const mime = asset.mimeType || 'image/jpeg';
     const dataUrl = asset.base64 ? `data:${mime};base64,${asset.base64}` : asset.uri;
     if (!dataUrl.startsWith('data:')) return;
@@ -245,8 +242,8 @@ export default function CreateAlertScreen() {
           {/* Foto */}
           <Text style={styles.label}>Foto *</Text>
           <Pressable style={styles.photoWrap} onPress={pickPhoto}>
-            {image ? (
-              <Image source={{ uri: image }} style={styles.photo} transition={200} />
+            {previewUri || image ? (
+              <SelectedImagePreview uri={previewUri || image!} loading={uploading} />
             ) : (
               <View style={[styles.photo, styles.photoEmpty]}>
                 {uploading ? (

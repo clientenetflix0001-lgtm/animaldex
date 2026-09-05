@@ -19,7 +19,9 @@ import { db, ApiAlert, ApiComment, timeAgoMinutes } from '../lib/db';
 import { useStore } from '../lib/store';
 import { shareAlert } from '../lib/share';
 import { alertBadgeColor, alertBadgeText, alertContextLine, alertFoundSafeNote, isAlertResolved } from '../lib/alerts';
-import { thumb, large, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
+import { AdaptivePostImage } from '../components/AdaptivePostImage';
+import { useImageNaturalSize } from '../lib/imageNaturalSize';
 import { formatCount, formatTime } from '../lib/data';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
@@ -63,6 +65,8 @@ export default function AlertDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const natural = useImageNaturalSize(alert?.image);
 
   const handleToggleLike = useCallback(() => {
     if (guest) { requireLogin(); return; }
@@ -175,12 +179,12 @@ export default function AlertDetailScreen() {
         <Text style={styles.time}>{formatTime(timeAgoMinutes(alert.createdAt))}</Text>
       </View>
 
-      <Image
-        source={{ uri: large(alert.image) }}
-        style={styles.image}
-        contentFit="cover"
-        transition={300}
-        placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
+      <AdaptivePostImage
+        uri={alert.image}
+        imageWidth={natural?.width}
+        imageHeight={natural?.height}
+        layout="feed"
+        recyclingKey={alert.id}
       />
 
       <View style={styles.actions}>
@@ -325,7 +329,6 @@ const styles = StyleSheet.create({
   locText: { fontSize: 12, color: colors.textMuted },
   safeNote: { fontSize: 11, color: '#2EA65A', fontWeight: '700', marginTop: 3 },
   time: { fontSize: 11, color: colors.textMuted },
-  image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   actions: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.lg },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   actionCount: { fontSize: 13, fontWeight: '700', color: colors.text },
