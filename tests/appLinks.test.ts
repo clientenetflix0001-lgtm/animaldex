@@ -144,6 +144,14 @@ describe('resolveAppLink: recursos públicos animaldex.com + pages.dev', () => {
       screen: 'PublicProfile',
       params: { username: 'lucasfuentes' },
     });
+    assert.deepEqual(resolveAppLink('https://animaldex.com?qr=AAA123'), {
+      screen: 'Tabs',
+      params: { screen: 'Inicio' },
+    });
+    assert.deepEqual(resolveAppLink('https://animaldex-web.pages.dev?qr=AAA123'), {
+      screen: 'Tabs',
+      params: { screen: 'Inicio' },
+    });
   });
 });
 
@@ -254,11 +262,13 @@ describe('App.tsx y app.json: animaldex.com + pages.dev', () => {
     ];
     assert.deepEqual(hosts, ['animaldex-web.pages.dev', 'animaldex.com']);
     const serialized = JSON.stringify(filters);
+    assert.match(serialized, /"path":"\/"/);
     assert.match(serialized, /"pathPrefix":"\/p\/"/);
     assert.match(serialized, /"pathPrefix":"\/pet\/"/);
     assert.match(serialized, /"pathPrefix":"\/a\/"/);
     assert.match(serialized, /"pathPrefix":"\/m\/"/);
     assert.match(serialized, /"pathPrefix":"\/r\/"/);
+    assert.match(serialized, /"pathPrefix":"\/transfer\/"/);
     assert.match(serialized, /pathAdvancedPattern/);
     assert.match(serialized, /animaldex-web\.pages\.dev/);
     assert.match(serialized, /"host":"animaldex\.com"/);
@@ -270,10 +280,18 @@ describe('App.tsx y app.json: animaldex.com + pages.dev', () => {
     );
     const prefixFilter = filters[0].data;
     const usernameFilter = filters[1].data;
-    assert.equal(prefixFilter.filter((d: { host: string }) => d.host === 'animaldex-web.pages.dev').length, 5);
-    assert.equal(prefixFilter.filter((d: { host: string }) => d.host === 'animaldex.com').length, 5);
+    assert.equal(prefixFilter.filter((d: { host: string }) => d.host === 'animaldex-web.pages.dev').length, 7);
+    assert.equal(prefixFilter.filter((d: { host: string }) => d.host === 'animaldex.com').length, 7);
     assert.equal(usernameFilter.filter((d: { host: string }) => d.host === 'animaldex-web.pages.dev').length, 2);
     assert.equal(usernameFilter.filter((d: { host: string }) => d.host === 'animaldex.com').length, 2);
+    assert.equal(
+      prefixFilter.some((d: { host: string; path?: string }) => d.host === 'animaldex.com' && d.path === '/'),
+      true
+    );
+    assert.equal(
+      prefixFilter.some((d: { host: string; path?: string }) => d.host === 'animaldex-web.pages.dev' && d.path === '/'),
+      true
+    );
   });
 });
 

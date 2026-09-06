@@ -207,6 +207,8 @@ describe('dominio público oficial animaldex.com', () => {
     const serialized = JSON.stringify(appJson.expo.android.intentFilters);
     assert.match(serialized, /animaldex-web\.pages\.dev/);
     assert.match(serialized, /"host":"animaldex\.com"/);
+    assert.match(serialized, /"path":"\/"/);
+    assert.doesNotMatch(serialized, /www\.animaldex\.com/);
     assert.deepEqual([...ACCEPTED_PUBLIC_WEB_HOSTS], [
       'animaldex.com',
       'animaldex-web.pages.dev',

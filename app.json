@@ -37,16 +37,20 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
+            { "scheme": "https", "host": "animaldex-web.pages.dev", "path": "/" },
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/p/" },
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/pet/" },
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/a/" },
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/m/" },
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/r/" },
+            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/transfer/" },
+            { "scheme": "https", "host": "animaldex.com", "path": "/" },
             { "scheme": "https", "host": "animaldex.com", "pathPrefix": "/p/" },
             { "scheme": "https", "host": "animaldex.com", "pathPrefix": "/pet/" },
             { "scheme": "https", "host": "animaldex.com", "pathPrefix": "/a/" },
             { "scheme": "https", "host": "animaldex.com", "pathPrefix": "/m/" },
-            { "scheme": "https", "host": "animaldex.com", "pathPrefix": "/r/" }
+            { "scheme": "https", "host": "animaldex.com", "pathPrefix": "/r/" },
+            { "scheme": "https", "host": "animaldex.com", "pathPrefix": "/transfer/" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         },
