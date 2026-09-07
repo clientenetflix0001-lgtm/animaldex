@@ -21,14 +21,20 @@ import {
   handleAuthReelAction,
   handleMuxWebhook,
   handlePublicReelAction,
+  loadReadyReels,
   runReelCleanup,
 } from './reelsMux.js';
 import {
   ensureStoriesSchema,
   handleAuthStoryAction,
   handlePublicStoryAction,
+  loadStoryRail,
+  currentIdentity,
   runStoryCleanup,
 } from './stories.js';
+import { boundingBox, isWithinRadiusKm, localitiesMatch, validLatLng } from '../lib/feedGeo.ts';
+import { pickNearbyPostIds, pickTrendingPostIds } from '../lib/feedRanking.ts';
+import { parseLastLocation, shouldWriteLastLocation } from '../lib/lastLocation.ts';
 import { getMuxThumbnail } from '../lib/reels.ts';
 import {
   EXPO_PUSH_BATCH_MAX,
@@ -411,10 +417,22 @@ async function suggestFreePetUsername(env, base, excludePetId) {
   return null;
 }
 
+async function ensureLastLocationSchema(env) {
+  if (env._lastLocationReady) return;
+  try { await env.DB.prepare('ALTER TABLE users ADD COLUMN last_lat REAL').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE users ADD COLUMN last_lng REAL').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE users ADD COLUMN last_location_updated_at INTEGER').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE users ADD COLUMN last_locality TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_users_last_locality ON users (last_locality)').run(); } catch (_) {}
+  try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_users_last_location_updated ON users (last_location_updated_at)').run(); } catch (_) {}
+  env._lastLocationReady = true;
+}
+
 async function ensureAuthSchema(env) {
   if (env._authSchemaReady) return;
   try { await env.DB.prepare('ALTER TABLE users ADD COLUMN email TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE users ADD COLUMN email_verified_at INTEGER').run(); } catch (_) {}
+  await ensureLastLocationSchema(env);
   await d1(env, `CREATE TABLE IF NOT EXISTS otp_challenges (
     id TEXT PRIMARY KEY,
     phone TEXT NOT NULL,
@@ -1605,6 +1623,176 @@ async function attachFavoritedFlags(env, rows, viewerId) {
   return rows.map((r) => listingRow(r, favSet.has(r.id)));
 }
 
+function pageRecommendationTypeLabel(type) {
+  return type === 'protector' ? 'Bienestar Animal' : 'Empresa';
+}
+
+function stripAlertCoords(alert) {
+  if (!alert) return alert;
+  const { lat, lon, ...rest } = alert;
+  return rest;
+}
+
+async function loadViewerLastLocation(env, viewerId) {
+  if (!viewerId) return { lat: null, lng: null, locality: null };
+  await ensureLastLocationSchema(env);
+  const [users, personal] = await Promise.all([
+    d1(env, 'SELECT last_lat, last_lng, last_locality, location FROM users WHERE id = ?', [viewerId]),
+    d1(env, "SELECT locality FROM profiles WHERE account_id = ? AND type = 'personal' LIMIT 1", [viewerId]),
+  ]);
+  const u = users[0] || {};
+  return {
+    lat: u.last_lat ?? null,
+    lng: u.last_lng ?? null,
+    locality: u.last_locality || personal[0]?.locality || u.location || null,
+  };
+}
+
+async function loadAuthorLocationHints(env, userIds) {
+  const hints = {};
+  if (!userIds.length) return hints;
+  const ph = userIds.map(() => '?').join(',');
+  const [users, profiles] = await Promise.all([
+    d1(env, `SELECT id, location, last_locality FROM users WHERE id IN (${ph})`, userIds),
+    d1(env, `SELECT account_id, locality FROM profiles WHERE type = 'personal' AND account_id IN (${ph})`, userIds),
+  ]);
+  for (const u of users) {
+    hints[u.id] = { location: u.location || '', locality: u.last_locality || null };
+  }
+  for (const p of profiles) {
+    if (!hints[p.account_id]) hints[p.account_id] = { location: '', locality: null };
+    if (p.locality) hints[p.account_id].locality = p.locality;
+  }
+  return hints;
+}
+
+async function loadHomeAlerts(env, viewerId, viewer, now) {
+  const limit = 3;
+  const conditions = ["(a.status IS NULL OR a.status = 'active')", 'a.resolved_at IS NULL'];
+  const params = [];
+  if (validLatLng(viewer.lat, viewer.lng)) {
+    const box = boundingBox(viewer.lat, viewer.lng, 10);
+    if (viewer.locality) {
+      conditions.push('((a.lat IS NOT NULL AND a.lat BETWEEN ? AND ? AND a.lon BETWEEN ? AND ?) OR LOWER(a.locality) = LOWER(?))');
+      params.push(box.minLat, box.maxLat, box.minLng, box.maxLng, viewer.locality);
+    } else {
+      conditions.push('a.lat IS NOT NULL AND a.lat BETWEEN ? AND ? AND a.lon BETWEEN ? AND ?');
+      params.push(box.minLat, box.maxLat, box.minLng, box.maxLng);
+    }
+  } else if (viewer.locality) {
+    conditions.push('LOWER(a.locality) = LOWER(?)');
+    params.push(viewer.locality);
+  }
+  const rows = await d1(
+    env,
+    `${ALERT_SELECT} WHERE ${conditions.join(' AND ')}
+     ORDER BY COALESCE(a.renewed_at, a.created_at) DESC
+     LIMIT 16`,
+    params
+  );
+  const filtered = rows.filter((r) => {
+    if (validLatLng(viewer.lat, viewer.lng) && validLatLng(r.lat, r.lon)) {
+      return isWithinRadiusKm({ lat: viewer.lat, lng: viewer.lng }, { lat: r.lat, lon: r.lon }, 10)
+        || localitiesMatch(r.locality, viewer.locality);
+    }
+    return true;
+  }).slice(0, limit);
+  const alerts = await attachLikedFlags(env, filtered, viewerId);
+  return alerts.map(stripAlertCoords);
+}
+
+async function loadHomeAdoptions(env, locality) {
+  const conditions = [
+    'p.archived_at IS NULL',
+    "p.care_status = 'en_adopcion'",
+    "pr.type = 'protector'",
+  ];
+  const params = [];
+  if (locality) {
+    conditions.push('LOWER(pr.locality) = LOWER(?)');
+    params.push(locality);
+  }
+  let rows = await d1(
+    env,
+    `SELECT p.*, pr.id AS shelter_id, pr.name AS shelter_name, pr.username AS shelter_username,
+            pr.avatar_url AS shelter_avatar, pr.location AS shelter_location, pr.locality AS shelter_locality
+     FROM pets p
+     INNER JOIN profiles pr ON pr.id = p.profile_id AND pr.type = 'protector'
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY p.created_at DESC, p.id DESC
+     LIMIT 2`,
+    params
+  );
+  if (!rows.length && locality) {
+    rows = await d1(
+      env,
+      `SELECT p.*, pr.id AS shelter_id, pr.name AS shelter_name, pr.username AS shelter_username,
+              pr.avatar_url AS shelter_avatar, pr.location AS shelter_location, pr.locality AS shelter_locality
+       FROM pets p
+       INNER JOIN profiles pr ON pr.id = p.profile_id AND pr.type = 'protector'
+       WHERE p.archived_at IS NULL AND p.care_status = 'en_adopcion' AND pr.type = 'protector'
+       ORDER BY p.created_at DESC, p.id DESC
+       LIMIT 2`,
+      []
+    );
+  }
+  return rows.map((r) => ({
+    ...petRow(r),
+    source: 'protector_pet',
+    shelterId: r.shelter_id,
+    shelterName: r.shelter_name,
+    shelterUsername: r.shelter_username,
+    shelterAvatar: r.shelter_avatar || null,
+    shelterLocation: r.shelter_location || null,
+    shelterLocality: r.shelter_locality || null,
+  }));
+}
+
+async function loadHomePageRecommendations(env, viewerId, locality) {
+  const followed = viewerId
+    ? await d1(env, "SELECT target_id FROM follows WHERE user_id = ? AND target_type = 'profile'", [viewerId])
+    : [];
+  const exclude = new Set(followed.map((r) => r.target_id));
+  const conditions = ["pr.type IN ('protector', 'business')"];
+  const params = [];
+  if (viewerId) {
+    conditions.push('pr.account_id != ?');
+    params.push(viewerId);
+  }
+  const rows = await d1(
+    env,
+    `SELECT pr.id, pr.name, pr.username, pr.avatar_url, pr.type, pr.locality,
+            (SELECT COUNT(*) FROM follows f WHERE f.target_type = 'profile' AND f.target_id = pr.id) AS follower_count,
+            (SELECT MAX(created_at) FROM posts WHERE author_profile_id = pr.id) AS last_activity_at
+     FROM profiles pr
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY last_activity_at DESC, follower_count DESC
+     LIMIT 24`,
+    params
+  );
+  const ranked = rows
+    .filter((r) => !exclude.has(r.id))
+    .sort((a, b) => {
+      const nearA = localitiesMatch(a.locality, locality) ? 0 : 1;
+      const nearB = localitiesMatch(b.locality, locality) ? 0 : 1;
+      if (nearA !== nearB) return nearA - nearB;
+      const actA = a.last_activity_at || 0;
+      const actB = b.last_activity_at || 0;
+      if (actA !== actB) return actB - actA;
+      return (b.follower_count || 0) - (a.follower_count || 0);
+    })
+    .slice(0, 8);
+  return ranked.map((r) => ({
+    id: r.id,
+    name: r.name,
+    username: r.username,
+    avatarUrl: r.avatar_url || null,
+    type: r.type,
+    typeLabel: pageRecommendationTypeLabel(r.type),
+    locality: r.locality || null,
+  }));
+}
+
 async function handleDb(request, env) {
   const body = await request.json().catch(() => ({}));
   const action = clean(body.action, 40);
@@ -1759,6 +1947,117 @@ async function handleDb(request, env) {
       const limit = Math.min(Number(body.limit) || 10, 30);
       const rows = await d1(env, `${POST_SELECT} WHERE p.created_at < ? ORDER BY p.created_at DESC LIMIT ?`, [before, limit]);
       return json({ ok: true, posts: rows.map(postRow) });
+    }
+
+    if (action === 'updateLastLocation') {
+      const userId = await authUser(request, env, body);
+      if (!userId) return json({ error: 'Sesión inválida' }, 401);
+      await ensureLastLocationSchema(env);
+      const lat = body.lat == null || body.lat === '' ? null : Number(body.lat);
+      const lng = body.lng == null || body.lng === '' ? null : Number(body.lng);
+      const locality = clean(body.locality, 100) || null;
+      if (lat != null || lng != null) {
+        if (!validLatLng(lat, lng)) return json({ error: 'Ubicación inválida' }, 400);
+      }
+      if (lat == null && lng == null && !locality) return json({ ok: true, updated: false });
+      const rows = await d1(env, 'SELECT last_lat, last_lng, last_locality, last_location_updated_at FROM users WHERE id = ?', [userId]);
+      const prev = rows[0]
+        ? parseLastLocation({
+            lat: rows[0].last_lat,
+            lng: rows[0].last_lng,
+            locality: rows[0].last_locality,
+            updatedAt: rows[0].last_location_updated_at,
+            source: 'cache',
+          })
+        : null;
+      const next = { lat: lat ?? null, lng: lng ?? null, locality };
+      if (!shouldWriteLastLocation(prev, next, now)) {
+        return json({ ok: true, updated: false });
+      }
+      await d1(
+        env,
+        'UPDATE users SET last_lat = ?, last_lng = ?, last_locality = ?, last_location_updated_at = ? WHERE id = ?',
+        [lat, lng, locality, now, userId]
+      );
+      return json({ ok: true, updated: true });
+    }
+
+    if (action === 'homeFeed') {
+      const viewerId = await authUser(request, env, body);
+      const before = Number(body.before) || now + 1000;
+      const limit = Math.min(Number(body.limit) || 10, 30);
+      const includeModules = body.includeModules !== false && !body.before;
+      const viewer = await loadViewerLastLocation(env, viewerId);
+      const rows = await d1(env, `${POST_SELECT} WHERE p.created_at < ? ORDER BY p.created_at DESC LIMIT ?`, [before, limit]);
+      const pageIds = new Set(rows.map((r) => r.id));
+      let viralRows = [];
+      if (includeModules) {
+        const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+        const recent = await d1(
+          env,
+          `${POST_SELECT} WHERE p.created_at > ? ORDER BY p.created_at DESC LIMIT 24`,
+          [weekAgo]
+        );
+        const viralIds = pickTrendingPostIds(
+          recent.map((r) => ({
+            id: r.id,
+            createdAt: r.created_at,
+            likeCount: r.like_count || 0,
+            commentCount: r.comment_count || 0,
+          })),
+          now,
+          4
+        );
+        viralRows = recent.filter((r) => viralIds.includes(r.id) && !pageIds.has(r.id));
+      }
+      const mergedRows = [...rows, ...viralRows];
+      const authorHints = await loadAuthorLocationHints(env, [...new Set(mergedRows.map((r) => r.user_id).filter(Boolean))]);
+      const posts = mergedRows.map(postRow);
+      const rankable = mergedRows.map((r) => ({
+        id: r.id,
+        createdAt: r.created_at,
+        likeCount: r.like_count || 0,
+        commentCount: r.comment_count || 0,
+        authorLocality: authorHints[r.user_id]?.locality || null,
+        authorLocationText: authorHints[r.user_id]?.location || null,
+      }));
+      const nearbyPostIds = pickNearbyPostIds(rankable, viewer.locality);
+      const trendingPostIds = pickTrendingPostIds(rankable, now);
+      let storyRail = [];
+      let alerts = [];
+      let pageRecommendations = [];
+      let adoptions = [];
+      let reels = [];
+      if (includeModules) {
+        const identity = viewerId
+          ? await currentIdentity(env, viewerId, body, clean)
+          : { authorUserId: null, authorProfileId: null, authorProfileType: 'personal', authorPetId: null };
+        const extras = await Promise.allSettled([
+          loadStoryRail(env, viewerId, identity, now),
+          loadHomeAlerts(env, viewerId, viewer, now),
+          loadHomePageRecommendations(env, viewerId, viewer.locality),
+          loadHomeAdoptions(env, viewer.locality),
+          loadReadyReels(env, viewerId, 2),
+        ]);
+        storyRail = extras[0].status === 'fulfilled' ? extras[0].value || [] : [];
+        alerts = extras[1].status === 'fulfilled' ? extras[1].value || [] : [];
+        pageRecommendations = extras[2].status === 'fulfilled' ? extras[2].value || [] : [];
+        adoptions = extras[3].status === 'fulfilled' ? extras[3].value || [] : [];
+        reels = extras[4].status === 'fulfilled' ? extras[4].value || [] : [];
+      }
+      return json({
+        ok: true,
+        posts,
+        nearbyPostIds,
+        trendingPostIds,
+        storyRail,
+        alerts,
+        pageRecommendations,
+        adoptions,
+        reels,
+        nextCursor: rows.length ? rows[rows.length - 1].created_at : undefined,
+        hasMore: rows.length >= limit,
+      });
     }
 
     if (action === 'petPosts') {

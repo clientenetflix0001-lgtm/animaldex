@@ -390,6 +390,46 @@ export const auth = {
 export const db = {
   feed: (before?: number, limit = 10): Promise<{ posts: ApiPost[] }> =>
     call('/db', { action: 'feed', before, limit }),
+  homeFeed: (input?: {
+    before?: number;
+    limit?: number;
+    includeModules?: boolean;
+  }): Promise<{
+    posts: ApiPost[];
+    nearbyPostIds: string[];
+    trendingPostIds: string[];
+    storyRail: ApiStoryRailItem[];
+    alerts: ApiAlert[];
+    pageRecommendations: Array<{
+      id: string;
+      name: string;
+      username: string;
+      avatarUrl: string | null;
+      type: 'protector' | 'business';
+      typeLabel: string;
+      locality?: string | null;
+    }>;
+    adoptions: Array<
+      ApiPet & {
+        source?: 'protector_pet';
+        shelterId?: string | null;
+        shelterName?: string | null;
+        shelterUsername?: string | null;
+        shelterAvatar?: string | null;
+        shelterLocation?: string | null;
+        shelterLocality?: string | null;
+      }
+    >;
+    reels: ApiReel[];
+    nextCursor?: number;
+    hasMore?: boolean;
+  }> => call('/db', { action: 'homeFeed', ...input }),
+  updateLastLocation: (input: {
+    lat?: number | null;
+    lng?: number | null;
+    locality?: string | null;
+    updatedAt?: number;
+  }): Promise<{ ok: boolean; updated: boolean }> => call('/db', { action: 'updateLastLocation', ...input }),
   petPosts: (petId: string): Promise<{ posts: ApiPost[] }> =>
     call('/db', { action: 'petPosts', petId }),
   userPosts: (targetUserId: string): Promise<{ posts: ApiPost[] }> =>

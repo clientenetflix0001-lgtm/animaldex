@@ -122,6 +122,15 @@ async function attachReelLikes(env, rows, viewerId) {
   return rows.map((r) => reelRow(r, set.has(r.id)));
 }
 
+export async function loadReadyReels(env, viewerId, limit = 2) {
+  const rows = await d1(
+    env,
+    `${REEL_SELECT} WHERE r.status = 'ready' AND r.deleted_at IS NULL AND r.moderation = 'none' ORDER BY r.created_at DESC LIMIT ?`,
+    [Math.min(Number(limit) || 2, 8)]
+  );
+  return attachReelLikes(env, rows, viewerId);
+}
+
 export function muxConfigured(env) {
   return !!(env.MUX_TOKEN_ID && env.MUX_TOKEN_SECRET);
 }

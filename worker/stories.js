@@ -426,7 +426,7 @@ async function unseenSet(env, userId, storyIds) {
   return new Set(rows.map((r) => r.story_id));
 }
 
-async function currentIdentity(env, userId, body, clean) {
+export async function currentIdentity(env, userId, body, clean) {
   const authorProfileId = clean(body.authorProfileId || body.activeProfileId, 80) || null;
   const authorPetId = clean(body.authorPetId, 80) || null;
   let authorProfileType = 'personal';
@@ -437,7 +437,7 @@ async function currentIdentity(env, userId, body, clean) {
   return { authorUserId: userId, authorProfileId, authorProfileType, authorPetId };
 }
 
-async function loadStoryRail(env, viewerId, identity, now) {
+export async function loadStoryRail(env, viewerId, identity, now) {
   const items = [];
 
   const selfRows = viewerId
