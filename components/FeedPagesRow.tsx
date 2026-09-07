@@ -1,11 +1,15 @@
 import React, { memo, useCallback, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { db } from '../lib/db';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import type { HomePageRecommendation } from '../lib/feedComposition';
+import { useHomeModuleGestureLock } from '../lib/homeModuleGesturesContext';
 import { FollowButton } from './FollowButton';
+import { HOME_MODULE_TITLES } from '../lib/homeFeedModules';
+import { HomeHorizontalList, HomeModulePressable } from './HomeHorizontalList';
+import { HomeModuleTitle } from './HomeModuleTitle';
 import { colors, radius, spacing } from '../lib/theme';
 
 function PageChip({
@@ -21,7 +25,7 @@ function PageChip({
 }) {
   return (
     <View style={styles.card}>
-      <Pressable onPress={onOpen} style={styles.info} accessibilityRole="button">
+      <HomeModulePressable onPress={onOpen} style={styles.info} accessibilityRole="button">
         <Image
           source={{ uri: thumb(page.avatarUrl || userFallbackAvatar(page.username || page.id), 120) }}
           style={styles.avatar}
@@ -35,7 +39,7 @@ function PageChip({
         <Text style={styles.type} numberOfLines={1}>
           {page.typeLabel}
         </Text>
-      </Pressable>
+      </HomeModulePressable>
       <FollowButton following={following} onPress={onFollow} compact />
     </View>
   );
@@ -43,6 +47,7 @@ function PageChip({
 
 function FeedPagesRowInner({ pages }: { pages: HomePageRecommendation[] }) {
   const navigation = useNavigation<any>();
+  const { wasRecentHorizontalSwipe } = useHomeModuleGestureLock();
   const [followed, setFollowed] = useState<string[]>([]);
   const visible = pages.filter((page) => !followed.includes(page.id));
   const toggle = useCallback((id: string) => {
@@ -57,20 +62,20 @@ function FeedPagesRowInner({ pages }: { pages: HomePageRecommendation[] }) {
       <PageChip
         page={item}
         following={followed.includes(item.id)}
-        onFollow={() => toggle(item.id)}
+        onFollow={() => {
+          if (wasRecentHorizontalSwipe()) return;
+          toggle(item.id);
+        }}
         onOpen={() => navigation.navigate('PublicProfile', { profileId: item.id, username: item.username })}
       />
     ),
-    [followed, navigation, toggle]
+    [followed, navigation, toggle, wasRecentHorizontalSwipe]
   );
   if (visible.length === 0) return null;
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>Páginas que podrían interesarte</Text>
-      <FlatList
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={false}
+      <HomeModuleTitle>{HOME_MODULE_TITLES.pages}</HomeModuleTitle>
+      <HomeHorizontalList
         data={visible}
         keyExtractor={(item) => `page:${item.id}`}
         renderItem={renderItem}
@@ -84,13 +89,6 @@ export const FeedPagesRow = memo(FeedPagesRowInner);
 
 const styles = StyleSheet.create({
   wrap: { paddingVertical: spacing.sm },
-  title: {
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.text,
-  },
   list: { paddingHorizontal: spacing.lg, gap: spacing.md },
   card: {
     width: 148,

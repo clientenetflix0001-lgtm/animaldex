@@ -1,56 +1,53 @@
-import React, { memo, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
-import { Image } from 'expo-image';
+import React, { memo, useCallback, useEffect, useState } from 'react';
+import { View, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { ApiAlert } from '../lib/db';
-import { alertBadgeColor, alertBadgeText } from '../lib/alerts';
-import { thumb, petFallbackAvatar } from '../lib/images';
-import { colors, radius, spacing } from '../lib/theme';
-
-function AlertChip({ alert, onPress }: { alert: ApiAlert; onPress: () => void }) {
-  const color = alertBadgeColor(alert);
-  return (
-    <Pressable onPress={onPress} style={styles.card} accessibilityRole="button" accessibilityLabel="Abrir alerta">
-      <Image
-        source={{ uri: thumb(alert.image || petFallbackAvatar(alert.id), 240) }}
-        style={styles.photo}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-        recyclingKey={alert.id}
-      />
-      <View style={[styles.badge, { backgroundColor: `${color}22` }]}>
-        <Text style={[styles.badgeText, { color }]} numberOfLines={1}>
-          {alertBadgeText(alert)}
-        </Text>
-      </View>
-      <Text style={styles.name} numberOfLines={1}>
-        {alert.petName || 'Mascota'}
-      </Text>
-    </Pressable>
-  );
-}
+import { db } from '../lib/db';
+import { HOME_MODULE_TITLES } from '../lib/homeFeedModules';
+import { AlertCard } from './AlertCard';
+import { HomeModulePressable } from './HomeHorizontalList';
+import { HomeModuleTitle } from './HomeModuleTitle';
+import { spacing } from '../lib/theme';
 
 function FeedAlertsRowInner({ alerts }: { alerts: ApiAlert[] }) {
   const navigation = useNavigation<any>();
+  const [rows, setRows] = useState(alerts);
+
+  useEffect(() => {
+    setRows(alerts);
+  }, [alerts]);
+
   const open = useCallback(
     (alertId: string) => navigation.navigate('AlertDetail', { alertId }),
     [navigation]
   );
-  const renderItem = useCallback(
-    ({ item }: { item: ApiAlert }) => <AlertChip alert={item} onPress={() => open(item.id)} />,
-    [open]
-  );
+
+  const onToggleLike = useCallback((alertId: string) => {
+    setRows((prev) =>
+      prev.map((alert) =>
+        alert.id === alertId
+          ? { ...alert, isLiked: !alert.isLiked, likeCount: alert.likeCount + (alert.isLiked ? -1 : 1) }
+          : alert
+      )
+    );
+    const target = rows.find((alert) => alert.id === alertId);
+    db.alertLike(alertId, !(target?.isLiked ?? false)).catch(() => {});
+  }, [rows]);
+
   return (
     <View style={styles.wrap}>
-      <FlatList
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={false}
-        data={alerts}
-        keyExtractor={(item) => `alert:${item.id}`}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-      />
+      <HomeModuleTitle>{HOME_MODULE_TITLES.alerts}</HomeModuleTitle>
+      {rows.map((alert) => (
+        <HomeModulePressable
+          key={alert.id}
+          onPress={() => open(alert.id)}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir alerta"
+          style={styles.cardPress}
+        >
+          <AlertCard alert={alert} onToggleLike={onToggleLike} onOpenComments={(item) => open(item.id)} />
+        </HomeModulePressable>
+      ))}
     </View>
   );
 }
@@ -59,10 +56,5 @@ export const FeedAlertsRow = memo(FeedAlertsRowInner);
 
 const styles = StyleSheet.create({
   wrap: { paddingVertical: spacing.sm },
-  list: { paddingHorizontal: spacing.lg, gap: spacing.md },
-  card: { width: 132 },
-  photo: { width: 132, height: 132, borderRadius: radius.md, backgroundColor: colors.border },
-  badge: { marginTop: 6, alignSelf: 'flex-start', borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  badgeText: { fontSize: 10, fontWeight: '800' },
-  name: { marginTop: 4, fontSize: 13, fontWeight: '700', color: colors.text },
+  cardPress: { width: '100%' },
 });
