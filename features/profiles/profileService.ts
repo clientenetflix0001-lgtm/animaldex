@@ -12,6 +12,8 @@ export async function createSecondaryProfile(input: {
   username: string;
   bio?: string;
   avatar?: string | null;
+  adoptionWhatsapp?: string | null;
+  adoptionPhone?: string | null;
 }): Promise<PublicProfile> {
   const res = await db.createProfile(input);
   return res.profile;

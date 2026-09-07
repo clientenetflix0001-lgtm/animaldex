@@ -49,7 +49,7 @@ export function GuestInviteBar({ collapsed, onToggle, onLogin, onRegister }: Pro
         <Text style={styles.heading}>Únete a Animaldex</Text>
       </View>
       <Text style={styles.subtitle}>
-        Conecta con mascotas, personas, refugios y protectoras.
+        Conecta con mascotas, personas y páginas de Bienestar Animal.
       </Text>
 
       <Pressable style={styles.primaryBtn} onPress={onRegister} accessibilityRole="button">

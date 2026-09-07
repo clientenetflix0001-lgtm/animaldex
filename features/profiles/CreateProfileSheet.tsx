@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   View,
@@ -10,25 +10,34 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, radius, spacing } from '../../lib/theme';
 import { useProfiles } from './ProfileContext';
-import { limitMessage, type ProfileType } from './profileTypes';
+import { limitMessage, type ProfileType, type PublicProfile } from './profileTypes';
+import BioField from '../../components/BioField';
+import { isBioWithinWordLimit, BIO_WORD_LIMIT_ERROR } from '../../lib/bio';
 import { isValidPublicUsername, normalizePublicUsername } from '../../lib/publicHandles';
+import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../../lib/adoptionContact';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
+  onCreated?: (profile: PublicProfile) => void;
+  initialType?: Exclude<ProfileType, 'personal'> | null;
+  lockType?: boolean;
 }
 
-export default function CreateProfileSheet({ visible, onClose }: Props) {
+export default function CreateProfileSheet({ visible, onClose, onCreated, initialType, lockType }: Props) {
   const { canCreate, createProfile } = useProfiles();
   const [step, setStep] = useState<'pick' | 'form'>('pick');
   const [type, setType] = useState<Exclude<ProfileType, 'personal'> | null>(null);
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
+  const [adoptionWhatsapp, setAdoptionWhatsapp] = useState('');
+  const [adoptionPhone, setAdoptionPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
   const reset = () => {
@@ -37,8 +46,27 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
     setName('');
     setUsername('');
     setBio('');
+    setAdoptionWhatsapp('');
+    setAdoptionPhone('');
     setSaving(false);
   };
+
+  useEffect(() => {
+    if (!visible) return;
+    setName('');
+    setUsername('');
+    setBio('');
+    setAdoptionWhatsapp('');
+    setAdoptionPhone('');
+    setSaving(false);
+    if (initialType) {
+      setType(initialType);
+      setStep('form');
+    } else {
+      setType(null);
+      setStep('pick');
+    }
+  }, [visible, initialType]);
 
   const close = () => {
     reset();
@@ -68,9 +96,28 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
       );
       return;
     }
+    if (!isBioWithinWordLimit(bio)) {
+      Alert.alert('Biografía', BIO_WORD_LIMIT_ERROR);
+      return;
+    }
+    if (type === 'protector') {
+      const contact = parseProtectorAdoptionContact(type, adoptionWhatsapp, adoptionPhone);
+      if (!contact.ok) {
+        Alert.alert('Falta un contacto', contact.error || ADOPTION_CONTACT_REQUIRED);
+        return;
+      }
+    }
     setSaving(true);
     try {
-      await createProfile({ type, name: name.trim(), username: handle, bio: bio.trim() });
+      const created = await createProfile({
+        type,
+        name: name.trim(),
+        username: handle,
+        bio: bio.trim(),
+        adoptionWhatsapp: type === 'protector' ? adoptionWhatsapp.trim() : undefined,
+        adoptionPhone: type === 'protector' ? adoptionPhone.trim() : undefined,
+      });
+      onCreated?.(created);
       close();
     } catch (e: any) {
       Alert.alert('No se pudo crear', e?.message || 'Inténtalo de nuevo');
@@ -85,6 +132,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetWrap}>
         <View style={styles.sheet}>
           <View style={styles.handle} />
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {step === 'pick' ? (
             <>
               <Text style={styles.title}>¿Qué página quieres crear?</Text>
@@ -99,7 +147,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
               <Pressable style={styles.option} onPress={() => pick('protector')}>
                 <Text style={styles.optionEmoji}>❤️</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.optionTitle}>Proteccionista / Refugio</Text>
+                  <Text style={styles.optionTitle}>Bienestar Animal</Text>
                   <Text style={styles.optionSub}>Hasta 2 por cuenta</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -107,12 +155,14 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
             </>
           ) : (
             <>
-              <Pressable onPress={() => setStep('pick')} style={styles.back}>
-                <Ionicons name="chevron-back" size={18} color={colors.primary} />
-                <Text style={styles.backText}>Volver</Text>
-              </Pressable>
+              {!lockType ? (
+                <Pressable onPress={() => setStep('pick')} style={styles.back}>
+                  <Ionicons name="chevron-back" size={18} color={colors.primary} />
+                  <Text style={styles.backText}>Volver</Text>
+                </Pressable>
+              ) : null}
               <Text style={styles.title}>
-                {type === 'business' ? 'Nueva página empresarial' : 'Nueva página de proteccionista/refugio'}
+                {type === 'business' ? 'Nueva página empresarial' : 'Nueva página de Bienestar Animal'}
               </Text>
               <TextInput
                 value={name}
@@ -130,19 +180,44 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
                 placeholderTextColor={colors.textMuted}
                 style={styles.input}
               />
-              <TextInput
+              <BioField
                 value={bio}
                 onChangeText={setBio}
                 placeholder="Bio (opcional)"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
-                multiline
+                style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
               />
-              <Pressable style={styles.save} onPress={submit} disabled={saving}>
+              {type === 'protector' ? (
+                <View>
+                  <Text style={styles.sectionTitle}>SOLICITUDES DE ADOPCIÓN</Text>
+                  <Text style={styles.help}>
+                    Agregá al menos un medio de contacto para recibir solicitudes de adopción.
+                  </Text>
+                  <Text style={styles.fieldLabel}>WhatsApp</Text>
+                  <TextInput
+                    value={adoptionWhatsapp}
+                    onChangeText={setAdoptionWhatsapp}
+                    placeholder="Número de WhatsApp"
+                    keyboardType="phone-pad"
+                    placeholderTextColor={colors.textMuted}
+                    style={styles.input}
+                  />
+                  <Text style={styles.fieldLabel}>Teléfono</Text>
+                  <TextInput
+                    value={adoptionPhone}
+                    onChangeText={setAdoptionPhone}
+                    placeholder="Número de teléfono"
+                    keyboardType="phone-pad"
+                    placeholderTextColor={colors.textMuted}
+                    style={styles.input}
+                  />
+                </View>
+              ) : null}
+              <Pressable style={styles.save} onPress={submit} disabled={saving || !isBioWithinWordLimit(bio)}>
                 {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Crear página</Text>}
               </Pressable>
             </>
           )}
+          </ScrollView>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -168,6 +243,16 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   title: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: spacing.md },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    color: colors.text,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  help: { fontSize: 12, color: colors.textMuted, marginBottom: 10, lineHeight: 17 },
+  fieldLabel: { fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 6 },
   option: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -149,7 +149,7 @@ export function Sidebar({ state, navigation, mode }: Props) {
                 {user?.name ?? 'Mi perfil'}
               </Text>
               <Text style={styles.userHandle} numberOfLines={1}>
-                @{user?.username ?? ''}
+                {user?.username ?? ''}
               </Text>
             </View>
           )}

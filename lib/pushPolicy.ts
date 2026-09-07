@@ -4,6 +4,8 @@
  * Sin coordenadas, teléfono ni email en el payload visible.
  */
 
+import { isValidPetUsername } from './petHandles.ts';
+
 export const EXPO_PUSH_SEND_URL = 'https://exp.host/--/api/v2/push/send';
 export const EXPO_PUSH_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
 export const EXPO_PUSH_BATCH_MAX = 100;
@@ -72,6 +74,10 @@ export function birthdayPushIdempotencyKey(petId: string, year: number): string 
   return `push:birthday:${petId}:${year}`;
 }
 
+export function alertRenewalPushIdempotencyKey(alertId: string, bumpAt: number): string {
+  return `push:alert-renew:${alertId}:${bumpAt}`;
+}
+
 export function mergeNotificationPrefs(row: Partial<Record<NotificationPrefKey, unknown>> | null | undefined) {
   const out = { ...DEFAULT_NOTIFICATION_PREFS };
   (Object.keys(DEFAULT_NOTIFICATION_PREFS) as NotificationPrefKey[]).forEach((key) => {
@@ -82,7 +88,7 @@ export function mergeNotificationPrefs(row: Partial<Record<NotificationPrefKey, 
   return out;
 }
 
-export type PushEventType = 'location' | 'birthday' | 'like' | 'comment' | 'reel_like' | 'reel_comment';
+export type PushEventType = 'location' | 'birthday' | 'like' | 'comment' | 'reel_like' | 'reel_comment' | 'lost_pet' | 'adoption';
 
 /**
  * Reels reutiliza las prefs existentes `like` / `comment` (opción A).
@@ -93,6 +99,8 @@ export function prefAllows(prefs: ReturnType<typeof mergeNotificationPrefs>, typ
   if (type === 'birthday') return prefs.birthday;
   if (type === 'like' || type === 'reel_like') return prefs.like;
   if (type === 'comment' || type === 'reel_comment') return prefs.comment;
+  if (type === 'lost_pet') return prefs.lost_pet;
+  if (type === 'adoption') return prefs.adoption;
   return false;
 }
 
@@ -247,6 +255,31 @@ export function reelCommentPushMessage(input: {
   };
 }
 
+export function storyCommentPushCopy(actorName: string): { title: string; body: string } {
+  const actor = String(actorName || '').trim() || 'Alguien';
+  return { title: 'Animaldex', body: `${actor} comentó tu historia` };
+}
+
+export function storyCommentPushMessage(input: {
+  token: string;
+  storyId: string;
+  actorName: string;
+}): Record<string, unknown> {
+  const copy = storyCommentPushCopy(input.actorName);
+  return {
+    to: input.token,
+    title: copy.title,
+    body: copy.body,
+    sound: 'default',
+    priority: 'default',
+    channelId: PUSH_CHANNEL_PETS,
+    data: {
+      type: 'story_comment',
+      storyId: input.storyId,
+    },
+  };
+}
+
 export function birthdayPushMessage(input: {
   token: string;
   petName: string;
@@ -256,6 +289,7 @@ export function birthdayPushMessage(input: {
 }): Record<string, unknown> {
   const copy = birthdayPushCopy(input.petName, input.years);
   const handle = String(input.petUsername || '').trim();
+  const url = isValidPetUsername(handle) ? `/${handle}` : `/pet/${handle || input.petId}`;
   return {
     to: input.token,
     title: copy.title,
@@ -267,7 +301,28 @@ export function birthdayPushMessage(input: {
       type: 'birthday',
       petId: input.petId,
       petUsername: handle || null,
-      url: `/pet/${handle || input.petId}`,
+      url,
+    },
+  };
+}
+
+export function alertRenewalPushMessage(input: {
+  token: string;
+  title: string;
+  body: string;
+  alertId: string;
+}): Record<string, unknown> {
+  return {
+    to: input.token,
+    title: input.title,
+    body: input.body,
+    sound: 'default',
+    priority: 'default',
+    channelId: PUSH_CHANNEL_REMINDERS,
+    data: {
+      type: 'alert_renew',
+      alertId: input.alertId,
+      url: `/a/${input.alertId}`,
     },
   };
 }
@@ -324,13 +379,17 @@ export type PushData = {
   shareId?: string;
   url?: string;
   reelId?: string;
+  alertId?: string;
+  requestId?: string;
 };
 
 export type PushNavTarget = {
-  kind: 'pet' | 'activity' | 'reel' | 'none';
+  kind: 'pet' | 'activity' | 'reel' | 'alert' | 'pet_transfer' | 'none';
   petId?: string;
   shareId?: string;
   reelId?: string;
+  alertId?: string;
+  requestId?: string;
 };
 
 function asPushField(value: unknown): string | undefined {
@@ -362,6 +421,8 @@ export function normalizePushData(raw: unknown): PushData {
     shareId: asPushField(inner.shareId),
     url: asPushField(inner.url),
     reelId: asPushField(inner.reelId),
+    alertId: asPushField(inner.alertId),
+    requestId: asPushField(inner.requestId),
   };
 }
 
@@ -376,18 +437,49 @@ function reelIdFromPushUrl(url: string | undefined): string | undefined {
   }
 }
 
+function alertIdFromPushUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const m = String(url).match(/\/a\/([^/?#]+)/);
+  if (!m) return undefined;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
+function transferRequestIdFromPushUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const m = String(url).match(/\/transfer\/([^/?#]+)/);
+  if (!m) return undefined;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
 export function parsePushNav(data: unknown): PushNavTarget {
   const d = normalizePushData(data);
+  const requestId = d.requestId || transferRequestIdFromPushUrl(d.url);
+  if (d.type === 'pet_transfer' || requestId) {
+    if (requestId) return { kind: 'pet_transfer', requestId };
+  }
   const reelId = d.reelId || reelIdFromPushUrl(d.url);
   if (d.type === 'reel_like' || d.type === 'reel_comment' || reelId) {
     if (reelId) return { kind: 'reel', reelId };
   }
-  if (d.type === 'birthday' || (d.url && d.url.startsWith('/pet/'))) {
-    const fromUrl = d.url ? d.url.replace(/^\/pet\//, '') : '';
+  if (d.type === 'birthday' || (d.url && (d.url.startsWith('/pet/') || isValidPetUsername(String(d.url).replace(/^\//, ''))))) {
+    const path = String(d.url || '').replace(/^\//, '');
+    const fromUrl = path.startsWith('pet/') ? path.slice(4) : (isValidPetUsername(path) ? path : '');
     return { kind: 'pet', petId: d.petUsername || fromUrl || d.petId };
   }
   if (d.type === 'location' || d.url === '/actividad') {
     return { kind: 'activity', petId: d.petId, shareId: d.shareId };
+  }
+  const alertId = d.alertId || alertIdFromPushUrl(d.url);
+  if (d.type === 'alert_renew' || alertId) {
+    if (alertId) return { kind: 'alert', alertId };
   }
   return { kind: 'none' };
 }
@@ -414,8 +506,13 @@ export function pushNavDestination(
   | { name: 'PetProfile'; params: { petId: string } }
   | { name: 'Tabs'; params: { screen: 'Actividad' } }
   | { name: 'ReelViewer'; params: { reelId: string } }
+  | { name: 'AlertDetail'; params: { alertId: string } }
+  | { name: 'PetTransferRequest'; params: { requestId: string } }
   | null {
   const nav = parsePushNav(data);
+  if (nav.kind === 'pet_transfer' && nav.requestId) {
+    return { name: 'PetTransferRequest', params: { requestId: nav.requestId } };
+  }
   if (nav.kind === 'pet' && nav.petId) {
     return { name: 'PetProfile', params: { petId: nav.petId } };
   }
@@ -424,6 +521,9 @@ export function pushNavDestination(
   }
   if (nav.kind === 'reel' && nav.reelId) {
     return { name: 'ReelViewer', params: { reelId: nav.reelId } };
+  }
+  if (nav.kind === 'alert' && nav.alertId) {
+    return { name: 'AlertDetail', params: { alertId: nav.alertId } };
   }
   return null;
 }

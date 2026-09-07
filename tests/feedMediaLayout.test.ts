@@ -130,7 +130,7 @@ describe('aislamiento: solo Feed cambia presentación', () => {
     assert.match(feed, /onEndReached=\{loadMore\}/);
     assert.match(feed, /keyExtractor/);
     assert.match(feed, /extraData/);
-    assert.match(feed, /setRealPosts\(\(prev\) =>/);
+    assert.match(feed, /setFeedItems\(\(prev\) =>/);
     const postCard = readFileSync(join(root, 'components/PostCard.tsx'), 'utf8');
     assert.match(postCard, /export const PostCard = memo\(PostCardInner\)/);
   });

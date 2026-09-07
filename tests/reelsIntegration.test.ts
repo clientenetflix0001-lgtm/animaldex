@@ -42,6 +42,7 @@ const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
 describe('Crear: Publicación | Reel', () => {
   it('Publicación abre el flujo existente y Reel abre CreateReel', () => {
     assert.equal(createChooserDestination('post'), 'CreatePost');
+    assert.equal(createChooserDestination('story'), 'CreateStory');
     assert.equal(createChooserDestination('reel'), 'CreateReel');
     const app = read('App.tsx');
     const chooser = read('screens/CreateChooserScreen.tsx');
@@ -49,6 +50,7 @@ describe('Crear: Publicación | Reel', () => {
     assert.match(app, /name="CreatePost"/);
     assert.match(app, /component=\{CreatePostScreen\}/);
     assert.match(chooser, /open\('post'\)/);
+    assert.match(chooser, /open\('story'\)/);
     assert.match(chooser, /open\('reel'\)/);
     assert.match(chooser, /createChooserDestination\(kind\)/);
     assert.doesNotMatch(chooser, /CreatePostScreen/);
@@ -56,7 +58,8 @@ describe('Crear: Publicación | Reel', () => {
 
   it('no modifica CreatePostScreen ni /upload de imágenes', () => {
     const createPost = read('screens/CreatePostScreen.tsx');
-    assert.match(createPost, /mediaTypes: \['images'\]/);
+    assert.match(createPost, /GALLERY_IMAGE_PICKER_OPTIONS/);
+    assert.match(read('lib/galleryImagePicker.ts'), /mediaTypes: \['images'\]/);
     assert.doesNotMatch(createPost, /CreateChooser|createReelUpload|CreateReel/);
   });
 });
@@ -149,9 +152,10 @@ describe('actividad like / comment', () => {
     assert.equal(shouldCreateReelActivity('owner', 'owner'), false);
     assert.equal(shouldCreateReelActivity('owner', null), false);
     assert.equal(reelActivityPath('reel-1'), '/r/reel-1');
-    assert.equal(reelActivityAbsoluteUrl('reel-1'), 'https://animaldex-web.pages.dev/r/reel-1');
-    assert.doesNotMatch(reelActivityAbsoluteUrl('reel-1'), /animaldex\.com/);
+    assert.equal(reelActivityAbsoluteUrl('reel-1'), 'https://animaldex.com/r/reel-1');
+    assert.doesNotMatch(reelActivityAbsoluteUrl('reel-1'), /www\.animaldex\.com/);
     assert.equal(reelIdFromActivityUrl('https://animaldex-web.pages.dev/r/reel-1'), 'reel-1');
+    assert.equal(reelIdFromActivityUrl('https://animaldex.com/r/reel-1'), 'reel-1');
     const worker = read('worker/index.js');
     assert.match(worker, /type: 'reel_like'/);
     assert.match(worker, /type: 'reel_comment'/);

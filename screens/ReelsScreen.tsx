@@ -460,7 +460,7 @@ export default function ReelsScreen({
                 />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.commentMeta}>
-                    <Text style={{ fontWeight: '800' }}>@{item.username}</Text>
+                    <Text style={{ fontWeight: '800' }}>{item.username}</Text>
                     {'  '}
                     <Text style={styles.commentTime}>{formatTime(timeAgoMinutes(item.createdAt))}</Text>
                   </Text>

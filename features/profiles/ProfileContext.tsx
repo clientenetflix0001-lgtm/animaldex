@@ -28,6 +28,8 @@ interface ProfileState {
     username: string;
     bio?: string;
     avatar?: string | null;
+    adoptionWhatsapp?: string | null;
+    adoptionPhone?: string | null;
   }) => Promise<PublicProfile>;
   canCreate: (type: Exclude<ProfileType, 'personal'>) => boolean;
 }
@@ -85,6 +87,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       username: string;
       bio?: string;
       avatar?: string | null;
+      adoptionWhatsapp?: string | null;
+      adoptionPhone?: string | null;
     }) => {
       if (countByType(profiles, input.type) >= 2) {
         throw new Error(limitMessage(input.type));

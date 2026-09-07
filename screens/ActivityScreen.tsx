@@ -30,6 +30,9 @@ const ICONS: Record<string, { name: keyof typeof Ionicons.glyphMap; bg: string }
   mention: { name: 'at', bg: colors.gold },
   location: { name: 'location', bg: colors.secondary },
   birthday: { name: 'gift', bg: colors.gold },
+  pet_transfer_requested: { name: 'swap-horizontal', bg: colors.secondary },
+  pet_transfer_accepted: { name: 'checkmark-circle', bg: colors.secondary },
+  pet_transfer_rejected: { name: 'close-circle', bg: colors.heart },
 };
 
 type Row =
@@ -91,6 +94,10 @@ export default function ActivityScreen() {
       }
       case 'birthday':
         return n.title || `¡Hoy ${n.petName ?? 'tu mascota'} cumple ${n.years === 1 ? '1 año' : `${n.years ?? ''} años`}!`;
+      case 'pet_transfer_requested':
+      case 'pet_transfer_accepted':
+      case 'pet_transfer_rejected':
+        return n.title || n.text || 'Solicitud de transferencia';
       default:
         return 'interactuó contigo';
     }
@@ -113,11 +120,14 @@ export default function ActivityScreen() {
       const isNew = n.createdAt > seenAtOpen - 1 && seenAtOpen > 0 && n.createdAt > seenAtOpen;
       const isLocation = n.type === 'location';
       const isBirthday = n.type === 'birthday';
+      const isTransfer = n.type === 'pet_transfer_requested' || n.type === 'pet_transfer_accepted' || n.type === 'pet_transfer_rejected';
       return (
         <Pressable
           style={[styles.row, isNew && styles.rowNew]}
           onPress={() => {
-            if (isLocation) {
+            if (isTransfer && n.requestId) {
+              navigation.navigate('PetTransferRequest', { requestId: n.requestId });
+            } else if (isLocation) {
               openLocation(n);
             } else if (isBirthday && (n.petUsername || n.petId)) {
               navigation.navigate('PetProfile', { petId: n.petUsername || n.petId });
@@ -156,7 +166,7 @@ export default function ActivityScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.text}>
-              {isBirthday || isLocation ? (
+              {isBirthday || isLocation || isTransfer ? (
                 realText(n)
               ) : (
                 <>
@@ -166,6 +176,7 @@ export default function ActivityScreen() {
             </Text>
             <Text style={styles.time}>{formatTime(timeAgoMinutes(n.createdAt))}</Text>
             {isBirthday && !!n.text && <Text style={styles.birthdayHint}>{n.text}</Text>}
+            {isTransfer && !!n.text && <Text style={styles.birthdayHint}>{n.text}</Text>}
             {isLocation && (
               <Text style={styles.locationLink}>
                 {locationActivityCopy(n.petName ?? 'tu mascota', n.actorId ? n.actorName : null).subtitle}

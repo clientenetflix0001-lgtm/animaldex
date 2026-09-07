@@ -16,6 +16,7 @@ import {
   RefreshControl,
   Share,
   Alert,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -25,7 +26,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiTag } from '../lib/db';
 import { useStore } from '../lib/store';
-import { buildTagUrl, qrImageUrl } from '../lib/tags';
+import { TAG_CODE_INVALID, TAG_CODE_REQUIRED, buildTagUrl, parseManualTagCode, qrImageUrl } from '../lib/tags';
 import { thumb, petFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
@@ -41,7 +42,8 @@ export default function AdminTagsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [newCode, setNewCode] = useState<number | null>(null);
+  const [draftCode, setDraftCode] = useState('');
+  const [newCode, setNewCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const isAdmin = user?.username === ADMIN_USERNAME;
@@ -69,10 +71,19 @@ export default function AdminTagsScreen() {
   }, [load]);
 
   const generate = useCallback(async () => {
+    const parsed = parseManualTagCode(draftCode);
+    if (!String(draftCode).trim()) {
+      Alert.alert('Código QR', TAG_CODE_REQUIRED);
+      return;
+    }
+    if (!parsed) {
+      Alert.alert('Código QR', TAG_CODE_INVALID);
+      return;
+    }
     setGenerating(true);
     setCopied(false);
     try {
-      const res = await db.createTag();
+      const res = await db.createTag(parsed);
       setNewCode(res.code);
       await load();
     } catch (e: any) {
@@ -80,15 +91,15 @@ export default function AdminTagsScreen() {
     } finally {
       setGenerating(false);
     }
-  }, [load]);
+  }, [draftCode, load]);
 
-  const copyLink = useCallback(async (code: number) => {
+  const copyLink = useCallback(async (code: string) => {
     await Clipboard.setStringAsync(buildTagUrl(code));
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   }, []);
 
-  const shareLink = useCallback(async (code: number) => {
+  const shareLink = useCallback(async (code: string) => {
     try {
       await Share.share({
         message: `🐾 Registra a tu mascota en Animaldex escaneando esta chapita: ${buildTagUrl(code)}`,
@@ -169,6 +180,18 @@ export default function AdminTagsScreen() {
               directo a su perfil.
             </Text>
 
+            <Text style={styles.codeLabel}>Código QR</Text>
+            <TextInput
+              style={styles.codeInput}
+              value={draftCode}
+              onChangeText={(t) => setDraftCode(t.replace(/\s+/g, ''))}
+              placeholder="AAA123"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={6}
+            />
+
             <Pressable style={styles.generateBtn} onPress={generate} disabled={generating}>
               {generating ? (
                 <ActivityIndicator color="#fff" />
@@ -182,8 +205,8 @@ export default function AdminTagsScreen() {
 
             {newCode != null && (
               <View style={styles.newTagCard}>
+                <Text style={styles.successTitle}>✅ Link generado correctamente</Text>
                 <Image source={{ uri: qrImageUrl(buildTagUrl(newCode)) }} style={styles.qrImage} />
-                <Text style={styles.newTagCode}>Chapita #{newCode}</Text>
                 <Text style={styles.newTagUrl} selectable numberOfLines={2}>
                   {buildTagUrl(newCode)}
                 </Text>
@@ -226,6 +249,19 @@ const styles = StyleSheet.create({
   header: { marginBottom: spacing.md },
   headerTitle: { fontSize: 22, fontWeight: '900', color: colors.text },
   headerSub: { fontSize: 13, color: colors.textMuted, marginTop: 6, lineHeight: 19 },
+  codeLabel: { fontWeight: '700', fontSize: 14, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.sm },
+  codeInput: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: colors.text,
+  },
   generateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -249,7 +285,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   qrImage: { width: 180, height: 180, borderRadius: radius.sm },
-  newTagCode: { fontSize: 16, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
+  successTitle: { fontSize: 16, fontWeight: '800', color: colors.text, textAlign: 'center' },
   newTagUrl: { fontSize: 12, color: colors.textMuted, textAlign: 'center' },
   newTagActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   secondaryBtn: {

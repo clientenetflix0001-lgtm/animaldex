@@ -1,11 +1,13 @@
-import React, { memo } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import React, { memo, useCallback, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Alert, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { adoptionStatusOverlay, compactAgeLabel } from '../lib/compactTime';
-import { thumb, petFallbackAvatar } from '../lib/images';
+import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { sharePetProfile } from '../lib/share';
+import { db } from '../lib/db';
+import { ADOPTION_CONTACT_MISSING, adoptCtaLabel, resolveAdoptionOpenAction } from '../lib/adoptionContact';
 import WantToAdoptButton from './WantToAdoptButton';
 import type { AdoptionCard } from '../lib/adoptionDiscovery';
 import { colors, spacing } from '../lib/theme';
@@ -35,6 +37,47 @@ function AdoptionDiscoveryCard({
   const statusText = adoptionStatusOverlay(card.careStatus, card.adoptionStartedAt) || '❤️ En adopción';
   const photo = thumb(card.photo || petFallbackAvatar(card.petId || card.id), 1080);
   const pad = Math.max(spacing.md, bottomPad);
+  const shelterHandle = card.shelterUsername || card.shelterName;
+  const shelterAvatar = thumb(
+    card.shelterAvatar || userFallbackAvatar(card.shelterUsername || card.shelterProfileId || 'refugio'),
+    80
+  );
+  const [contactBusy, setContactBusy] = useState(false);
+  const cta = adoptCtaLabel(card.sex);
+
+  const onAdopt = useCallback(async () => {
+    if (contactBusy) return;
+    const petId = card.petId;
+    if (!petId) {
+      Alert.alert(cta, ADOPTION_CONTACT_MISSING);
+      return;
+    }
+    setContactBusy(true);
+    try {
+      const res = await db.adoptionContact(petId);
+      const action = resolveAdoptionOpenAction({
+        expectedShelterProfileId: card.shelterProfileId,
+        shelterProfileId: res.shelterProfileId,
+        whatsapp: res.adoptionWhatsapp,
+        phone: res.adoptionPhone,
+        petName: res.petName || card.name,
+        petHandleOrId: res.petUsername || card.petUsername || petId,
+      });
+      if (action.kind === 'none') {
+        Alert.alert(cta, action.message);
+        return;
+      }
+      try {
+        await Linking.openURL(action.url);
+      } catch {
+        Alert.alert(cta, 'No se pudo abrir el contacto. Probá de nuevo más tarde.');
+      }
+    } catch {
+      Alert.alert(cta, ADOPTION_CONTACT_MISSING);
+    } finally {
+      setContactBusy(false);
+    }
+  }, [card, cta, contactBusy]);
 
   return (
     <View style={[styles.page, { height }]}>
@@ -70,28 +113,20 @@ function AdoptionDiscoveryCard({
         </Pressable>
         {!!ageText && <Text style={styles.meta}>{ageText}</Text>}
         <Text style={styles.meta}>{statusText.startsWith('❤️') ? statusText : `❤️ ${statusText}`}</Text>
-        {!!card.shelterName && (
-          <Pressable onPress={onOpenShelter}>
-            <Text style={styles.shelter}>{card.shelterName}</Text>
+        {!!shelterHandle && (
+          <Pressable onPress={onOpenShelter} style={styles.shelterRow} accessibilityLabel={shelterHandle}>
+            <Image source={{ uri: shelterAvatar }} style={styles.shelterAvatar} />
+            <Text style={styles.shelter}>{shelterHandle}</Text>
           </Pressable>
         )}
         {!!(card.shelterLocality || card.shelterLocation) && (
           <Text style={styles.loc}>📍 {card.shelterLocality || card.shelterLocation}</Text>
         )}
         <WantToAdoptButton
-          label="Quiero adoptarla"
+          label={cta}
           size="block"
           style={styles.cta}
-          onPress={() =>
-            Alert.alert(
-              'Quiero adoptarla',
-              'Pronto vas a poder enviar una solicitud al refugio desde acá. Mientras tanto podés abrir su perfil.',
-              [
-                { text: 'Ver refugio', onPress: onOpenShelter },
-                { text: 'Cerrar', style: 'cancel' },
-              ]
-            )
-          }
+          onPress={onAdopt}
         />
       </View>
     </View>
@@ -132,7 +167,9 @@ const styles = StyleSheet.create({
   },
   name: { color: '#fff', fontSize: 26, fontWeight: '900' },
   meta: { color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 3 },
-  shelter: { color: '#fff', fontSize: 15, fontWeight: '800', marginTop: 8 },
+  shelterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  shelterAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)' },
+  shelter: { color: '#fff', fontSize: 15, fontWeight: '800' },
   loc: { color: 'rgba(255,255,255,0.9)', fontSize: 13, marginTop: 2 },
   cta: { marginTop: 12 },
 });

@@ -23,6 +23,7 @@ import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius } from '../lib/theme';
+import { centeredParentTextWrap } from '../lib/centeredText';
 import { RootStackParamList } from '../lib/types';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import type { PublicProfile } from '../features/profiles/profileTypes';
@@ -35,7 +36,8 @@ import {
 } from '../lib/petFields';
 import ProtectorPetGridItem, { PROTECTOR_GRID_GAP } from '../components/ProtectorPetGridItem';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
-import { isReservedPublicUsername } from '../lib/publicHandles';
+import { isReservedPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
+import { hasPetSuffix, isValidPetUsername } from '../lib/petHandles';
 import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
 import type { ApiReel } from '../lib/db';
 
@@ -88,6 +90,10 @@ export default function PublicProfileScreen() {
   const load = useCallback(async () => {
     setNotFound(false);
     try {
+      if (routeUsername && hasPetSuffix(routeUsername)) {
+        navigation.replace('PetProfile', { petId: normalizePublicUsername(routeUsername) });
+        return;
+      }
       if (routeUsername && isReservedPublicUsername(routeUsername)) {
         setProfile(null);
         setNotFound(true);
@@ -97,6 +103,12 @@ export default function PublicProfileScreen() {
         profileId: routeProfileId,
         username: routeUsername,
       });
+      if (pub.kind === 'pet' && pub.pet) {
+        navigation.replace('PetProfile', {
+          petId: isValidPetUsername(pub.pet.username || '') ? pub.pet.username! : pub.pet.id,
+        });
+        return;
+      }
       const handle = pub.profile.username;
       if (handle && routeUsername && routeUsername.toLowerCase() !== handle.toLowerCase()) {
         navigation.replace('PublicProfile', { username: handle });
@@ -228,7 +240,7 @@ export default function PublicProfileScreen() {
         </View>
         {!isProtector ? <Text style={styles.handle}>@{profile.username}</Text> : null}
         <ProfileBadge type={profile.type} />
-        {!!profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
+        {!!profile.bio && <Text style={[styles.bio, centeredParentTextWrap]}>{profile.bio}</Text>}
         {!!profile.phone && (
           <View style={styles.loc}>
             <Ionicons name="call-outline" size={13} color={colors.textMuted} />
@@ -425,7 +437,7 @@ export default function PublicProfileScreen() {
           ListEmptyComponent={
             <Text style={styles.empty}>
               {pets.length === 0
-                ? 'Este refugio todavía no cargó mascotas.'
+                ? 'Esta página de Bienestar Animal todavía no cargó mascotas.'
                 : 'No hay mascotas con esos filtros.'}
             </Text>
           }
@@ -478,9 +490,9 @@ const styles = StyleSheet.create({
   topBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   head: { alignItems: 'center', paddingHorizontal: spacing.xl, paddingBottom: spacing.md },
   avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     borderWidth: 3,
     borderColor: colors.primarysoft,
     backgroundColor: colors.border,

@@ -119,15 +119,15 @@ function PostCardInner({
           <View style={styles.nameRow}>
             <Text style={styles.petName}>
               {asProfile
-                ? `@${profileHandle}`
-                : `@${disp.petUsername || disp.petName.toLowerCase()}${disp.petEmoji}`}
+                ? `${profileHandle}`
+                : `${disp.petUsername || disp.petName.toLowerCase()}${disp.petEmoji}`}
             </Text>
           </View>
           {asProfile ? (
             orgType ? <ProfileBadge type={post.authorProfileType} /> : null
           ) : (
             <Text style={styles.subText}>
-              {(disp.speciesLabel || 'mascota').toLowerCase()} de (@{disp.username})
+              {(disp.speciesLabel || 'mascota').toLowerCase()} de ({disp.username})
             </Text>
           )}
         </View>

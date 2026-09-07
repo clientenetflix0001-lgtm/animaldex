@@ -41,6 +41,8 @@ export interface Post {
   caption: string;
   likes: number;
   minutesAgo: number;
+  /** Timestamp real de D1. Usado como cursor de paginación del feed compuesto. */
+  createdAt?: number;
   comments: Comment[];
   /** Id de catálogo para posts de solo texto. Null/ausente = foto o texto legado. */
   backgroundId?: string | null;

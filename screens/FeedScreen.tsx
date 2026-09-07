@@ -12,7 +12,11 @@ import { apiPostToPost, useStore } from '../lib/store';
 import { usePolling, useNotifications } from '../lib/realtime';
 import { postNavParams } from '../lib/share';
 import { PostCard } from '../components/PostCard';
-import { StoriesBar } from '../components/StoriesBar';
+import StoryRail from '../components/StoryRail';
+import { FeedAlertsRow } from '../components/FeedAlertsRow';
+import { FeedPagesRow } from '../components/FeedPagesRow';
+import { FeedAdoptionsRow } from '../components/FeedAdoptionsRow';
+import { FeedReelsRow } from '../components/FeedReelsRow';
 import { LoadingFooter } from '../components/LoadingFooter';
 import { SuggestionsPanel } from '../components/SuggestionsPanel';
 import { colors, spacing, radius, shadow } from '../lib/theme';
@@ -20,7 +24,18 @@ import { RootStackParamList, TabParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ProfileSwitcher } from '../features/profiles';
 import WantToAdoptButton from '../components/WantToAdoptButton';
+import HeaderQrButton from '../components/HeaderQrButton';
+import { HEADER_QR_ROUTE } from '../lib/headerQr';
 import { feedMediaPerfNoteRenderItem } from '../lib/feedMediaPerf';
+import {
+  composeHomeFeedPage,
+  fetchHomeFeedBuckets,
+  mergeHomeFeedPages,
+  readCachedHomeFeed,
+  writeCachedHomeFeed,
+} from '../lib/homeFeed';
+import { extractFeedPosts, feedItemKey, type FeedItem } from '../lib/feedComposition';
+import { bindLastLocationForegroundSync } from '../lib/lastLocationSync';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Inicio'>,
@@ -48,7 +63,7 @@ export default function FeedScreen() {
     insets.top,
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
-  const [realPosts, setRealPosts] = useState<Post[]>([]);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [demoPosts, setDemoPosts] = useState<Post[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -57,32 +72,38 @@ export default function FeedScreen() {
   const oldestRef = useRef<number | undefined>(undefined);
   const newestRef = useRef<number>(0);
   const realDoneRef = useRef(false);
-  const listRef = useRef<FlatList>(null);
-  // Espejo de realPosts para los sondeos, que así no dependen del render.
-  const realPostsRef = useRef<Post[]>(realPosts);
-  realPostsRef.current = realPosts;
+  const usedPostIdsRef = useRef<Set<string>>(new Set());
+  const listRef = useRef<FlatList<FeedItem>>(null);
+  const feedItemsRef = useRef<FeedItem[]>(feedItems);
+  feedItemsRef.current = feedItems;
+  const realPostsRef = useRef<Post[]>([]);
+  realPostsRef.current = extractFeedPosts(feedItems);
 
   const loadReal = useCallback(async (reset: boolean) => {
     try {
       const before = reset ? undefined : oldestRef.current;
-      const { posts } = await db.feed(before, 10);
-      if (posts.length > 0) {
-        oldestRef.current = posts[posts.length - 1].createdAt;
-        if (reset || posts[0].createdAt > newestRef.current) {
-          newestRef.current = Math.max(newestRef.current, posts[0].createdAt);
-        }
-        const mapped = posts.map(apiPostToPost);
-        setRealPosts((prev) => {
-          if (reset) return mapped;
-          const seen = new Set(prev.map((p) => p.id));
-          return [...prev, ...mapped.filter((p) => !seen.has(p.id))];
-        });
+      const { buckets } = await fetchHomeFeedBuckets({
+        before,
+        firstPage: reset,
+        locality: user?.location || null,
+      });
+      const pageIndex = reset ? 0 : 1;
+      if (reset) usedPostIdsRef.current = new Set();
+      const page = composeHomeFeedPage(buckets, pageIndex, usedPostIdsRef.current);
+      usedPostIdsRef.current = new Set(page.usedPostIds);
+      if (page.nextCursor) oldestRef.current = page.nextCursor;
+      const firstPost = page.items.find((item) => item.kind === 'post');
+      if (firstPost && firstPost.kind === 'post' && firstPost.post.createdAt) {
+        newestRef.current = Math.max(newestRef.current, firstPost.post.createdAt);
       }
+      setFeedItems((prev) => {
+        const next = reset ? page.items : mergeHomeFeedPages(prev, page.items);
+        if (reset) void writeCachedHomeFeed(next);
+        return next;
+      });
       if (reset && newestRef.current === 0) newestRef.current = Date.now();
-      const isDone = posts.length < 10;
-      realDoneRef.current = isDone;
-      // Si en el reset inicial no hay posts reales en D1, sembramos los primeros demo de inmediato
-      if (reset && isDone && posts.length === 0) {
+      realDoneRef.current = !page.hasMore;
+      if (reset && !page.hasMore && page.items.length === 0) {
         setDemoPosts([...generateFeedPage(0), ...generateFeedPage(1)]);
         pageRef.current = 2;
       }
@@ -93,7 +114,25 @@ export default function FeedScreen() {
         pageRef.current = 2;
       }
     }
+  }, [user?.location]);
+
+  useEffect(() => {
+    let cancelled = false;
+    readCachedHomeFeed().then((cached) => {
+      if (!cancelled && cached?.length && feedItemsRef.current.length === 0) {
+        setFeedItems(cached);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    return bindLastLocationForegroundSync(() => ({
+      profileLocationText: user?.location || null,
+    }));
+  }, [user?.location]);
 
   // Carga inicial (una sola vez — el tiempo real se encarga del resto)
   useEffect(() => {
@@ -104,9 +143,11 @@ export default function FeedScreen() {
   // arriba del feed (sin recargar, sin esperar al sondeo).
   useEffect(() => {
     if (createdPosts.length === 0) return;
-    setRealPosts((prev) => {
-      const seen = new Set(prev.map((p) => p.id));
-      const fresh = createdPosts.filter((p) => !seen.has(p.id));
+    setFeedItems((prev) => {
+      const seen = new Set(extractFeedPosts(prev).map((p) => p.id));
+      const fresh = createdPosts
+        .filter((p) => !seen.has(p.id))
+        .map((post) => ({ kind: 'post' as const, key: feedItemKey('post', post.id), post, bucket: 'default' as const }));
       return fresh.length > 0 ? [...fresh, ...prev] : prev;
     });
     newestRef.current = Math.max(newestRef.current, Date.now());
@@ -140,19 +181,18 @@ export default function FeedScreen() {
       if (ids.length === 0) return;
       try {
         const { counts } = await db.counts(ids);
-        setRealPosts((prev) => {
-          // Primero se comprueba si algo cambió de verdad; solo entonces
-          // se construye un array nuevo. Sin cambios → misma referencia →
-          // sin re-render de ninguna publicación.
-          const hasChange = prev.some((p) => {
-            const c = counts[p.id];
-            return !!c && (p.likes !== c.likes || p.commentCount !== c.comments);
+        setFeedItems((prev) => {
+          const hasChange = prev.some((item) => {
+            if (item.kind !== 'post') return false;
+            const c = counts[item.post.id];
+            return !!c && (item.post.likes !== c.likes || item.post.commentCount !== c.comments);
           });
           if (!hasChange) return prev;
-          return prev.map((p) => {
-            const c = counts[p.id];
-            if (!c || (p.likes === c.likes && p.commentCount === c.comments)) return p;
-            return { ...p, likes: c.likes, commentCount: c.comments };
+          return prev.map((item) => {
+            if (item.kind !== 'post') return item;
+            const c = counts[item.post.id];
+            if (!c || (item.post.likes === c.likes && item.post.commentCount === c.comments)) return item;
+            return { ...item, post: { ...item.post, likes: c.likes, commentCount: c.comments } };
           });
         });
       } catch {}
@@ -168,9 +208,12 @@ export default function FeedScreen() {
       if (posts.length > 0) {
         newestRef.current = Math.max(newestRef.current, posts[0].createdAt);
         const mapped = posts.map(apiPostToPost);
-        setRealPosts((prev) => {
-          const seen = new Set(prev.map((p) => p.id));
-          return [...mapped.filter((p) => !seen.has(p.id)), ...prev];
+        setFeedItems((prev) => {
+          const seen = new Set(extractFeedPosts(prev).map((p) => p.id));
+          const fresh = mapped
+            .filter((p) => !seen.has(p.id))
+            .map((post) => ({ kind: 'post' as const, key: feedItemKey('post', post.id), post, bucket: 'default' as const }));
+          return fresh.length ? [...fresh, ...prev] : prev;
         });
       }
       setPendingNew(0);
@@ -184,7 +227,7 @@ export default function FeedScreen() {
     try {
       if (!realDoneRef.current) {
         // Modo 1: Mientras existan posts reales en D1, paginamos exclusivamente posts reales.
-        // Se añaden al final de realPosts mediante setRealPosts.
+        // Se añaden al final del feed compuesto mediante setFeedItems.
         await loadReal(false);
       } else {
         // Modo 2: Cuando los posts reales se agotaron (realDoneRef es true),
@@ -221,17 +264,27 @@ export default function FeedScreen() {
   // nuevos aunque nada hubiera cambiado.
   const data = useMemo(() => {
     const deletedSet = new Set(deletedPostIds);
-    const patchedReal = realPosts
-      .filter((p) => !deletedSet.has(p.id))
-      .map((p) => (editedCaptions[p.id] != null ? { ...p, caption: editedCaptions[p.id] } : p));
-    return [...patchedReal, ...demoPosts];
-  }, [realPosts, demoPosts, deletedPostIds, editedCaptions]);
+    const patched = feedItems
+      .filter((item) => item.kind !== 'post' || !deletedSet.has(item.post.id))
+      .map((item) => {
+        if (item.kind !== 'post') return item;
+        const caption = editedCaptions[item.post.id];
+        return caption != null ? { ...item, post: { ...item.post, caption } } : item;
+      });
+    const demoItems: FeedItem[] = demoPosts.map((post) => ({
+      kind: 'post',
+      key: feedItemKey('post', post.id),
+      post,
+      bucket: 'default',
+    }));
+    return [...patched, ...demoItems];
+  }, [feedItems, demoPosts, deletedPostIds, editedCaptions]);
 
   // Búsquedas O(1) del estado social, en vez de Array.includes por celda.
   const likedSet = useMemo(() => new Set(likedPosts), [likedPosts]);
   const savedSet = useMemo(() => new Set(savedPosts), [savedPosts]);
 
-  const keyExtractor = useCallback((item: Post) => item.id, []);
+  const keyExtractor = useCallback((item: FeedItem) => item.key, []);
 
   // renderItem depende de estado que NO vive en `data` (likes, guardados y
   // comentarios propios). VirtualizedList solo repinta las celdas cuando
@@ -244,14 +297,21 @@ export default function FeedScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: Post }) => {
+    ({ item }: { item: FeedItem }) => {
       feedMediaPerfNoteRenderItem();
+      if (item.kind === 'story_channels') return <StoryRail seedItems={item.items} />;
+      if (item.kind === 'alerts') return <FeedAlertsRow alerts={item.alerts} />;
+      if (item.kind === 'page_recommendations') return <FeedPagesRow pages={item.pages} />;
+      if (item.kind === 'adoptions') return <FeedAdoptionsRow pets={item.pets} />;
+      if (item.kind === 'reels') return <FeedReelsRow reels={item.reels} />;
+      if (item.kind === 'ad_slot') return null;
+      if (item.kind !== 'post') return null;
       return (
         <PostCard
-          post={item}
-          liked={likedSet.has(item.id)}
-          saved={savedSet.has(item.id)}
-          extraComments={myComments[item.id]?.length ?? 0}
+          post={item.post}
+          liked={likedSet.has(item.post.id)}
+          saved={savedSet.has(item.post.id)}
+          extraComments={myComments[item.post.id]?.length ?? 0}
           onToggleLike={toggleLike}
           onToggleSave={toggleSave}
           onOpenPet={openPet}
@@ -271,7 +331,6 @@ export default function FeedScreen() {
     </Pressable>
   );
 
-  const listHeader = useMemo(() => <StoriesBar onOpenPet={openPet} />, [openPet]);
   const listFooter = useMemo(() => <LoadingFooter />, []);
   const refreshCtrl = useMemo(
     () => (
@@ -296,7 +355,6 @@ export default function FeedScreen() {
       extraData={extraData}
       keyExtractor={keyExtractor}
       renderItem={renderItem}
-      ListHeaderComponent={listHeader}
       ListFooterComponent={listFooter}
       onEndReached={loadMore}
       onEndReachedThreshold={0.6}
@@ -342,15 +400,8 @@ export default function FeedScreen() {
             style={styles.logoMark}
             contentFit="contain"
           />
-          <Text style={styles.logo}>Animaldex</Text>
-          <Pressable
-            style={styles.qrBtn}
-            onPress={() => navigation.navigate('QRScanner')}
-            hitSlop={8}
-            accessibilityLabel="Escanear código QR"
-          >
-            <Ionicons name="qr-code-outline" size={22} color={colors.primary} />
-          </Pressable>
+          <Text style={styles.logo}>nimaldex</Text>
+          <HeaderQrButton onPress={() => navigation.navigate(HEADER_QR_ROUTE)} />
         </View>
         <View style={styles.headerRight}>
           <Pressable
@@ -407,20 +458,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
+    overflow: 'visible',
   },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 0, overflow: 'visible' },
   logoMark: { width: 24, height: 24 },
   logo: { fontSize: 26, fontWeight: '900', color: colors.primary, letterSpacing: -0.5 },
-  qrBtn: {
-    marginLeft: 2,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primarysoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   switcherRow: {
     flexDirection: 'row',

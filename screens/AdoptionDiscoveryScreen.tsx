@@ -5,7 +5,6 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
-  ScrollView,
   ActivityIndicator,
   Platform,
   StatusBar as RNStatusBar,
@@ -23,9 +22,13 @@ import {
   ADOPTION_SEX_FILTERS,
   ADOPTION_SIZE_FILTERS,
   ADOPTION_SPECIES_FILTERS,
+  adoptionFilterMenu,
   adoptionImmersiveInsets,
   adoptionTabBarVisible,
+  adoptionTriggerLabel,
+  nextOpenAdoptionFilter,
   type AdoptionCard,
+  type AdoptionFilterKey,
   type AdoptionSexFilter,
   type AdoptionSizeFilter,
   type AdoptionSpeciesFilter,
@@ -60,6 +63,7 @@ export default function AdoptionDiscoveryScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [listH, setListH] = useState(0);
   const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const [openFilter, setOpenFilter] = useState<AdoptionFilterKey | null>(null);
   const oldestRef = useRef<number | undefined>(undefined);
   const loadingMoreRef = useRef(false);
 
@@ -239,11 +243,52 @@ export default function AdoptionDiscoveryScreen() {
         </View>
 
         <View style={styles.filters} pointerEvents="box-none">
-          <FilterRow items={ADOPTION_SPECIES_FILTERS} value={species} onChange={setSpecies} />
-          <FilterRow items={ADOPTION_SIZE_FILTERS} value={size} onChange={setSize} />
-          <FilterRow items={ADOPTION_SEX_FILTERS} value={sex} onChange={setSex} />
+          <View style={styles.filterRow}>
+            <FilterTrigger
+              label={adoptionTriggerLabel('species', species)}
+              open={openFilter === 'species'}
+              onPress={() => setOpenFilter((cur) => nextOpenAdoptionFilter(cur, 'species'))}
+            />
+            <FilterTrigger
+              label={adoptionTriggerLabel('size', size)}
+              open={openFilter === 'size'}
+              onPress={() => setOpenFilter((cur) => nextOpenAdoptionFilter(cur, 'size'))}
+            />
+            <FilterTrigger
+              label={adoptionTriggerLabel('sex', sex)}
+              open={openFilter === 'sex'}
+              onPress={() => setOpenFilter((cur) => nextOpenAdoptionFilter(cur, 'sex'))}
+            />
+          </View>
+          {openFilter ? (
+            <View style={styles.menu}>
+              {adoptionFilterMenu(openFilter).map((item) => (
+                <Pressable
+                  key={item.id}
+                  style={[
+                    styles.chip,
+                    ((openFilter === 'species' && species === item.id) ||
+                      (openFilter === 'size' && size === item.id) ||
+                      (openFilter === 'sex' && sex === item.id)) &&
+                      styles.chipOn,
+                  ]}
+                  onPress={() => {
+                    if (openFilter === 'species') setSpecies(item.id as AdoptionSpeciesFilter);
+                    if (openFilter === 'size') setSize(item.id as AdoptionSizeFilter);
+                    if (openFilter === 'sex') setSex(item.id as AdoptionSexFilter);
+                    setOpenFilter(null);
+                  }}
+                >
+                  <Text style={styles.chipText}>{item.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </View>
       </View>
+      {openFilter ? (
+        <Pressable style={styles.dismiss} onPress={() => setOpenFilter(null)} accessibilityLabel="Cerrar filtros" />
+      ) : null}
 
       <LocalityPicker
         visible={pickerVisible}
@@ -261,27 +306,26 @@ export default function AdoptionDiscoveryScreen() {
   );
 }
 
-function FilterRow<T extends string>({
-  items,
-  value,
-  onChange,
+function FilterTrigger({
+  label,
+  open,
+  onPress,
 }: {
-  items: { id: T; label: string }[];
-  value: T;
-  onChange: (id: T) => void;
+  label: string;
+  open: boolean;
+  onPress: () => void;
 }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-      {items.map((item) => (
-        <Pressable
-          key={item.id}
-          style={[styles.chip, value === item.id && styles.chipOn]}
-          onPress={() => onChange(item.id)}
-        >
-          <Text style={[styles.chipText, value === item.id && styles.chipTextOn]}>{item.label}</Text>
-        </Pressable>
-      ))}
-    </ScrollView>
+    <Pressable
+      style={[styles.chip, open && styles.chipOn]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text style={[styles.chipText, open && styles.chipTextOn]}>
+        {label} ▼
+      </Text>
+    </Pressable>
   );
 }
 
@@ -323,8 +367,33 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  filters: { paddingHorizontal: spacing.sm, paddingBottom: spacing.xs, gap: 6 },
-  chipRow: { flexDirection: 'row', gap: 6, paddingRight: spacing.sm },
+  dismiss: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 8,
+  },
+  filters: {
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.xs,
+    alignItems: 'flex-end',
+    zIndex: 11,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 6,
+    maxWidth: '100%',
+  },
+  menu: {
+    marginTop: 6,
+    alignItems: 'flex-end',
+    gap: 6,
+    maxWidth: '100%',
+  },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 5,

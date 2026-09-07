@@ -240,16 +240,16 @@ function ReelCardInner({
             <Image source={{ uri: thumb(avatar, 80) }} style={styles.avatar} />
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Pressable onPress={() => onOpenProfile(reel)} accessibilityLabel={`Perfil de @${handle || 'usuario'}`}>
+            <Pressable onPress={() => onOpenProfile(reel)} accessibilityLabel={`Perfil de ${handle || 'usuario'}`}>
               <View style={styles.nameRow}>
-                <Text style={styles.name}>@{handle || 'usuario'}</Text>
+                <Text style={styles.name}>{handle || 'usuario'}</Text>
                 {orgType ? <ProfileBadge type={reel.authorProfileType} /> : null}
               </View>
             </Pressable>
             {petHandle ? (
-              <Pressable onPress={() => onOpenPet(reel)} hitSlop={8} accessibilityLabel={`Mascota @${petHandle}`}>
+              <Pressable onPress={() => onOpenPet(reel)} hitSlop={8} accessibilityLabel={`Mascota ${petHandle}`}>
                 <Text style={styles.pet}>
-                  {reel.petEmoji || '🐾'} @{petHandle}
+                  {reel.petEmoji || '🐾'} {petHandle}
                 </Text>
               </Pressable>
             ) : null}

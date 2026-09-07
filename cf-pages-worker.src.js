@@ -34,6 +34,10 @@
 // 1) EAS/Preview (upload)
 // 2) SHA copiado de Play Console
 // 3) SHA del APK instalado desde Play Internal Testing (pm get-app-links)
+// Dominio público oficial. OG/canonical siempre usan este origin,
+// aunque la visita llegue por animaldex-web.pages.dev (legacy, sin redirect).
+const PUBLIC_WEB_ORIGIN = 'https://animaldex.com';
+
 const ASSETLINKS_JSON = JSON.stringify([
   {
     relation: ['delegate_permission/common.handle_all_urls'],
@@ -225,6 +229,7 @@ function ogHtml({ title, description, image, url }) {
   <meta property="og:image:width" content="600" />
   <meta property="og:image:height" content="600" />
   <meta property="og:url" content="${esc(url)}" />
+  <link rel="canonical" href="${esc(url)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${esc(title)}" />
   <meta name="twitter:description" content="${esc(description)}" />
@@ -262,7 +267,7 @@ async function d1Query(env, sql, params) {
 }
 
 async function buildOgMeta(request, env, url) {
-  const origin = url.origin;
+  const origin = PUBLIC_WEB_ORIGIN;
   const pathname = url.pathname;
   let meta = null;
 
@@ -278,7 +283,7 @@ async function buildOgMeta(request, env, url) {
     'marketplace', 'mercado', 'admin', 'api', 'crear', 'mascotas', 'actividad', 'perfil', 'explorar',
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
-    'editar-perfil-publico', 'crear-alerta', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
+    'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
     'well-known',
   ]);
 
@@ -300,21 +305,75 @@ async function buildOgMeta(request, env, url) {
           title: `${p.name} ${p.emoji || '🐾'} en Animaldex`,
           description: `${p.breed || p.species}${p.bio ? ' · ' + p.bio : ''}`,
           image: p.avatar_url || petImage('perro', 11, 600),
-          url: `${origin}/pet/${p.id}`,
+          url: String(p.username || '').toLowerCase().endsWith('.pet')
+            ? `${origin}/${String(p.username).toLowerCase()}`
+            : `${origin}/pet/${p.id}`,
         };
       }
     }
   } else if (alertMatch) {
     const id = decodeURIComponent(alertMatch[1]);
-    const rows = await d1Query(env, 'SELECT * FROM alerts WHERE id = ?', [id]);
+    const rows = await d1Query(
+      env,
+      `SELECT a.*, u.username AS username
+       FROM alerts a LEFT JOIN users u ON u.id = a.user_id
+       WHERE a.id = ?`,
+      [id]
+    );
     if (rows[0]) {
       const a = rows[0];
-      const typeLabel = a.type === 'found' ? 'ENCONTRADO' : 'PERDIDO';
-      const speciesLabel = { perro: 'Perro', gato: 'Gato', conejo: 'Conejo', loro: 'Ave', hámster: 'Hámster' }[a.species] || 'Animal';
-      const name = a.pet_name ? ` ${a.pet_name}` : '';
+      const resolved = !!(a.resolved_at || a.status === 'resolved');
+      const name = a.pet_name ? String(a.pet_name).trim() : '';
+      const user = String(a.username || a.user_name || 'alguien').replace(/^@/, '');
+      const loc = a.locality || '';
+      const inLoc = loc ? ` en ${loc}` : '';
+      const sex = String(a.sex || '').toLowerCase();
+      const adopted = sex === 'hembra' ? 'ya fue adoptada' : sex === 'macho' ? 'ya fue adoptado' : 'ya fue adoptado/a';
+      const speciesId = String(a.species || '').toLowerCase();
+      const noun =
+        speciesId === 'perro' ? 'perro' :
+        speciesId === 'gato' ? 'gato' :
+        speciesId === 'conejo' ? 'conejo' :
+        speciesId === 'loro' ? 'ave' :
+        speciesId === 'hámster' || speciesId === 'hamster' ? 'hámster' :
+        'mascota';
+      const indef = (noun === 'mascota' || noun === 'ave' ? 'una ' : 'un ') + noun;
+      let title = `🚨 MASCOTA · Animaldex`;
+      let description = `${a.description || ''} · 📍 ${loc}`.trim();
+      if (resolved) {
+        if (a.type === 'lost') {
+          title = name ? `✅ ${name} ya apareció` : '✅ Ya apareció';
+          description = `La alerta de ${user} fue resuelta.${name ? ` ${name} volvió a casa.` : ''}`;
+        } else if (a.type === 'adoption') {
+          title = name ? `💜 ${name} ${adopted}` : `💜 ${adopted}`;
+          description = `Esta publicación de adopción de ${user} ya fue resuelta.`;
+        } else {
+          title = '💚 Esta mascota encontró a su familia';
+          description = `La alerta publicada por ${user} fue resuelta.`;
+        }
+      } else if (a.type === 'lost') {
+        title = name
+          ? `🚨 Ayudá a ${user} a encontrar a ${name}`
+          : `🚨 Ayudá a ${user} a encontrar a su ${noun}`;
+        description = `Se perdió su ${noun}${inLoc}. Compartí esta publicación para ayudar a que vuelva a casa.`;
+      } else if (a.type === 'sighting') {
+        title = `👀 ${user} vio ${indef}${inLoc}`;
+        description = '¿Lo reconocés? Ayudanos a encontrar a su familia compartiendo esta publicación.';
+      } else if (a.type === 'found') {
+        title = `🟢 ${user} encontró ${indef}${inLoc}`;
+        description = 'El animal está resguardado. Compartí esta publicación para ayudar a encontrar a su familia.';
+      } else if (a.type === 'adoption') {
+        if (name) {
+          title = `💜 ${name} está buscando una familia`;
+          description = `${user} publicó a ${name} en adopción${inLoc}. Conocé su historia y ayudala/o a encontrar una familia.`;
+        } else {
+          title = `💜 ${user} publicó una mascota en adopción`;
+          description = `${user} publicó una mascota en adopción${inLoc}. Conocé su historia y ayudala/o a encontrar una familia.`;
+        }
+      }
       meta = {
-        title: `🚨 ${speciesLabel.toUpperCase()} ${typeLabel}${name} · Animaldex`,
-        description: `${a.description || ''} · 📍 ${a.locality}`.trim(),
+        title,
+        description,
         image: a.image,
         url: `${origin}/a/${a.id}`,
       };
@@ -394,7 +453,34 @@ async function buildOgMeta(request, env, url) {
     }
   } else if (handleMatch && !reserved.has(handleMatch[1].toLowerCase())) {
     const handle = handleMatch[1].toLowerCase();
-    const profiles = await d1Query(env, 'SELECT * FROM profiles WHERE LOWER(username) = ? LIMIT 1', [handle]);
+    if (/\.pet$/i.test(handle)) {
+      let rows = await d1Query(env, 'SELECT * FROM pets WHERE LOWER(username) = LOWER(?) LIMIT 1', [handle]);
+      if (!rows[0]) {
+        try {
+          const aliases = await d1Query(
+            env,
+            'SELECT pet_id FROM pet_username_aliases WHERE LOWER(old_username) = LOWER(?) LIMIT 1',
+            [handle]
+          );
+          if (aliases[0] && aliases[0].pet_id) {
+            rows = await d1Query(env, 'SELECT * FROM pets WHERE id = ? LIMIT 1', [aliases[0].pet_id]);
+          }
+        } catch (_) {}
+      }
+      if (rows[0]) {
+        const p = rows[0];
+        const publicHandle = String(p.username || handle).toLowerCase();
+        meta = {
+          title: `${p.name} ${p.emoji || '🐾'} en Animaldex`,
+          description: `${p.breed || p.species}${p.bio ? ' · ' + p.bio : ''} · @${publicHandle}`,
+          image: p.avatar_url || petImage('perro', 11, 600),
+          url: `${origin}/${publicHandle}`,
+        };
+      }
+    }
+    const profiles = !meta
+      ? await d1Query(env, 'SELECT * FROM profiles WHERE LOWER(username) = ? LIMIT 1', [handle])
+      : [];
     if (profiles[0]) {
       const pr = profiles[0];
       const bio = String(pr.bio || '').replace(/\s+/g, ' ').trim();
@@ -419,7 +505,7 @@ async function buildOgMeta(request, env, url) {
           url: `${origin}/${pr.username}`,
         };
       }
-      } else {
+      } else if (!meta) {
         const users = await d1Query(env, 'SELECT * FROM users WHERE LOWER(username) = ? LIMIT 1', [handle]);
         if (users[0]) {
           const u = users[0];
@@ -430,6 +516,18 @@ async function buildOgMeta(request, env, url) {
             image: u.avatar_url || petImage('perro', 11, 600),
             url: `${origin}/${u.username}`,
           };
+        } else {
+          const petRows = await d1Query(env, 'SELECT * FROM pets WHERE LOWER(username) = LOWER(?) LIMIT 1', [handle]);
+          if (petRows[0]) {
+            const p = petRows[0];
+            const publicHandle = String(p.username || handle).toLowerCase();
+            meta = {
+              title: `${p.name} ${p.emoji || '🐾'} en Animaldex`,
+              description: `${p.breed || p.species}${p.bio ? ' · ' + p.bio : ''} · @${publicHandle}`,
+              image: p.avatar_url || petImage('perro', 11, 600),
+              url: publicHandle.endsWith('.pet') ? `${origin}/${publicHandle}` : `${origin}/pet/${p.id}`,
+            };
+          }
         }
       }
   }
@@ -507,7 +605,7 @@ export default {
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
     ]);
     const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase());
-    const maybePet = /^\/pet\/[^/]+\/?$/.test(url.pathname);
+    const maybePet = /^\/pet\/[^/]+\/?$/.test(url.pathname) || (spaHandle && /\.pet$/i.test(spaHandle));
     const assetType = (assetResponse.headers.get('content-type') || '').toLowerCase();
     const assetIsHtml = assetResponse.status === 404 || assetType.includes('text/html');
 
@@ -521,7 +619,7 @@ export default {
       let metaPath = '';
       try { metaPath = new URL(meta.url).pathname.replace(/\/$/, '') || '/'; } catch (_) {}
       const matched = maybePet
-        ? metaPath.indexOf('/pet/') === 0
+        ? metaPath.indexOf('/pet/') === 0 || /\.pet$/i.test(metaPath)
         : metaPath === expectedPath;
       if (meta && matched) {
         const source = assetResponse.status === 404
@@ -558,6 +656,7 @@ function injectOgIntoSpa(html, meta) {
   <meta property="og:image:width" content="600" />
   <meta property="og:image:height" content="600" />
   <meta property="og:url" content="${esc(meta.url)}" />
+  <link rel="canonical" href="${esc(meta.url)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${esc(meta.title)}" />
   <meta name="twitter:description" content="${esc(meta.description)}" />

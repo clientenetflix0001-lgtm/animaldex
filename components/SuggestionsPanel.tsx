@@ -36,7 +36,7 @@ export function SuggestionsPanel() {
       id: p.id,
       handle: p.username || null,
       name: `${p.name} ${p.emoji}`,
-      sub: p.username ? `@${p.username}` : `${p.breed || p.species} · Comunidad`,
+      sub: p.username ? `${p.username}` : `${p.breed || p.species} · Comunidad`,
       avatarUri: p.avatarUrl ?? petFallbackAvatar(p.id),
       real: true,
     })),
@@ -63,7 +63,7 @@ export function SuggestionsPanel() {
             {user?.name ?? ''}
           </Text>
           <Text style={styles.meHandle} numberOfLines={1}>
-            @{user?.username ?? ''}
+            {user?.username ?? ''}
           </Text>
         </View>
       </Pressable>

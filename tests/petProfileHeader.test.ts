@@ -1,0 +1,158 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import {
+  PROFILE_TYPE_BADGE,
+  PROFILE_TYPE_LABEL,
+} from '../features/profiles/profileTypes.ts';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const petProfile = readFileSync(join(root, 'screens/PetProfileScreen.tsx'), 'utf8');
+const userProfile = readFileSync(join(root, 'screens/UserProfileScreen.tsx'), 'utf8');
+const publicProfile = readFileSync(join(root, 'screens/PublicProfileScreen.tsx'), 'utf8');
+const createSheet = readFileSync(join(root, 'features/profiles/CreateProfileSheet.tsx'), 'utf8');
+const editPublic = readFileSync(join(root, 'screens/EditPublicProfileScreen.tsx'), 'utf8');
+const profileTypesSrc = readFileSync(join(root, 'features/profiles/profileTypes.ts'), 'utf8');
+const db = readFileSync(join(root, 'lib/db.ts'), 'utf8');
+const types = readFileSync(join(root, 'lib/types.ts'), 'utf8');
+const worker = readFileSync(join(root, 'worker/index.js'), 'utf8');
+const adoptionContact = readFileSync(join(root, 'lib/adoptionContact.ts'), 'utf8');
+const createAlert = readFileSync(join(root, 'screens/CreateAlertScreen.tsx'), 'utf8');
+const transferSheet = readFileSync(join(root, 'components/TransferPetSheet.tsx'), 'utf8');
+
+describe('perfil mascota: encabezado compacto', () => {
+  it('1. el avatar ya no usa el tamaño gigante anterior', () => {
+    assert.doesNotMatch(petProfile, /Math\.min\(288/);
+    assert.doesNotMatch(petProfile, /availW \* 0\.62/);
+    assert.doesNotMatch(petProfile, /avatarSection/);
+    assert.doesNotMatch(petProfile, /width: AVATAR/);
+    assert.match(petProfile, /<PetStatusAvatar/);
+    assert.match(petProfile, /size=\{98\}/);
+    assert.match(petProfile, /avatarPress: \{ flexShrink: 0 \}/);
+  });
+
+  it('2. la estructura es información + avatar', () => {
+    assert.match(petProfile, /identityRow/);
+    assert.match(petProfile, /identityCopy/);
+    assert.match(petProfile, /flexDirection: 'row'/);
+    const rowIdx = petProfile.indexOf('styles.identityRow');
+    const copyIdx = petProfile.indexOf('styles.identityCopy');
+    const avatarIdx = petProfile.indexOf('styles.avatarPress');
+    assert.ok(rowIdx > 0 && copyIdx > rowIdx && avatarIdx > copyIdx);
+    assert.match(petProfile, /numberOfLines=\{2\}/);
+    assert.match(petProfile, /ellipsizeMode="tail"/);
+  });
+
+  it('3. el username .pet sigue visible como @{petHandle}', () => {
+    assert.match(petProfile, /@\{petHandle\}/);
+    assert.match(petProfile, /const petHandle = realPet\?\.username/);
+    assert.doesNotMatch(petProfile, /stripPetSuffix/);
+  });
+
+  it('4. los datos de la mascota se conservan', () => {
+    assert.match(petProfile, /statusText/);
+    assert.match(petProfile, /speciesLabel/);
+    assert.match(petProfile, /\{breed\}/);
+    assert.match(petProfile, /\{age\}/);
+    assert.match(petProfile, /sizeText/);
+    assert.match(petProfile, /neuteredText/);
+    assert.match(petProfile, /waitText/);
+    assert.match(petProfile, /\{bio\}/);
+    assert.match(petProfile, /careStatusLabel/);
+    assert.match(petProfile, /ageLabelFromBirthDate/);
+  });
+
+  it('5. las estadísticas se conservan', () => {
+    assert.match(petProfile, /label="Posts"/);
+    assert.match(petProfile, /label="Seguidores"/);
+    assert.match(petProfile, /label="Siguiendo"/);
+    assert.match(petProfile, /<FollowButton/);
+  });
+
+  it('6. seguir y publicaciones siguen accesibles', () => {
+    assert.match(petProfile, /toggleFollowPet\(petId\)/);
+    assert.match(petProfile, /accessibilityLabel="Publicaciones"/);
+    assert.match(petProfile, /accessibilityLabel="Reels"/);
+    assert.match(petProfile, /PostGridMedia/);
+    assert.match(petProfile, /galleryTab === 'posts'/);
+  });
+});
+
+describe('perfil personal: layout intacto + fondo blanco', () => {
+  it('7. el layout avatar + información se conserva', () => {
+    assert.match(userProfile, /styles\.infoRow/);
+    assert.match(
+      userProfile,
+      /infoRow: \{\s*flexDirection: 'row',\s*alignItems: 'center',\s*paddingHorizontal: spacing\.lg,\s*gap: spacing\.xl,/
+    );
+    assert.match(
+      userProfile,
+      /avatar: \{ width: 98, height: 98, borderRadius: 49, borderWidth: 3/
+    );
+    assert.match(userProfile, /Editar perfil/);
+    assert.match(userProfile, /Mis mascotas/);
+    assert.match(userProfile, /Mis páginas/);
+  });
+
+  it('8. el fondo del perfil personal es blanco', () => {
+    assert.match(userProfile, /safe: \{ flex: 1, backgroundColor: '#FFFFFF' \}/);
+    assert.doesNotMatch(userProfile, /safe: \{ flex: 1, backgroundColor: colors\.bg \}/);
+  });
+});
+
+describe('perfil mascota: fondo blanco', () => {
+  it('9. el fondo del perfil de mascota es blanco', () => {
+    assert.match(petProfile, /safe: \{ flex: 1, backgroundColor: '#FFFFFF' \}/);
+    assert.doesNotMatch(petProfile, /safe: \{ flex: 1, backgroundColor: colors\.bg \}/);
+  });
+});
+
+describe('página empresa / bienestar animal: layout intacto', () => {
+  it('10. avatar centrado arriba, información debajo', () => {
+    assert.match(publicProfile, /head: \{ alignItems: 'center'/);
+    assert.match(
+      publicProfile,
+      /avatar: \{\s*width: 110,\s*height: 110,\s*borderRadius: 55/
+    );
+    assert.match(publicProfile, /safeWhite: \{ flex: 1, backgroundColor: '#FFFFFF' \}/);
+    assert.match(publicProfile, /<ProfileBadge type=\{profile\.type\} \/>/);
+  });
+});
+
+describe('copy visible: Refugio → Bienestar Animal', () => {
+  it('12. las etiquetas de tipo de página dicen Bienestar Animal', () => {
+    assert.equal(PROFILE_TYPE_BADGE.protector, '❤️ Bienestar Animal');
+    assert.equal(PROFILE_TYPE_LABEL.protector, 'Página de Bienestar Animal');
+    assert.match(createSheet, />Bienestar Animal</);
+    assert.match(createSheet, /Nueva página de Bienestar Animal/);
+    assert.match(petProfile, /Bienestar Animal de \{name\}/);
+    assert.match(transferSheet, /página de Bienestar Animal/);
+    assert.match(userProfile, /Tienda o Bienestar Animal/);
+    assert.match(editPublic, /Localidad de Bienestar Animal/);
+    assert.match(publicProfile, /Esta página de Bienestar Animal todavía no cargó mascotas/);
+    assert.doesNotMatch(profileTypesSrc, /❤️ Refugio/);
+    assert.doesNotMatch(createSheet, /Proteccionista \/ Refugio/);
+  });
+
+  it('13. Alertas y Adoptar usan Bienestar Animal como tipo de página', () => {
+    assert.match(createAlert, /Página de Bienestar Animal/);
+    assert.doesNotMatch(createAlert, /Página de refugio/);
+    assert.match(adoptionContact, /Esta página de Bienestar Animal todavía no agregó un medio de contacto/);
+    assert.doesNotMatch(adoptionContact, /Este refugio todavía no agregó/);
+  });
+});
+
+describe('contratos internos intactos', () => {
+  it('14. type protector y rutas no se refactorizan', () => {
+    assert.match(profileTypesSrc, /export type ProfileType = 'personal' \| 'business' \| 'protector'/);
+    assert.match(worker, /type === 'protector'/);
+    assert.match(db, /profileId|profile_id/);
+    assert.match(types, /PetProfile/);
+    assert.doesNotMatch(db, /author_page_id/);
+    assert.doesNotMatch(worker, /type = 'bienestar'/);
+    assert.doesNotMatch(profileTypesSrc, /type ProfileType = .*bienestar/);
+  });
+});

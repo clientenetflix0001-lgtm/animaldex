@@ -245,7 +245,7 @@ describe('wiring stays on the current Activity system', () => {
     const activity = readFileSync(join(root, 'screens/ActivityScreen.tsx'), 'utf8');
     assert.match(worker, /INSERT OR IGNORE INTO activity_events/);
     assert.match(worker, /idempotency_key TEXT NOT NULL UNIQUE/);
-    assert.match(worker, /type = 'birthday'/);
+    assert.match(worker, /type IN \('birthday', 'pet_transfer_requested', 'pet_transfer_accepted', 'pet_transfer_rejected'\)/);
     assert.match(worker, /async scheduled\(/);
     assert.match(worker, /runPersonalPetBirthdays/);
     assert.match(worker, /America\/Argentina\/Salta|argentinaDateParts/);

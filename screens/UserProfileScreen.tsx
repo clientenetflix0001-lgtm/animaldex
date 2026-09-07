@@ -21,6 +21,7 @@ import { postNavParams, sharePublicProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import WantToAdoptButton from '../components/WantToAdoptButton';
+import PetStatusAvatar from '../components/PetStatusAvatar';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
@@ -46,6 +47,7 @@ interface DisplayPet {
   breed: string;
   avatarUri: string;
   username?: string;
+  careStatus?: string | null;
 }
 
 export default function UserProfileScreen({ userId, showBack = false }: Props) {
@@ -164,6 +166,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         breed: p.breed || p.species,
         avatarUri: p.avatarUrl ?? petFallbackAvatar(p.id),
         username: p.username ?? undefined,
+        careStatus: p.careStatus,
       }));
 
   const deletedSet = new Set(deletedPostIds);
@@ -322,9 +325,9 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
               style={styles.petCard}
               onPress={() => navigation.navigate('PetProfile', { petId: item.username || item.id })}
             >
-              <Image source={{ uri: thumb(item.avatarUri, 150) }} style={styles.petImg} transition={250} />
+              <PetStatusAvatar uri={thumb(item.avatarUri, 150)} size={60} status={item.careStatus} />
               <Text style={styles.petName}>
-                {item.username ? `@${item.username}` : item.name} {item.emoji}
+                {item.username ? item.username : item.name} {item.emoji}
               </Text>
               <Text style={styles.petBreed} numberOfLines={1}>
                 {item.breed}
@@ -350,7 +353,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
                 <Ionicons name="add" size={28} color={colors.primary} />
               </View>
               <Text style={styles.petName}>Crear página</Text>
-              <Text style={styles.petBreed}>Tienda o refugio</Text>
+              <Text style={styles.petBreed}>Tienda o Bienestar Animal</Text>
             </Pressable>
           ) : null
         }
@@ -473,7 +476,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
   desktopList: {
     width: '100%',
     maxWidth: CONTENT.page,
@@ -495,7 +498,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     gap: spacing.xl,
   },
-  avatar: { width: 84, height: 84, borderRadius: 42, borderWidth: 3, borderColor: colors.primarysoft, backgroundColor: colors.border },
+  avatar: { width: 98, height: 98, borderRadius: 49, borderWidth: 3, borderColor: colors.primarysoft, backgroundColor: colors.border },
   stats: { flex: 1, flexDirection: 'row' },
   bioBlock: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },

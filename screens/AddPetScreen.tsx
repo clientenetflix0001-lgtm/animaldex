@@ -33,15 +33,19 @@ import {
   PROTECTOR_STATUSES,
   defaultCareStatus,
 } from '../lib/petFields';
-
-function normalizeHandle(raw: string): string {
-  return raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_.]/g, '').slice(0, 20);
-}
-function suggestHandle(name: string): string {
-  const base = normalizeHandle(name);
-  return base.length >= 3 ? base : (base + 'pet').slice(0, 20);
-}
-const HANDLE_RE = /^[a-z0-9_.]{3,20}$/;
+import BioField from '../components/BioField';
+import { BIO_WORD_LIMIT_ERROR, isBioWithinWordLimit } from '../lib/bio';
+import {
+  applyEditablePetBase,
+  applySuggestionIfCurrent,
+  buildPetUsername,
+  isValidPetUsername,
+  isValidPetUsernameBase,
+  PET_BASE_MAX,
+  PET_TAKEN_ERROR,
+  stripPetSuffix,
+  suggestPetUsernameBase,
+} from '../lib/petHandles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -65,9 +69,12 @@ export default function AddPetScreen() {
   const [profileId, setProfileId] = useState<string | null>(protectorProfileId);
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
+  const [lockedUsername, setLockedUsername] = useState('');
   const [userTouched, setUserTouched] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [checking, setChecking] = useState(false);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const checkSeqRef = useRef(0);
   const [species, setSpecies] = useState('perro');
   const [breed, setBreed] = useState('');
   const [bio, setBio] = useState('');
@@ -87,23 +94,50 @@ export default function AddPetScreen() {
   }, [navigation, editPetId]);
 
   useEffect(() => {
-    if (!userTouched && !editPetId) setUsername(suggestHandle(name));
+    if (!userTouched && !editPetId) setUsername(suggestPetUsernameBase(name));
   }, [name, userTouched, editPetId]);
 
   useEffect(() => {
-    if (!HANDLE_RE.test(username)) {
+    if (editPetId) {
+      setChecking(false);
       setAvailable(null);
+      setSuggestion(null);
       return;
     }
+    const base = applyEditablePetBase(username);
+    const full = base ? buildPetUsername(base) : '';
+    if (!isValidPetUsername(full) && !isValidPetUsernameBase(base)) {
+      setAvailable(null);
+      setSuggestion(null);
+      return;
+    }
+    const requestId = ++checkSeqRef.current;
     setChecking(true);
     const t = setTimeout(() => {
-      db.checkPetUsername(username, realId || editPetId)
-        .then((r) => setAvailable(r.available))
-        .catch(() => setAvailable(null))
-        .finally(() => setChecking(false));
+      db.checkPetUsername(full || base, realId || editPetId)
+        .then((r) => {
+          if (requestId !== checkSeqRef.current) return;
+          setAvailable(r.available);
+          setSuggestion(r.suggestion || null);
+          const nextBase = applySuggestionIfCurrent({
+            requestId,
+            latestId: checkSeqRef.current,
+            userTouched,
+            suggestion: r.suggestion,
+            available: !!r.available,
+          });
+          if (nextBase) setUsername(nextBase);
+        })
+        .catch(() => {
+          if (requestId !== checkSeqRef.current) return;
+          setAvailable(null);
+        })
+        .finally(() => {
+          if (requestId === checkSeqRef.current) setChecking(false);
+        });
     }, 280);
     return () => clearTimeout(t);
-  }, [username, editPetId, realId]);
+  }, [username, editPetId, realId, userTouched]);
 
   useEffect(() => {
     if (!editPetId) return;
@@ -113,7 +147,8 @@ export default function AddPetScreen() {
         const { pet } = await db.petProfile(editPetId);
         if (cancelled) return;
         setName(pet.name);
-        setUsername(pet.username || suggestHandle(pet.name));
+        setLockedUsername(pet.username || '');
+        setUsername(stripPetSuffix(pet.username || ''));
         setRealId(pet.id);
         setUserTouched(true);
         setSpecies(pet.species === 'gato' || pet.species === 'perro' ? pet.species : 'otro');
@@ -201,13 +236,17 @@ export default function AddPetScreen() {
       Alert.alert('Falta el nombre', 'Ponle nombre a tu mascota 🐾');
       return;
     }
-    const handle = normalizeHandle(username || name);
-    if (!HANDLE_RE.test(handle)) {
-      Alert.alert('Usuario inválido', 'El @ de tu mascota debe tener 3-20 caracteres: letras, números, punto o _.');
+    const handle = editPetId ? lockedUsername : buildPetUsername(username || name);
+    if (!editPetId && !isValidPetUsername(handle)) {
+      Alert.alert('Usuario inválido', 'El @ de tu mascota debe ser nombre.pet (3-16 letras o números).');
       return;
     }
-    if (available === false && !createdPetRef.current) {
-      Alert.alert('Usuario ocupado', 'Ese nombre o @ ya lo tiene otra mascota. Probá otro.');
+    if (!editPetId && available === false && !createdPetRef.current) {
+      Alert.alert('Usuario ocupado', PET_TAKEN_ERROR);
+      return;
+    }
+    if (!isBioWithinWordLimit(bio)) {
+      Alert.alert('Biografía', BIO_WORD_LIMIT_ERROR);
       return;
     }
     if (birthTouched && !birthOk) {
@@ -220,7 +259,7 @@ export default function AddPetScreen() {
       const emoji = FORM_SPECIES.find((s) => s.id === species)?.emoji ?? '🐾';
       const payload = {
         name: name.trim(),
-        username: handle,
+        ...(editPetId ? {} : { username: handle }),
         species,
         breed: breed.trim(),
         bio: bio.trim(),
@@ -294,6 +333,7 @@ export default function AddPetScreen() {
     tagCode,
     realId,
     editPetId,
+    lockedUsername,
   ]);
 
   const statuses = isProtectorPet ? PROTECTOR_STATUSES : PERSONAL_STATUSES;
@@ -345,31 +385,47 @@ export default function AddPetScreen() {
             maxLength={40}
           />
 
-          <Text style={styles.label}>Usuario único *</Text>
-          <View style={styles.handleWrap}>
-            <Text style={styles.handleAt}>@</Text>
-            <TextInput
-              style={styles.handleInput}
-              placeholder="tamy"
-              placeholderTextColor={colors.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={username}
-              onChangeText={(t) => {
-                setUserTouched(true);
-                setUsername(normalizeHandle(t));
-              }}
-              maxLength={20}
-            />
-            <Text style={styles.handleStatus}>
-              {checking ? '…' : available === true ? '✓' : available === false ? '✕' : ''}
-            </Text>
-          </View>
-          <Text style={styles.handleHint}>
-            {available === false
-              ? 'Ese @ o nombre ya está tomado.'
-              : 'Se muestra en el feed y en el perfil. No se puede repetir.'}
-          </Text>
+          <Text style={styles.label}>{editPetId ? 'Usuario' : 'Usuario único *'}</Text>
+          {editPetId ? (
+            <>
+              <View style={styles.handleReadonlyWrap}>
+                <Text style={styles.handleReadonly}>@{lockedUsername || username}</Text>
+              </View>
+              <Text style={styles.handleHint}>El usuario de la mascota no se puede cambiar.</Text>
+            </>
+          ) : (
+            <>
+              <View style={styles.handleWrap}>
+                <Text style={styles.handleAt}>@</Text>
+                <TextInput
+                  style={styles.handleInput}
+                  placeholder="luna"
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={username}
+                  onChangeText={(t) => {
+                    setUserTouched(true);
+                    setUsername(applyEditablePetBase(t));
+                  }}
+                  maxLength={PET_BASE_MAX}
+                />
+                <Text style={styles.handleSuffix}>.pet</Text>
+                <Text style={styles.handleStatus}>
+                  {checking ? '…' : available === true ? '✓' : available === false ? '✕' : ''}
+                </Text>
+              </View>
+              <Text style={styles.handleHint}>
+                {available === false
+                  ? suggestion
+                    ? `${PET_TAKEN_ERROR} Probá @${suggestion}.`
+                    : PET_TAKEN_ERROR
+                  : available === true
+                    ? 'Disponible'
+                    : 'Este usuario será único y no podrá cambiarse después.'}
+              </Text>
+            </>
+          )}
 
           <Text style={styles.label}>Especie</Text>
           <View style={styles.speciesGrid}>
@@ -468,17 +524,14 @@ export default function AddPetScreen() {
           />
 
           <Text style={styles.label}>Biografía</Text>
-          <TextInput
+          <BioField
             style={[styles.input, styles.bioInput]}
             placeholder="Cuéntanos de tu mascota..."
-            placeholderTextColor={colors.textMuted}
             value={bio}
             onChangeText={setBio}
-            multiline
-            maxLength={200}
           />
 
-          <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading}>
+          <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading || !isBioWithinWordLimit(bio)}>
             {saving ? (
               <ActivityIndicator color="#fff" />
             ) : (
@@ -536,6 +589,16 @@ const styles = StyleSheet.create({
   },
   handleAt: { fontWeight: '900', fontSize: 18, color: colors.primary, marginRight: 4 },
   handleInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: colors.text, fontWeight: '700' },
+  handleSuffix: { fontWeight: '900', fontSize: 16, color: colors.textMuted, marginLeft: 2 },
+  handleReadonlyWrap: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  handleReadonly: { fontWeight: '800', fontSize: 16, color: colors.text },
   handleStatus: { fontWeight: '900', fontSize: 18, color: colors.secondary, width: 22, textAlign: 'center' },
   handleHint: { marginTop: 6, fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   dateError: { marginTop: 6, fontSize: 12, color: colors.heart, fontWeight: '700' },

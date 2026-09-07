@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -31,6 +31,9 @@ import { useStore, apiPostToPost } from '../lib/store';
 import { postNavParams, sharePetProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
+import PetStatusAvatar from '../components/PetStatusAvatar';
+import QrLostPetModal from '../components/QrLostPetModal';
+import { shouldShowQrLostPrompt } from '../lib/qrLostPet';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
@@ -42,7 +45,10 @@ import type { PublicProfile } from '../features/profiles/profileTypes';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 import { openHumanProfile } from '../lib/publicHandles';
 import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
-import type { ApiReel } from '../lib/db';
+import type { ApiReel, ApiPetTransferRequest, ApiTransferUser } from '../lib/db';
+import TransferPetSheet from '../components/TransferPetSheet';
+import { pendingBannerCopy } from '../lib/petTransfer';
+import { useProfiles } from '../features/profiles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'PetProfile'>;
@@ -53,9 +59,11 @@ export default function PetProfileScreen() {
   const { width } = useWindowDimensions();
   const { desktopWeb } = useBreakpoint();
   const { followedPets, toggleFollowPet, user, refreshMyPets, deletedPostIds, editedCaptions } = useStore();
+  const { profiles } = useProfiles();
   const { guest, cameFromLink, requireLogin, inviteBar, closeExternal, goBackOrClose } = useGuestAccess();
 
   const petId = route.params.petId;
+  const fromQr = !!route.params.fromQr;
   const demoPet = useMemo(() => PETS.find((p) => p.id === petId), [petId]);
 
   const [realPet, setRealPet] = useState<ApiPet | null>(null);
@@ -68,6 +76,11 @@ export default function PetProfileScreen() {
   const [sharingLocation, setSharingLocation] = useState(false);
   const [locationDone, setLocationDone] = useState(false);
   const [galleryTab, setGalleryTab] = useState<'posts' | 'reels'>('posts');
+  const [qrLostOpen, setQrLostOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [pendingTransfer, setPendingTransfer] = useState<ApiPetTransferRequest | null>(null);
+  const [pendingRecipient, setPendingRecipient] = useState<ApiTransferUser | null>(null);
+  const qrLostArmed = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -88,8 +101,54 @@ export default function PetProfileScreen() {
     })();
   }, [petId, demoPet]);
 
+  const reloadPet = useCallback(async () => {
+    if (demoPet) return;
+    try {
+      const [prof, petPosts] = await Promise.all([db.petProfile(petId), db.petPosts(petId)]);
+      setRealPet(prof.pet);
+      setRealOwner(prof.owner);
+      setShelter(prof.shelter || null);
+      setRealStats(prof.stats);
+      setPosts(petPosts.posts.map(apiPostToPost));
+    } catch {}
+  }, [demoPet, petId]);
+
   const following = followedPets.includes(petId);
   const isMyPet = !demoPet && !!realPet && realPet.userId === user?.id;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isMyPet || !realPet?.id) {
+        setPendingTransfer(null);
+        setPendingRecipient(null);
+        return;
+      }
+      db.pendingPetTransfer(realPet.id)
+        .then((res) => {
+          setPendingTransfer(res.request);
+          setPendingRecipient(res.recipient || null);
+        })
+        .catch(() => {
+          setPendingTransfer(null);
+          setPendingRecipient(null);
+        });
+    }, [isMyPet, realPet?.id])
+  );
+
+  useEffect(() => {
+    if (qrLostArmed.current) return;
+    if (
+      shouldShowQrLostPrompt({
+        fromQr,
+        careStatus: realPet?.careStatus,
+        isOwner: isMyPet,
+        loading,
+      })
+    ) {
+      qrLostArmed.current = true;
+      setQrLostOpen(true);
+    }
+  }, [fromQr, realPet?.careStatus, isMyPet, loading]);
   const availW = desktopWeb ? Math.min(width, CONTENT.page) : width;
   const tile = (availW - spacing.lg * 2 - 4) / 3;
   const openPost = useCallback(
@@ -141,13 +200,13 @@ export default function PetProfileScreen() {
   const shareMyLocation = useCallback(async () => {
     if (demoPet) {
       Alert.alert('No disponible', 'Esta mascota es una demostración y no tiene dueño real.');
-      return;
+      return false;
     }
     const internalId = realPet?.id;
     if (!internalId) {
-      if (loading) return;
+      if (loading) return false;
       Alert.alert('Espera un momento', 'Todavía estamos cargando el perfil de la mascota.');
-      return;
+      return false;
     }
     setSharingLocation(true);
     try {
@@ -157,7 +216,7 @@ export default function PetProfileScreen() {
           'Permiso no otorgado',
           'No compartimos tu ubicación porque no diste permiso. Puedes intentarlo de nuevo cuando quieras.'
         );
-        return;
+        return false;
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const result = await db.shareLocation(
@@ -175,8 +234,10 @@ export default function PetProfileScreen() {
           'El dueño aún no tiene un teléfono verificado, así que no se envió el SMS, pero tu ubicación quedó guardada.'
         );
       }
+      return true;
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo obtener tu ubicación');
+      return false;
     } finally {
       setSharingLocation(false);
     }
@@ -211,9 +272,6 @@ export default function PetProfileScreen() {
     : realOwner?.avatarUrl ?? userFallbackAvatar(ownerUsername || 'dueño');
   const ownerId = demoPet ? getOwner(demoPet).id : realOwner?.id;
 
-  // Avatar 3x: antes 96px → ahora ~288px (limitado por el ancho en móviles chicos)
-  const AVATAR = Math.min(288, availW * 0.62);
-
   // Borrados/ediciones propias aplicadas de forma incremental
   const deletedSet = new Set(deletedPostIds);
   const shownPosts = posts
@@ -243,85 +301,79 @@ export default function PetProfileScreen() {
         </View>
       </SafeAreaView>
 
-      {/* Avatar gigante */}
-      <View style={styles.avatarSection}>
+      {/* Identidad: información + avatar compacto */}
+      <View style={styles.identityRow}>
+        <View style={styles.identityCopy}>
+          <Text style={styles.petName} numberOfLines={2}>
+            {name}
+          </Text>
+          {!!petHandle && (
+            <Text style={styles.petHandle} numberOfLines={1} ellipsizeMode="tail">
+              @{petHandle}
+            </Text>
+          )}
+          <View style={styles.chipsRow}>
+            {!!statusText && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{statusText}</Text>
+              </View>
+            )}
+            {speciesLabel !== '' && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{speciesLabel}</Text>
+              </View>
+            )}
+            {breed !== '' && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{breed}</Text>
+              </View>
+            )}
+            {age !== '' && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{age}</Text>
+              </View>
+            )}
+            {sizeText !== '' && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{sizeText}</Text>
+              </View>
+            )}
+            {neuteredText !== '' && (
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>{neuteredText}</Text>
+              </View>
+            )}
+          </View>
+          {!!waitText && <Text style={styles.waitText}>{waitText}</Text>}
+        </View>
         <Pressable
           onPress={isMyPet ? changePetPhoto : undefined}
           disabled={!isMyPet || uploadingPhoto}
-          style={{ alignSelf: 'center' }}
+          style={styles.avatarPress}
+          accessibilityLabel={isMyPet ? 'Cambiar foto de perfil' : undefined}
         >
-          <Image
-            source={{ uri: thumb(avatarUri, 600) }}
-            style={[
-              styles.avatar,
-              { width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2 },
-            ]}
-            contentFit="cover"
-            transition={300}
-          />
-          {uploadingPhoto && (
-            <View style={[styles.avatarOverlay, { borderRadius: AVATAR / 2 }]}>
-              <ActivityIndicator color="#fff" size="large" />
-              <Text style={styles.avatarOverlayText}>Subiendo...</Text>
+          <PetStatusAvatar
+            uri={thumb(avatarUri, 200)}
+            size={98}
+            status={realPet?.careStatus}
+          >
+            {uploadingPhoto && (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color="#fff" size="small" />
+              </View>
+            )}
+            <View style={styles.speciesBadge}>
+              <Text style={styles.speciesEmoji}>{emoji}</Text>
             </View>
-          )}
-          <View style={styles.speciesBadge}>
-            <Text style={styles.speciesEmoji}>{emoji}</Text>
-          </View>
-          {isMyPet && !uploadingPhoto && (
-            <View style={styles.cameraBadge}>
-              <Ionicons name="camera" size={18} color="#fff" />
-            </View>
-          )}
+            {isMyPet && !uploadingPhoto && (
+              <View style={styles.cameraBadge}>
+                <Ionicons name="camera" size={12} color="#fff" />
+              </View>
+            )}
+          </PetStatusAvatar>
         </Pressable>
-        {isMyPet && (
-          <Pressable onPress={changePetPhoto} disabled={uploadingPhoto}>
-            <Text style={styles.changePhotoLink}>
-              {uploadingPhoto ? 'Subiendo foto...' : 'Cambiar foto de perfil'}
-            </Text>
-          </Pressable>
-        )}
       </View>
-
-      {/* Identity */}
-      <View style={styles.identity}>
-        <Text style={styles.petName}>{name}</Text>
-        {!!petHandle && <Text style={styles.petHandle}>@{petHandle}</Text>}
-        <View style={styles.chipsRow}>
-          {!!statusText && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{statusText}</Text>
-            </View>
-          )}
-          {speciesLabel !== '' && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{speciesLabel}</Text>
-            </View>
-          )}
-          {breed !== '' && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{breed}</Text>
-            </View>
-          )}
-          {age !== '' && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{age}</Text>
-            </View>
-          )}
-          {sizeText !== '' && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{sizeText}</Text>
-            </View>
-          )}
-          {neuteredText !== '' && (
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>{neuteredText}</Text>
-            </View>
-          )}
-        </View>
-        {!!waitText && <Text style={styles.waitText}>{waitText}</Text>}
-        {bio !== '' && <Text style={styles.bio}>{bio}</Text>}
-      </View>
+      {bio !== '' && <Text style={styles.bio}>{bio}</Text>}
 
       {/* Stats */}
       <View style={styles.statsCard}>
@@ -343,6 +395,35 @@ export default function PetProfileScreen() {
         />
       </View>
 
+      {isMyPet && pendingTransfer && (
+        <View style={styles.pendingBanner}>
+          <Text style={styles.pendingTitle}>Transferencia pendiente</Text>
+          <Text style={styles.pendingHint}>{pendingBannerCopy(pendingRecipient?.name || pendingRecipient?.username)}</Text>
+          <Pressable
+            onPress={() => {
+              Alert.alert('Cancelar solicitud', '¿Cancelar la transferencia pendiente?', [
+                { text: 'No', style: 'cancel' },
+                {
+                  text: 'Cancelar solicitud',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await db.cancelPetTransferRequest(pendingTransfer.id);
+                      setPendingTransfer(null);
+                      setPendingRecipient(null);
+                    } catch (e: any) {
+                      Alert.alert('Error', e?.message || 'No se pudo cancelar');
+                    }
+                  },
+                },
+              ]);
+            }}
+          >
+            <Text style={styles.pendingCancel}>Cancelar solicitud</Text>
+          </Pressable>
+        </View>
+      )}
+
       {isMyPet && (
         <View style={styles.adminRow}>
           <Pressable
@@ -351,34 +432,18 @@ export default function PetProfileScreen() {
           >
             <Text style={styles.adminText}>Editar</Text>
           </Pressable>
-          {isProtectorPet && (
-            <Pressable
-              style={styles.adminBtn}
-              onPress={() => {
-                Alert.alert(
-                  'Archivar',
-                  `¿Archivar a ${name}? El perfil se conserva, pero deja de verse en el refugio.`,
-                  [
-                    { text: 'Cancelar', style: 'cancel' },
-                    {
-                      text: 'Archivar',
-                      onPress: async () => {
-                        try {
-                          await db.archivePet(realPet?.id || petId);
-                          await refreshMyPets();
-                          navigation.goBack();
-                        } catch (e: any) {
-                          Alert.alert('Error', e?.message || 'No se pudo archivar');
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <Text style={styles.adminText}>Archivar</Text>
-            </Pressable>
-          )}
+          <Pressable
+            style={styles.adminBtn}
+            onPress={() => {
+              if (pendingTransfer) {
+                Alert.alert('Transferencia pendiente', 'Esta mascota ya tiene una transferencia pendiente.');
+                return;
+              }
+              setTransferOpen(true);
+            }}
+          >
+            <Text style={styles.adminText}>Transferir</Text>
+          </Pressable>
           <Pressable
             style={styles.adminBtn}
             onPress={() => {
@@ -409,6 +474,29 @@ export default function PetProfileScreen() {
         </View>
       )}
 
+      <TransferPetSheet
+        visible={transferOpen}
+        petId={realPet?.id || petId}
+        petName={name}
+        isPersonal={!shelter}
+        pageName={shelter?.name}
+        pages={profiles}
+        onClose={() => setTransferOpen(false)}
+        onTransferred={async () => {
+          setTransferOpen(false);
+          await refreshMyPets();
+          await reloadPet();
+          if (realPet?.id) {
+            db.pendingPetTransfer(realPet.id)
+              .then((res) => {
+                setPendingTransfer(res.request);
+                setPendingRecipient(res.recipient || null);
+              })
+              .catch(() => {});
+          }
+        }}
+      />
+
       {/* Owner / refugio */}
       {shelter ? (
         <Pressable
@@ -421,9 +509,9 @@ export default function PetProfileScreen() {
             transition={200}
           />
           <View style={{ flex: 1 }}>
-            <Text style={styles.ownerLabel}>Refugio de {name}</Text>
+            <Text style={styles.ownerLabel}>Bienestar Animal de {name}</Text>
             <Text style={styles.ownerName}>
-              {shelter.name} · @{shelter.username}
+              {shelter.name} · {shelter.username}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -441,7 +529,7 @@ export default function PetProfileScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.ownerLabel}>Humano de {name}</Text>
             <Text style={styles.ownerName}>
-              {ownerName} · @{ownerUsername}
+              {ownerName} · {ownerUsername}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -545,12 +633,22 @@ export default function PetProfileScreen() {
         showsVerticalScrollIndicator={false}
       />
       {inviteBar}
+      <QrLostPetModal
+        visible={qrLostOpen}
+        petName={realPet?.name}
+        sending={sharingLocation}
+        onClose={() => setQrLostOpen(false)}
+        onSendLocation={async () => {
+          const ok = await shareMyLocation();
+          if (ok) setQrLostOpen(false);
+        }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
   desktopList: {
     width: '100%',
     maxWidth: CONTENT.page,
@@ -576,55 +674,55 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   topTitle: { flex: 1, textAlign: 'center', fontWeight: '800', fontSize: 17, color: colors.text },
-  avatarSection: { alignItems: 'center', marginTop: spacing.md, gap: spacing.md },
-  avatar: {
-    borderWidth: 5,
-    borderColor: colors.primarysoft,
-    backgroundColor: colors.border,
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    gap: spacing.md,
   },
+  identityCopy: { flex: 1, minWidth: 0, flexShrink: 1 },
+  avatarPress: { flexShrink: 0 },
   avatarOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    borderRadius: 49,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
   },
-  avatarOverlayText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   speciesBadge: {
     position: 'absolute',
-    bottom: 12,
-    right: 12,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    bottom: -2,
+    right: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadow.card,
   },
-  speciesEmoji: { fontSize: 22 },
+  speciesEmoji: { fontSize: 13 },
   cameraBadge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    top: -2,
+    right: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: colors.bg,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
-  changePhotoLink: { color: colors.primary, fontWeight: '700', fontSize: 14 },
-  identity: { alignItems: 'center', marginTop: spacing.lg, paddingHorizontal: spacing.xl },
-  petName: { fontSize: 28, fontWeight: '900', color: colors.text },
-  petHandle: { fontSize: 18, fontWeight: '800', color: colors.primary, marginTop: 4 },
-  chipsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap', justifyContent: 'center' },
+  petName: { fontSize: 22, fontWeight: '900', color: colors.text },
+  petHandle: { fontSize: 14, fontWeight: '800', color: colors.primary, marginTop: 2 },
+  chipsRow: { flexDirection: 'row', gap: 6, marginTop: spacing.sm, flexWrap: 'wrap', justifyContent: 'flex-start' },
   chip: {
     backgroundColor: colors.secondarySoft,
     paddingHorizontal: 12,
@@ -635,8 +733,9 @@ const styles = StyleSheet.create({
   bio: {
     fontSize: 14,
     color: colors.text,
-    textAlign: 'center',
-    marginTop: spacing.md,
+    textAlign: 'left',
+    marginTop: spacing.sm,
+    marginHorizontal: spacing.lg,
     lineHeight: 20,
   },
   waitText: {
@@ -647,32 +746,44 @@ const styles = StyleSheet.create({
   },
   adminRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: 6,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.md,
   },
   adminBtn: {
     flex: 1,
+    minWidth: 0,
     borderRadius: radius.full,
     borderWidth: 1.5,
     borderColor: colors.border,
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
     backgroundColor: colors.card,
   },
-  adminText: { fontWeight: '700', fontSize: 12, color: colors.text },
+  adminText: { fontWeight: '700', fontSize: 11, color: colors.text },
+  pendingBanner: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    backgroundColor: colors.primarysoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  pendingTitle: { fontSize: 13, fontWeight: '800', color: colors.text },
+  pendingHint: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  pendingCancel: { fontSize: 12, fontWeight: '800', color: colors.primary, marginTop: 8 },
   statsCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.card,
     marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     borderRadius: radius.md,
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.md,
     ...shadow.card,
   },
   statDivider: { width: 1, height: 28, backgroundColor: colors.border },
-  followRow: { flexDirection: 'row', paddingHorizontal: spacing.lg, marginTop: spacing.lg },
+  followRow: { flexDirection: 'row', paddingHorizontal: spacing.lg, marginTop: spacing.md },
   ownerCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -717,8 +828,8 @@ const styles = StyleSheet.create({
   galleryTabs: {
     flexDirection: 'row',
     marginHorizontal: spacing.sm,
-    marginTop: spacing.xl,
-    marginBottom: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
