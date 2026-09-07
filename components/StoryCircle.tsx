@@ -1,11 +1,12 @@
 import React, { memo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '../lib/theme';
 import { STORY_SEEN_RING, STORY_UNSEEN_GRADIENT, type StoryRingVariant } from '../lib/stories';
 import { thumb } from '../lib/images';
+import { HomeModulePressable } from './HomeHorizontalList';
 
 type Props = {
   label: string;
@@ -21,7 +22,7 @@ function StoryCircle({ label, thumbUrl, emoji, ring, isSelf, onPress, onAdd }: P
   const size = 64;
   const outer = size + 6;
   return (
-    <Pressable style={styles.item} onPress={onPress} accessibilityLabel={label}>
+    <HomeModulePressable style={styles.item} onPress={onPress} accessibilityLabel={label}>
       {ring === 'unseen' ? (
         <LinearGradient colors={[...STORY_UNSEEN_GRADIENT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ring, { width: outer, height: outer, borderRadius: outer / 2 }]}>
           <Inner thumbUrl={thumbUrl} emoji={emoji} size={size} fallbackPlus={!!isSelf && !thumbUrl} />
@@ -36,14 +37,14 @@ function StoryCircle({ label, thumbUrl, emoji, ring, isSelf, onPress, onAdd }: P
         </View>
       )}
       {isSelf && ring !== 'none' ? (
-        <Pressable style={styles.addBadge} onPress={onAdd} accessibilityLabel="Agregar historia">
+        <HomeModulePressable style={styles.addBadge} onPress={onAdd} accessibilityLabel="Agregar historia">
           <Ionicons name="add" size={12} color="#fff" />
-        </Pressable>
+        </HomeModulePressable>
       ) : null}
       <Text style={styles.name} numberOfLines={1}>
         {emoji && !thumbUrl ? `${emoji} ${label}` : emoji && ring !== 'none' ? `${emoji} ${label}` : label}
       </Text>
-    </Pressable>
+    </HomeModulePressable>
   );
 }
 

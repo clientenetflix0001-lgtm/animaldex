@@ -1,16 +1,17 @@
 import React, { memo, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import type { ApiAlert } from '../lib/db';
 import { alertBadgeColor, alertBadgeText } from '../lib/alerts';
 import { thumb, petFallbackAvatar } from '../lib/images';
+import { HomeHorizontalList, HomeModulePressable } from './HomeHorizontalList';
 import { colors, radius, spacing } from '../lib/theme';
 
 function AlertChip({ alert, onPress }: { alert: ApiAlert; onPress: () => void }) {
   const color = alertBadgeColor(alert);
   return (
-    <Pressable onPress={onPress} style={styles.card} accessibilityRole="button" accessibilityLabel="Abrir alerta">
+    <HomeModulePressable onPress={onPress} style={styles.card} accessibilityRole="button" accessibilityLabel="Abrir alerta">
       <Image
         source={{ uri: thumb(alert.image || petFallbackAvatar(alert.id), 240) }}
         style={styles.photo}
@@ -26,7 +27,7 @@ function AlertChip({ alert, onPress }: { alert: ApiAlert; onPress: () => void })
       <Text style={styles.name} numberOfLines={1}>
         {alert.petName || 'Mascota'}
       </Text>
-    </Pressable>
+    </HomeModulePressable>
   );
 }
 
@@ -42,10 +43,7 @@ function FeedAlertsRowInner({ alerts }: { alerts: ApiAlert[] }) {
   );
   return (
     <View style={styles.wrap}>
-      <FlatList
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={false}
+      <HomeHorizontalList
         data={alerts}
         keyExtractor={(item) => `alert:${item.id}`}
         renderItem={renderItem}

@@ -6,11 +6,13 @@ import ReelsScreen from './ReelsScreen';
 import { ReelsPageVisibleProvider } from '../lib/reelsFocus';
 import { shouldPlayFeedReels } from '../lib/feedReelsNav';
 import { useFeedReelsNav } from '../lib/feedReelsNavContext';
+import { HomeModuleGestureLockProvider, useHomeModuleGestureLock } from '../lib/homeModuleGesturesContext';
 
-export default function FeedReelsSwiper() {
+function FeedReelsSwiperInner() {
   const scrollRef = useRef<ScrollView>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const { page, setPage } = useFeedReelsNav();
+  const { parentPagerEnabled } = useHomeModuleGestureLock();
   const tabFocused = useIsFocused();
 
   useEffect(() => {
@@ -42,6 +44,7 @@ export default function FeedReelsSwiper() {
           ref={scrollRef}
           horizontal
           pagingEnabled
+          scrollEnabled={parentPagerEnabled}
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={onMomentumScrollEnd}
           style={{ width: size.width, height: size.height }}
@@ -57,6 +60,14 @@ export default function FeedReelsSwiper() {
         </ScrollView>
       )}
     </View>
+  );
+}
+
+export default function FeedReelsSwiper() {
+  return (
+    <HomeModuleGestureLockProvider>
+      <FeedReelsSwiperInner />
+    </HomeModuleGestureLockProvider>
   );
 }
 

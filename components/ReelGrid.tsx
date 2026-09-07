@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { HomeModulePressable } from './HomeHorizontalList';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { db, type ApiReel } from '../lib/db';
@@ -19,18 +20,21 @@ export function ReelGridTile({
   size,
   isOwner,
   onPress,
+  preventPressOnSwipe,
 }: {
   reel: ApiReel;
   size: number;
   isOwner?: boolean;
   onPress: () => void;
+  preventPressOnSwipe?: boolean;
 }) {
   const thumbUri = getMuxThumbnail(reel.playbackId, { width: 240, height: 426 });
   const label = isOwner ? ownerGridLabel(reel.status) : null;
   const tileH = Math.round((size * 16) / 9);
+  const TilePressable = preventPressOnSwipe ? HomeModulePressable : Pressable;
 
   return (
-    <Pressable
+    <TilePressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label ? `${label} Reel` : 'Abrir Reel'}
@@ -53,7 +57,7 @@ export function ReelGridTile({
           <Text style={styles.overlayT}>{label}</Text>
         </View>
       ) : null}
-    </Pressable>
+    </TilePressable>
   );
 }
 

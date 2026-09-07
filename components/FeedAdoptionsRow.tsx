@@ -1,14 +1,15 @@
 import React, { memo, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import type { AdoptionCard } from '../lib/adoptionDiscovery';
 import { thumb, petFallbackAvatar } from '../lib/images';
+import { HomeHorizontalList, HomeModulePressable } from './HomeHorizontalList';
 import { colors, radius, spacing } from '../lib/theme';
 
 function AdoptionChip({ card, onPress }: { card: AdoptionCard; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={styles.card} accessibilityRole="button" accessibilityLabel="Ver mascota en adopción">
+    <HomeModulePressable onPress={onPress} style={styles.card} accessibilityRole="button" accessibilityLabel="Ver mascota en adopción">
       <Image
         source={{ uri: thumb(card.photo || petFallbackAvatar(card.petId || card.id), 240) }}
         style={styles.photo}
@@ -19,7 +20,7 @@ function AdoptionChip({ card, onPress }: { card: AdoptionCard; onPress: () => vo
       <Text style={styles.name} numberOfLines={1}>
         {card.name}
       </Text>
-    </Pressable>
+    </HomeModulePressable>
   );
 }
 
@@ -38,10 +39,7 @@ function FeedAdoptionsRowInner({ pets }: { pets: AdoptionCard[] }) {
   );
   return (
     <View style={styles.wrap}>
-      <FlatList
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={false}
+      <HomeHorizontalList
         data={pets}
         keyExtractor={(item) => item.petId || item.id}
         renderItem={renderItem}
