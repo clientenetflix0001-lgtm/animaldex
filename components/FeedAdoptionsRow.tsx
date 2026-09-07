@@ -42,7 +42,7 @@ function FeedAdoptionsRowInner({ pets }: { pets: AdoptionCard[] }) {
   return (
     <View style={styles.wrap}>
       <HomeModuleTitle>{HOME_MODULE_TITLES.adoptions}</HomeModuleTitle>
-      <HomeHorizontalList>
+      <HomeHorizontalList
         data={pets}
         keyExtractor={(item) => item.petId || item.id}
         renderItem={renderItem}

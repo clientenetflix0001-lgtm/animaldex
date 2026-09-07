@@ -30,7 +30,7 @@ function FeedReelsRowInner({ reels }: { reels: ApiReel[] }) {
   return (
     <View style={styles.wrap}>
       <HomeModuleTitle>{HOME_MODULE_TITLES.reels}</HomeModuleTitle>
-      <HomeHorizontalList>
+      <HomeHorizontalList
         data={reels}
         keyExtractor={(item) => `reel:${item.id}`}
         renderItem={renderItem}
