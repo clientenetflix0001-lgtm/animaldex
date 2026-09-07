@@ -16,6 +16,7 @@ export function apiPostToPost(p: ApiPost): Post {
     backgroundId: p.backgroundId ?? null,
     likes: p.likeCount,
     minutesAgo: timeAgoMinutes(p.createdAt),
+    createdAt: p.createdAt,
     comments: [],
     real: true,
     authorUserId: p.userId,

@@ -9,13 +9,13 @@ import { storyRingVariant } from '../lib/stories';
 import { useStoriesRevision } from '../lib/useStoriesRevision';
 import StoryCircle from './StoryCircle';
 
-export default function StoryRail() {
+export default function StoryRail({ seedItems }: { seedItems?: ApiStoryRailItem[] }) {
   const navigation = useNavigation<any>();
   const { user } = useStore();
   const { activeProfileId } = useProfiles();
   const storiesRevision = useStoriesRevision();
-  const [items, setItems] = useState<ApiStoryRailItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<ApiStoryRailItem[]>(seedItems || []);
+  const [loading, setLoading] = useState(!(seedItems && seedItems.length));
 
   const load = useCallback(async () => {
     if (!user) {
@@ -33,9 +33,13 @@ export default function StoryRail() {
   }, [user, activeProfileId]);
 
   useEffect(() => {
-    setLoading(true);
+    if (seedItems && seedItems.length) setItems(seedItems);
+  }, [seedItems]);
+
+  useEffect(() => {
+    if (!(seedItems && seedItems.length)) setLoading(true);
     load();
-  }, [load, storiesRevision]);
+  }, [load, storiesRevision, seedItems]);
 
   useFocusEffect(
     useCallback(() => {
