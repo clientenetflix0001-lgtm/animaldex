@@ -1,4 +1,4 @@
-import { haversineKm, validLatLng } from './feedGeo';
+import { haversineKm, validLatLng } from './feedGeo.ts';
 
 /** Last useful location only. Never a history of positions. */
 export const LAST_LOCATION_POLICY = {

@@ -1,4 +1,4 @@
-import { authorLooksNearby } from './feedGeo';
+import { authorLooksNearby } from './feedGeo.ts';
 
 export const TRENDING_POLICY = {
   likeWeight: 1,

@@ -10,8 +10,8 @@ import {
   pageRecommendationTypeLabel,
   type FeedItem,
   type HomePageRecommendation,
-} from './feedComposition';
-import { pickNearbyPostIds, pickTrendingPostIds } from './feedRanking';
+} from './feedComposition.ts';
+import { pickNearbyPostIds, pickTrendingPostIds } from './feedRanking.ts';
 import { readCachedLastLocation } from './lastLocationSync';
 
 export const HOME_FEED_CACHE_KEY = 'animaldex-home-feed-cache-v1';

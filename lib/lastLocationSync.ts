@@ -10,7 +10,7 @@ import {
   parseLastLocation,
   shouldWriteLastLocation,
   type LastLocationSnapshot,
-} from './lastLocation';
+} from './lastLocation.ts';
 
 let inflight: Promise<LastLocationSnapshot | null> | null = null;
 let appStateBound = false;

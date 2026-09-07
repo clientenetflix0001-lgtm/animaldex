@@ -7,7 +7,7 @@
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProvinceForLocality } from './localities';
-import { haversineKm as haversineKmCore } from './feedGeo';
+import { haversineKm as haversineKmCore } from './feedGeo.ts';
 
 export interface ResolvedLocality {
   locality: string;

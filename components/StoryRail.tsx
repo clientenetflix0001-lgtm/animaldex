@@ -39,7 +39,7 @@ export default function StoryRail({ seedItems }: { seedItems?: ApiStoryRailItem[
   useEffect(() => {
     if (!(seedItems && seedItems.length)) setLoading(true);
     load();
-  }, [load, storiesRevision, seedItems]);
+  }, [load, storiesRevision]);
 
   useFocusEffect(
     useCallback(() => {

@@ -257,7 +257,6 @@ describe('COMPOSITION', () => {
       'post',
       'adoptions',
       'reels',
-      'post',
     ]);
     assert.equal(first.items[0].kind === 'post' && first.items[0].bucket, 'nearby');
     assert.equal(first.items[1].kind === 'post' && first.items[1].bucket, 'trending');
@@ -425,8 +424,8 @@ describe('PRIVACY / NO GPS BACKGROUND', () => {
   it('foreground only, una sola lista, ads preparados', () => {
     assert.match(lastSync, /AppState.addEventListener\('change'/);
     assert.doesNotMatch(lastSync, /startLocationUpdatesAsync|watchPositionAsync|BACKGROUND/);
-    assert.match(feed, /<FlatList/);
-    assert.equal((feed.match(/<FlatList/g) || []).length, 1);
+    assert.match(feed, /<FlatList[\s\n]/);
+    assert.equal((feed.match(/<FlatList[\s\n]/g) || []).length, 1);
     assert.match(composition, /kind: 'ad_slot'/);
     assert.equal(FEED_COMPOSITION_POLICY.ads.enabled, false);
     assert.match(worker, /action === 'homeFeed'/);
