@@ -271,6 +271,21 @@ export function planStoryCleanup(
   return actions;
 }
 
+export function prioritizeUserBreedStoryItems<T extends { kind?: string; breedKey?: string | null; breedSpecies?: string | null }>(
+  items: T[],
+  userChannels: Array<{ species?: string; breedKey?: string }>
+): T[] {
+  const preferred = new Set(
+    userChannels.map((ch) => `${String(ch.species || '').toLowerCase()}:${String(ch.breedKey || '').toLowerCase()}`)
+  );
+  const self = items.filter((item) => item.kind === 'self');
+  const breeds = items.filter((item) => item.kind === 'breed');
+  const rest = items.filter((item) => item.kind !== 'self' && item.kind !== 'breed');
+  const mine = breeds.filter((item) => preferred.has(`${String(item.breedSpecies || '').toLowerCase()}:${String(item.breedKey || '').toLowerCase()}`));
+  const others = breeds.filter((item) => !preferred.has(`${String(item.breedSpecies || '').toLowerCase()}:${String(item.breedKey || '').toLowerCase()}`));
+  return [...self, ...mine, ...rest.filter((item) => item.kind !== 'more'), ...others, ...rest.filter((item) => item.kind === 'more')];
+}
+
 export function uniqueBreedChannelsFromPets(
   pets: Array<{ species?: string | null; breed?: string | null }> | null | undefined
 ): StoryBreedChannel[] {
