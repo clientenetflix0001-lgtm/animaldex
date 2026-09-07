@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { db, type ApiStoryRailItem } from '../lib/db';
 import { useStore } from '../lib/store';
@@ -7,6 +7,7 @@ import { useProfiles } from '../features/profiles';
 import { spacing } from '../lib/theme';
 import { storyRingVariant } from '../lib/stories';
 import { useStoriesRevision } from '../lib/useStoriesRevision';
+import { HomeHorizontalList } from './HomeHorizontalList';
 import StoryCircle from './StoryCircle';
 
 export default function StoryRail({ seedItems }: { seedItems?: ApiStoryRailItem[] }) {
@@ -87,9 +88,7 @@ export default function StoryRail({ seedItems }: { seedItems?: ApiStoryRailItem[
   return (
     <View style={styles.wrap}>
       {loading && items.length === 0 ? <ActivityIndicator color="#FF6B4A" style={{ marginVertical: 12 }} /> : null}
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
+      <HomeHorizontalList
         data={items}
         keyExtractor={(item) => `${item.kind}:${item.id}`}
         contentContainerStyle={styles.list}
