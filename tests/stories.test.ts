@@ -344,7 +344,7 @@ describe('cleanup', () => {
 describe('regresión', () => {
   it('50–60. Feed, Reels, Mux, PetStatus, Alertas, QR, .pet, perfiles, Adoption, Mercado, nav', () => {
     assert.match(feed, /PostCard/);
-    assert.match(feed, /db\.feed/);
+    assert.match(feed, /fetchHomeFeedBuckets|homeFeed|db\.feed/);
     assert.match(app, /name="Reels"/);
     assert.match(app, /name="CreateReel"/);
     assert.match(reelsMux, /handleMuxWebhook/);
@@ -500,7 +500,7 @@ describe('refresh StoryRail después de publicar', () => {
     assert.doesNotMatch(store, /notifyStoriesChanged|storiesRevision|useStoriesRevision/);
     assert.doesNotMatch(feed, /notifyStoriesChanged|useStoriesRevision|storiesRevision/);
     assert.match(feed, /<StoryRail/);
-    assert.match(feed, /db\.feed/);
+    assert.match(feed, /fetchHomeFeedBuckets|homeFeed|db\.feed/);
   });
 
   it('6. logout\/login no es necesario', () => {
