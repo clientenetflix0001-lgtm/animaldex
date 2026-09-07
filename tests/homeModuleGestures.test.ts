@@ -150,6 +150,11 @@ describe('HOME MODULE HORIZONTAL GESTURES', () => {
     assert.match(feed, /<StoryRail/);
     assert.match(feed, /FeedPagesRow|FeedAdoptionsRow|FeedReelsRow/);
     for (const module of HOME_HORIZONTAL_MODULES) {
+      if (module === 'alerts') {
+        assert.match(MODULE_FILES[module], /AlertCard/);
+        assert.match(MODULE_FILES[module], /HomeModuleTitle/);
+        continue;
+      }
       assert.match(MODULE_FILES[module], /HomeHorizontalList/);
     }
   });

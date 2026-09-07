@@ -36,6 +36,8 @@ import {
 } from '../lib/homeFeed';
 import { extractFeedPosts, feedItemKey, type FeedItem } from '../lib/feedComposition';
 import { bindLastLocationForegroundSync } from '../lib/lastLocationSync';
+import { HOME_MODULE_TITLES, storiesForYouItems } from '../lib/homeFeedModules';
+import type { ApiStoryRailItem } from '../lib/db';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Inicio'>,
@@ -64,6 +66,7 @@ export default function FeedScreen() {
     Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   );
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const [storyRailItems, setStoryRailItems] = useState<ApiStoryRailItem[]>([]);
   const [demoPosts, setDemoPosts] = useState<Post[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -87,6 +90,7 @@ export default function FeedScreen() {
         firstPage: reset,
         locality: user?.location || null,
       });
+      if (reset) setStoryRailItems(buckets.storyRail || []);
       const pageIndex = reset ? 0 : 1;
       if (reset) usedPostIdsRef.current = new Set();
       const page = composeHomeFeedPage(buckets, pageIndex, usedPostIdsRef.current);
@@ -121,6 +125,10 @@ export default function FeedScreen() {
     readCachedHomeFeed().then((cached) => {
       if (!cancelled && cached?.length && feedItemsRef.current.length === 0) {
         setFeedItems(cached);
+        const cachedStories = cached.find((item) => item.kind === 'story_channels');
+        if (cachedStories && cachedStories.kind === 'story_channels') {
+          setStoryRailItems(cachedStories.items);
+        }
       }
     });
     return () => {
@@ -299,7 +307,16 @@ export default function FeedScreen() {
   const renderItem = useCallback(
     ({ item }: { item: FeedItem }) => {
       feedMediaPerfNoteRenderItem();
-      if (item.kind === 'story_channels') return <StoryRail seedItems={item.items} />;
+      if (item.kind === 'story_channels') {
+        const forYou = storiesForYouItems(storyRailItems.length ? storyRailItems : item.items);
+        return (
+          <StoryRail
+            seedItems={forYou}
+            title={HOME_MODULE_TITLES.storiesForYou}
+            disableNetworkRefresh
+          />
+        );
+      }
       if (item.kind === 'alerts') return <FeedAlertsRow alerts={item.alerts} />;
       if (item.kind === 'page_recommendations') return <FeedPagesRow pages={item.pages} />;
       if (item.kind === 'adoptions') return <FeedAdoptionsRow pets={item.pets} />;
@@ -319,7 +336,7 @@ export default function FeedScreen() {
         />
       );
     },
-    [likedSet, savedSet, myComments, toggleLike, toggleSave, openPet, openPost]
+    [likedSet, savedSet, myComments, toggleLike, toggleSave, openPet, openPost, storyRailItems]
   );
 
   const newPill = pendingNew > 0 && (
@@ -331,6 +348,10 @@ export default function FeedScreen() {
     </Pressable>
   );
 
+  const listHeader = useMemo(
+    () => <StoryRail seedItems={storyRailItems} onItemsChange={setStoryRailItems} />,
+    [storyRailItems]
+  );
   const listFooter = useMemo(() => <LoadingFooter />, []);
   const refreshCtrl = useMemo(
     () => (
@@ -355,6 +376,7 @@ export default function FeedScreen() {
       extraData={extraData}
       keyExtractor={keyExtractor}
       renderItem={renderItem}
+      ListHeaderComponent={listHeader}
       ListFooterComponent={listFooter}
       onEndReached={loadMore}
       onEndReachedThreshold={0.6}

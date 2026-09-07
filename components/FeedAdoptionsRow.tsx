@@ -4,7 +4,9 @@ import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import type { AdoptionCard } from '../lib/adoptionDiscovery';
 import { thumb, petFallbackAvatar } from '../lib/images';
+import { HOME_MODULE_TITLES } from '../lib/homeFeedModules';
 import { HomeHorizontalList, HomeModulePressable } from './HomeHorizontalList';
+import { HomeModuleTitle } from './HomeModuleTitle';
 import { colors, radius, spacing } from '../lib/theme';
 
 function AdoptionChip({ card, onPress }: { card: AdoptionCard; onPress: () => void }) {
@@ -39,7 +41,8 @@ function FeedAdoptionsRowInner({ pets }: { pets: AdoptionCard[] }) {
   );
   return (
     <View style={styles.wrap}>
-      <HomeHorizontalList
+      <HomeModuleTitle>{HOME_MODULE_TITLES.adoptions}</HomeModuleTitle>
+      <HomeHorizontalList>
         data={pets}
         keyExtractor={(item) => item.petId || item.id}
         renderItem={renderItem}

@@ -7,7 +7,9 @@ import { thumb, userFallbackAvatar } from '../lib/images';
 import type { HomePageRecommendation } from '../lib/feedComposition';
 import { useHomeModuleGestureLock } from '../lib/homeModuleGesturesContext';
 import { FollowButton } from './FollowButton';
+import { HOME_MODULE_TITLES } from '../lib/homeFeedModules';
 import { HomeHorizontalList, HomeModulePressable } from './HomeHorizontalList';
+import { HomeModuleTitle } from './HomeModuleTitle';
 import { colors, radius, spacing } from '../lib/theme';
 
 function PageChip({
@@ -72,7 +74,7 @@ function FeedPagesRowInner({ pages }: { pages: HomePageRecommendation[] }) {
   if (visible.length === 0) return null;
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>Páginas que podrían interesarte</Text>
+      <HomeModuleTitle>{HOME_MODULE_TITLES.pages}</HomeModuleTitle>
       <HomeHorizontalList
         data={visible}
         keyExtractor={(item) => `page:${item.id}`}
@@ -87,13 +89,6 @@ export const FeedPagesRow = memo(FeedPagesRowInner);
 
 const styles = StyleSheet.create({
   wrap: { paddingVertical: spacing.sm },
-  title: {
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.text,
-  },
   list: { paddingHorizontal: spacing.lg, gap: spacing.md },
   card: {
     width: 148,

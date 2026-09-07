@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { db, type ApiStoryRailItem } from '../lib/db';
@@ -8,9 +8,20 @@ import { spacing } from '../lib/theme';
 import { storyRingVariant } from '../lib/stories';
 import { useStoriesRevision } from '../lib/useStoriesRevision';
 import { HomeHorizontalList } from './HomeHorizontalList';
+import { HomeModuleTitle } from './HomeModuleTitle';
 import StoryCircle from './StoryCircle';
 
-export default function StoryRail({ seedItems }: { seedItems?: ApiStoryRailItem[] }) {
+export default function StoryRail({
+  seedItems,
+  title,
+  disableNetworkRefresh,
+  onItemsChange,
+}: {
+  seedItems?: ApiStoryRailItem[];
+  title?: string;
+  disableNetworkRefresh?: boolean;
+  onItemsChange?: (items: ApiStoryRailItem[]) => void;
+}) {
   const navigation = useNavigation<any>();
   const { user } = useStore();
   const { activeProfileId } = useProfiles();
@@ -25,27 +36,47 @@ export default function StoryRail({ seedItems }: { seedItems?: ApiStoryRailItem[
     }
     try {
       const res = await db.storyRail({ authorProfileId: activeProfileId });
-      setItems(res.items || []);
+      const next = res.items || [];
+      setItems(next);
+      onItemsChange?.(next);
     } catch {
       setItems([]);
+      onItemsChange?.([]);
     } finally {
       setLoading(false);
     }
-  }, [user, activeProfileId]);
+  }, [user, activeProfileId, onItemsChange]);
 
   useEffect(() => {
     if (seedItems && seedItems.length) setItems(seedItems);
   }, [seedItems]);
 
+  const skipFirstRevisionLoad = useRef(true);
+  const skipFirstFocusLoad = useRef(true);
+
   useEffect(() => {
+    if (disableNetworkRefresh) {
+      setLoading(false);
+      return;
+    }
+    if (skipFirstRevisionLoad.current) {
+      skipFirstRevisionLoad.current = false;
+      setLoading(false);
+      return;
+    }
     if (!(seedItems && seedItems.length)) setLoading(true);
     load();
   }, [load, storiesRevision]);
 
   useFocusEffect(
     useCallback(() => {
+      if (disableNetworkRefresh) return;
+      if (skipFirstFocusLoad.current) {
+        skipFirstFocusLoad.current = false;
+        return;
+      }
       load();
-    }, [load])
+    }, [disableNetworkRefresh, load])
   );
 
   const openCreate = useCallback(() => {
@@ -87,6 +118,7 @@ export default function StoryRail({ seedItems }: { seedItems?: ApiStoryRailItem[
 
   return (
     <View style={styles.wrap}>
+      {title ? <HomeModuleTitle>{title}</HomeModuleTitle> : null}
       {loading && items.length === 0 ? <ActivityIndicator color="#FF6B4A" style={{ marginVertical: 12 }} /> : null}
       <HomeHorizontalList
         data={items}

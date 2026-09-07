@@ -1,6 +1,7 @@
 import type { ApiAlert, ApiReel, ApiStoryRailItem } from './db';
 import type { AdoptionCard } from './adoptionDiscovery';
 import type { Post } from './data';
+import { storiesForYouItems, visibleHomePageRecommendations } from './homeFeedModules.ts';
 
 export const FEED_COMPOSITION_POLICY = {
   /** Metric radius for alerts (and future posts that store lat/lng). Not used to rank posts today. */
@@ -10,6 +11,7 @@ export const FEED_COMPOSITION_POLICY = {
   maxAlerts: 3,
   maxAdoptions: 2,
   maxReels: 2,
+  minPageRecommendations: 3,
   maxPageRecommendations: 8,
   modulesOnFirstPageOnly: true,
   ads: {
@@ -135,7 +137,7 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
   };
 
   const alerts = dedupeById((input.alerts || []).filter((a) => a.status !== 'resolved' && !a.resolvedAt)).slice(0, policy.maxAlerts);
-  const pages = dedupeById(input.pages || []).slice(0, policy.maxPageRecommendations);
+  const pages = visibleHomePageRecommendations(dedupeById(input.pages || []), policy.maxPageRecommendations);
   const adoptions = (() => {
     const seen = new Set<string>();
     const out: AdoptionCard[] = [];
@@ -179,7 +181,7 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
       continue;
     }
     if (input.pageIndex > 0 && policy.modulesOnFirstPageOnly) continue;
-    if (slot === 'story_channels' && stories.length > 0) {
+    if (slot === 'story_channels' && storiesForYouItems(stories).length > 0) {
       items.push({ kind: 'story_channels', key: feedItemKey('story_channels', `p${input.pageIndex}`), items: stories });
     } else if (slot === 'alerts' && alerts.length > 0) {
       items.push({ kind: 'alerts', key: feedItemKey('alerts', `p${input.pageIndex}`), alerts });
