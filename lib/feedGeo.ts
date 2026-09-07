@@ -1,9 +1,18 @@
 // Geo helpers for Home ranking. No maps, no UI, no expo-location.
-// Posts today have no coordinates; 10 km Haversine applies to alerts
-// (and any future row that actually stores lat/lng).
+//
+// Two distinct contracts — do not mix them:
+//   postLocalityRelevant  → same locality / zone text (posts have no lat/lng today)
+//   alertWithinRadiusKm   → real 10 km via bounding box + Haversine (alerts have coords)
+//
+// Future posts with lat/lng can call postWithinRadiusKm without rewriting the compositor.
 
-export const NEARBY_RADIUS_KM = 10;
+/** Real metric radius. Alerts (and any future row that actually stores lat/lng). */
+export const ALERT_RADIUS_KM = 10;
+/** @deprecated Use ALERT_RADIUS_KM. This is a metric radius, not a post locality flag. */
+export const NEARBY_RADIUS_KM = ALERT_RADIUS_KM;
 export const EARTH_RADIUS_KM = 6371;
+
+export type Locatable = { lat?: number | null; lng?: number | null; lon?: number | null };
 
 export type GeoPoint = { lat: number; lng: number };
 
@@ -33,7 +42,7 @@ export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: numb
 }
 
 /** Prefilter before Haversine. ~1° lat ≈ 111 km. */
-export function boundingBox(lat: number, lng: number, radiusKm = NEARBY_RADIUS_KM): BoundingBox {
+export function boundingBox(lat: number, lng: number, radiusKm = ALERT_RADIUS_KM): BoundingBox {
   const latDelta = radiusKm / 111;
   const cosLat = Math.cos((lat * Math.PI) / 180);
   const lngDenom = Math.max(0.01, 111 * Math.abs(cosLat));
@@ -52,14 +61,41 @@ export function pointInBoundingBox(lat: number, lng: number, box: BoundingBox): 
 
 export function isWithinRadiusKm(
   from: GeoPoint,
-  to: { lat?: number | null; lng?: number | null; lon?: number | null },
-  radiusKm = NEARBY_RADIUS_KM
+  to: Locatable,
+  radiusKm = ALERT_RADIUS_KM
 ): boolean {
   const toLng = to.lng ?? to.lon;
   if (!validLatLng(from.lat, from.lng) || !validLatLng(to.lat, toLng)) return false;
   const box = boundingBox(from.lat, from.lng, radiusKm);
   if (!pointInBoundingBox(to.lat, toLng, box)) return false;
   return haversineKm(from.lat, from.lng, to.lat, toLng) <= radiusKm + 1e-6;
+}
+
+export function hasMetricCoords(row: Locatable | null | undefined): boolean {
+  if (!row) return false;
+  return validLatLng(row.lat, row.lng ?? row.lon);
+}
+
+/** Alerts with real coordinates. Never used to rank posts without lat/lng. */
+export function alertWithinRadiusKm(
+  alert: Locatable,
+  viewer: GeoPoint,
+  radiusKm = ALERT_RADIUS_KM
+): boolean {
+  return isWithinRadiusKm(viewer, alert, radiusKm);
+}
+
+/**
+ * Future posts that store lat/lng. Returns false when the post has no coords
+ * so we never claim a 10 km distance for locality-only posts.
+ */
+export function postWithinRadiusKm(
+  post: Locatable,
+  viewer: GeoPoint,
+  radiusKm = ALERT_RADIUS_KM
+): boolean {
+  if (!hasMetricCoords(post)) return false;
+  return isWithinRadiusKm(viewer, post, radiusKm);
 }
 
 export function normalizeLocality(value: string | null | undefined): string {
@@ -73,8 +109,11 @@ export function localitiesMatch(a: string | null | undefined, b: string | null |
   return left === right;
 }
 
-/** Author text location may be a free-form address; exact locality still wins. */
-export function authorLooksNearby(
+/**
+ * Post local relevance: same locality / zone text.
+ * Not a metric distance. Posts today have no lat/lng.
+ */
+export function postLocalityRelevant(
   authorLocality: string | null | undefined,
   authorLocationText: string | null | undefined,
   viewerLocality: string | null | undefined

@@ -3,7 +3,8 @@ import type { AdoptionCard } from './adoptionDiscovery';
 import type { Post } from './data';
 
 export const FEED_COMPOSITION_POLICY = {
-  nearbyRadiusKm: 10,
+  /** Metric radius for alerts (and future posts that store lat/lng). Not used to rank posts today. */
+  alertRadiusKm: 10,
   firstPagePostLimit: 10,
   laterPagePostLimit: 10,
   maxAlerts: 3,
@@ -16,7 +17,7 @@ export const FEED_COMPOSITION_POLICY = {
     afterOrganicItems: 8,
   },
   firstPageSequence: [
-    'nearby_post',
+    'locality_relevant_post',
     'trending_post',
     'story_channels',
     'post',
@@ -44,7 +45,7 @@ export type HomePageRecommendation = {
   locality?: string | null;
 };
 
-export type FeedPostBucket = 'nearby' | 'trending' | 'default';
+export type FeedPostBucket = 'locality' | 'trending' | 'default';
 
 export type FeedItem =
   | { kind: 'post'; key: string; post: Post; bucket: FeedPostBucket }
@@ -78,6 +79,8 @@ export function dedupeById<T extends { id: string }>(rows: T[]): T[] {
 export type ComposeFeedInput = {
   pageIndex: number;
   posts: Post[];
+  /** Locality-relevant post ids. Wire alias `nearbyPostIds` means the same — not 10 km. */
+  localityRelevantPostIds?: string[];
   nearbyPostIds?: string[];
   trendingPostIds?: string[];
   storyItems?: ApiStoryRailItem[];
@@ -104,23 +107,24 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
   const used = new Set(input.usedPostIds || []);
   const posts = (input.posts || []).filter((post) => post?.id && !used.has(post.id));
   const byId = new Map(posts.map((post) => [post.id, post]));
-  const nearbyQueue = (input.nearbyPostIds || []).filter((id) => byId.has(id));
-  const trendingQueue = (input.trendingPostIds || []).filter((id) => byId.has(id) && !nearbyQueue.includes(id));
-  const regularQueue = posts.map((post) => post.id).filter((id) => !nearbyQueue.includes(id) && !trendingQueue.includes(id));
+  const localityIds = input.localityRelevantPostIds || input.nearbyPostIds || [];
+  const localityQueue = localityIds.filter((id) => byId.has(id));
+  const trendingQueue = (input.trendingPostIds || []).filter((id) => byId.has(id) && !localityQueue.includes(id));
+  const regularQueue = posts.map((post) => post.id).filter((id) => !localityQueue.includes(id) && !trendingQueue.includes(id));
   const consumed: Post[] = [];
   const items: FeedItem[] = [];
 
   const bucketFor = (id: string, prefer: FeedPostBucket | 'any'): FeedPostBucket => {
-    if (prefer === 'nearby' || (input.nearbyPostIds || []).includes(id)) return 'nearby';
+    if (prefer === 'locality' || localityIds.includes(id)) return 'locality';
     if (prefer === 'trending' || (input.trendingPostIds || []).includes(id)) return 'trending';
     return 'default';
   };
 
   const takePost = (prefer: FeedPostBucket | 'any'): Post | null => {
     let id: string | null = null;
-    if (prefer === 'nearby') id = takeNext(nearbyQueue);
+    if (prefer === 'locality') id = takeNext(localityQueue);
     else if (prefer === 'trending') id = takeNext(trendingQueue);
-    else id = takeNext(regularQueue) || takeNext(nearbyQueue) || takeNext(trendingQueue);
+    else id = takeNext(regularQueue) || takeNext(localityQueue) || takeNext(trendingQueue);
     if (!id) return null;
     const post = byId.get(id);
     if (!post) return null;
@@ -151,9 +155,9 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
     input.pageIndex === 0 ? [...policy.firstPageSequence] : ['remaining_posts'];
 
   for (const slot of sequence) {
-    if (slot === 'nearby_post') {
-      const post = takePost('nearby');
-      if (post) items.push({ kind: 'post', key: feedItemKey('post', post.id), post, bucket: 'nearby' });
+    if (slot === 'locality_relevant_post') {
+      const post = takePost('locality');
+      if (post) items.push({ kind: 'post', key: feedItemKey('post', post.id), post, bucket: 'locality' });
       continue;
     }
     if (slot === 'trending_post') {

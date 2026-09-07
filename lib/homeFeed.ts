@@ -11,13 +11,14 @@ import {
   type FeedItem,
   type HomePageRecommendation,
 } from './feedComposition.ts';
-import { pickNearbyPostIds, pickTrendingPostIds } from './feedRanking.ts';
+import { pickLocalityRelevantPostIds, pickTrendingPostIds } from './feedRanking.ts';
 import { readCachedLastLocation } from './lastLocationSync';
 
 export const HOME_FEED_CACHE_KEY = 'animaldex-home-feed-cache-v1';
 
 export type HomeFeedBuckets = {
   posts: ApiPost[];
+  /** Wire name kept for homeFeed shape. Values are locality-relevant post ids, not 10 km. */
   nearbyPostIds: string[];
   trendingPostIds: string[];
   storyRail: ApiStoryRailItem[];
@@ -73,7 +74,11 @@ function mapPages(raw: unknown): HomePageRecommendation[] {
 export function bucketsFromHomeFeedResponse(json: any): HomeFeedBuckets {
   return {
     posts: Array.isArray(json?.posts) ? json.posts : [],
-    nearbyPostIds: Array.isArray(json?.nearbyPostIds) ? json.nearbyPostIds : [],
+    nearbyPostIds: Array.isArray(json?.localityRelevantPostIds)
+      ? json.localityRelevantPostIds
+      : Array.isArray(json?.nearbyPostIds)
+        ? json.nearbyPostIds
+        : [],
     trendingPostIds: Array.isArray(json?.trendingPostIds) ? json.trendingPostIds : [],
     storyRail: Array.isArray(json?.storyRail) ? json.storyRail : [],
     alerts: Array.isArray(json?.alerts) ? json.alerts : [],
@@ -134,7 +139,7 @@ async function fallbackBuckets(input: {
   const now = Date.now();
   return {
     posts,
-    nearbyPostIds: pickNearbyPostIds(posts, locality),
+    nearbyPostIds: pickLocalityRelevantPostIds(posts, locality),
     trendingPostIds: pickTrendingPostIds(posts, now),
     storyRail,
     alerts,
@@ -181,7 +186,7 @@ export function composeHomeFeedPage(
   const composed = composeFeedPage({
     pageIndex,
     posts,
-    nearbyPostIds: buckets.nearbyPostIds,
+    localityRelevantPostIds: buckets.nearbyPostIds,
     trendingPostIds: buckets.trendingPostIds,
     storyItems: buckets.storyRail,
     alerts: buckets.alerts,

@@ -396,6 +396,7 @@ export const db = {
     includeModules?: boolean;
   }): Promise<{
     posts: ApiPost[];
+    /** Locality-relevant post ids. Not a 10 km metric. */
     nearbyPostIds: string[];
     trendingPostIds: string[];
     storyRail: ApiStoryRailItem[];

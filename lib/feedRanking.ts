@@ -1,4 +1,4 @@
-import { authorLooksNearby } from './feedGeo.ts';
+import { postLocalityRelevant } from './feedGeo.ts';
 
 export const TRENDING_POLICY = {
   likeWeight: 1,
@@ -42,8 +42,9 @@ export function trendingScore(post: RankablePost, now: number): number {
   return engagement / decay;
 }
 
-export function nearbyScore(post: RankablePost, viewerLocality: string | null | undefined): number {
-  return authorLooksNearby(post.authorLocality, post.authorLocationText, viewerLocality) ? 1 : 0;
+/** Locality match only. Does not imply a metric radius. */
+export function localityRelevanceScore(post: RankablePost, viewerLocality: string | null | undefined): number {
+  return postLocalityRelevant(post.authorLocality, post.authorLocationText, viewerLocality) ? 1 : 0;
 }
 
 export function relationshipScore(
@@ -66,7 +67,11 @@ export function pickTrendingPostIds(posts: RankablePost[], now: number, limit = 
     .map((row) => row.id);
 }
 
-export function pickNearbyPostIds(posts: RankablePost[], viewerLocality: string | null | undefined, limit = 6): string[] {
+export function pickLocalityRelevantPostIds(
+  posts: RankablePost[],
+  viewerLocality: string | null | undefined,
+  limit = 6
+): string[] {
   if (!viewerLocality) return [];
-  return posts.filter((post) => nearbyScore(post, viewerLocality) > 0).slice(0, limit).map((post) => post.id);
+  return posts.filter((post) => localityRelevanceScore(post, viewerLocality) > 0).slice(0, limit).map((post) => post.id);
 }

@@ -5,11 +5,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  ALERT_RADIUS_KM,
+  alertWithinRadiusKm,
   boundingBox,
   haversineKm,
   isWithinRadiusKm,
   NEARBY_RADIUS_KM,
   pointInBoundingBox,
+  postLocalityRelevant,
+  postWithinRadiusKm,
 } from '../lib/feedGeo.ts';
 import {
   LAST_LOCATION_POLICY,
@@ -18,7 +22,7 @@ import {
   publicPayloadHasUserCoords,
   shouldWriteLastLocation,
 } from '../lib/lastLocation.ts';
-import { pickTrendingPostIds, trendingScore } from '../lib/feedRanking.ts';
+import { pickLocalityRelevantPostIds, pickTrendingPostIds, trendingScore } from '../lib/feedRanking.ts';
 import {
   FEED_COMPOSITION_POLICY,
   appendFeedItems,
@@ -177,13 +181,50 @@ describe('LOCATION', () => {
   });
 });
 
-describe('NEARBY', () => {
-  it('7–10. radio 10 km, Haversine y bounding box', () => {
+describe('POST LOCALITY vs ALERT 10KM', () => {
+  const origin = { lat: -34.6037, lng: -58.3816 };
+  const inside = { lat: -34.6037 + 5 / 111, lng: -58.3816 };
+  const outside = { lat: -34.6037 + 20 / 111, lng: -58.3816 };
+
+  it('1. post misma localidad → relevante localmente', () => {
+    assert.equal(postLocalityRelevant('Córdoba', null, 'Córdoba'), true);
+    assert.equal(postLocalityRelevant(null, 'Córdoba', 'córdoba'), true);
+    assert.deepEqual(
+      pickLocalityRelevantPostIds(
+        [{ id: 'local', createdAt: 1, authorLocality: 'Córdoba' }, { id: 'other', createdAt: 1, authorLocality: 'Rosario' }],
+        'Córdoba'
+      ),
+      ['local']
+    );
+  });
+
+  it('2. post otra localidad → no se considera local por distancia', () => {
+    assert.equal(postLocalityRelevant('Rosario', null, 'Córdoba'), false);
+    assert.equal(postWithinRadiusKm({ lat: null, lng: null }, origin), false);
+  });
+
+  it('3. post no afirma 10km sin coords', () => {
+    assert.equal(postWithinRadiusKm({}, origin), false);
+    assert.equal(postLocalityRelevant('Córdoba', null, 'Córdoba'), true);
+    assert.doesNotMatch(read('lib/feedRanking.ts'), /within 10|ALERT_RADIUS|haversineKm/);
+    assert.doesNotMatch(read('screens/FeedScreen.tsx'), /A 10 km|Cerca a 10 km|menos de 10 km/);
+    assert.doesNotMatch(read('lib/feedComposition.ts'), /nearbyRadiusKm/);
+    assert.match(read('lib/feedGeo.ts'), /postLocalityRelevant/);
+    assert.match(read('lib/feedGeo.ts'), /alertWithinRadiusKm/);
+  });
+
+  it('4–5. alerta dentro de 10 km sí; fuera no', () => {
+    assert.equal(ALERT_RADIUS_KM, 10);
     assert.equal(NEARBY_RADIUS_KM, 10);
-    assert.equal(FEED_COMPOSITION_POLICY.nearbyRadiusKm, 10);
-    const origin = { lat: -34.6037, lng: -58.3816 };
-    const inside = { lat: -34.6037 + 5 / 111, lng: -58.3816 };
-    const outside = { lat: -34.6037 + 20 / 111, lng: -58.3816 };
+    assert.equal(FEED_COMPOSITION_POLICY.alertRadiusKm, 10);
+    assert.equal(alertWithinRadiusKm(inside, origin), true);
+    assert.equal(alertWithinRadiusKm(outside, origin), false);
+  });
+
+  it('6. Haversine solo se aplica donde hay coords', () => {
+    assert.equal(alertWithinRadiusKm({ lat: null, lon: null }, origin), false);
+    assert.equal(postWithinRadiusKm({ lat: inside.lat, lng: inside.lng }, origin), true);
+    assert.equal(postWithinRadiusKm({ lat: null, lng: null }, origin), false);
     assert.ok(haversineKm(origin.lat, origin.lng, inside.lat, inside.lng) < 10);
     assert.ok(haversineKm(origin.lat, origin.lng, outside.lat, outside.lng) > 10);
     assert.equal(isWithinRadiusKm(origin, inside, 10), true);
@@ -191,8 +232,46 @@ describe('NEARBY', () => {
     const box = boundingBox(origin.lat, origin.lng, 10);
     assert.equal(pointInBoundingBox(inside.lat, inside.lng, box), true);
     assert.equal(pointInBoundingBox(outside.lat, outside.lng, box), false);
-    const known = haversineKm(0, 0, 0, 1);
-    assert.ok(known > 110 && known < 112);
+  });
+});
+
+describe('CONTRACT INTACT', () => {
+  it('7. composición del feed intacta', () => {
+    assert.deepEqual([...FEED_COMPOSITION_POLICY.firstPageSequence], [
+      'locality_relevant_post',
+      'trending_post',
+      'story_channels',
+      'post',
+      'post',
+      'alerts',
+      'post',
+      'post',
+      'page_recommendations',
+      'post',
+      'adoptions',
+      'reels',
+      'remaining_posts',
+    ]);
+    assert.match(worker, /nearbyPostIds,/);
+    assert.match(homeFeed, /nearbyPostIds/);
+  });
+
+  it('8–11. dedupe, Stories, Reels y performance intactos', () => {
+    const out = composeFeedPage({
+      pageIndex: 0,
+      posts: [post('same', 2), post('other', 1)],
+      localityRelevantPostIds: ['same'],
+      trendingPostIds: ['same'],
+    });
+    assert.deepEqual(
+      out.items.filter((i) => i.kind === 'post').map((i) => (i.kind === 'post' ? i.post.id : '')),
+      ['same', 'other']
+    );
+    assert.match(feed, /<StoryRail/);
+    assert.match(feed, /FeedReelsRow/);
+    assert.match(feed, /keyExtractor = useCallback\(\(item: FeedItem\) => item\.key/);
+    assert.match(feed, /const renderItem = useCallback/);
+    assert.equal((feed.match(/<FlatList[\s\n]/g) || []).length, 1);
   });
 });
 
@@ -236,7 +315,7 @@ describe('COMPOSITION', () => {
     const first = composeFeedPage({
       pageIndex: 0,
       posts,
-      nearbyPostIds: ['near'],
+      localityRelevantPostIds: ['near'],
       trendingPostIds: ['trend'],
       storyItems: stories,
       alerts,
@@ -258,7 +337,7 @@ describe('COMPOSITION', () => {
       'adoptions',
       'reels',
     ]);
-    assert.equal(first.items[0].kind === 'post' && first.items[0].bucket, 'nearby');
+    assert.equal(first.items[0].kind === 'post' && first.items[0].bucket, 'locality');
     assert.equal(first.items[1].kind === 'post' && first.items[1].bucket, 'trending');
     assert.equal(hasVisibleAdSlot(first.items), false);
     assert.equal(FEED_COMPOSITION_POLICY.ads.enabled, false);
@@ -266,7 +345,7 @@ describe('COMPOSITION', () => {
     const noAlerts = composeFeedPage({
       pageIndex: 0,
       posts,
-      nearbyPostIds: ['near'],
+      localityRelevantPostIds: ['near'],
       trendingPostIds: ['trend'],
       storyItems: stories,
       alerts: [],
@@ -289,11 +368,11 @@ describe('COMPOSITION', () => {
 });
 
 describe('DEDUP', () => {
-  it('21. trending+nearby no duplica', () => {
+  it('21. trending+locality no duplica', () => {
     const out = composeFeedPage({
       pageIndex: 0,
       posts: [post('same', 2), post('other', 1)],
-      nearbyPostIds: ['same'],
+      localityRelevantPostIds: ['same'],
       trendingPostIds: ['same'],
     });
     const ids = out.items.filter((i) => i.kind === 'post').map((i) => i.kind === 'post' ? i.post.id : '');

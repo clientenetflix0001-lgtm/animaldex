@@ -32,8 +32,8 @@ import {
   currentIdentity,
   runStoryCleanup,
 } from './stories.js';
-import { boundingBox, isWithinRadiusKm, localitiesMatch, validLatLng } from '../lib/feedGeo.ts';
-import { pickNearbyPostIds, pickTrendingPostIds } from '../lib/feedRanking.ts';
+import { alertWithinRadiusKm, boundingBox, localitiesMatch, validLatLng } from '../lib/feedGeo.ts';
+import { pickLocalityRelevantPostIds, pickTrendingPostIds } from '../lib/feedRanking.ts';
 import { parseLastLocation, shouldWriteLastLocation } from '../lib/lastLocation.ts';
 import { getMuxThumbnail } from '../lib/reels.ts';
 import {
@@ -1692,7 +1692,7 @@ async function loadHomeAlerts(env, viewerId, viewer, now) {
   );
   const filtered = rows.filter((r) => {
     if (validLatLng(viewer.lat, viewer.lng) && validLatLng(r.lat, r.lon)) {
-      return isWithinRadiusKm({ lat: viewer.lat, lng: viewer.lng }, { lat: r.lat, lon: r.lon }, 10)
+      return alertWithinRadiusKm({ lat: r.lat, lon: r.lon }, { lat: viewer.lat, lng: viewer.lng }, 10)
         || localitiesMatch(r.locality, viewer.locality);
     }
     return true;
@@ -2021,7 +2021,7 @@ async function handleDb(request, env) {
         authorLocality: authorHints[r.user_id]?.locality || null,
         authorLocationText: authorHints[r.user_id]?.location || null,
       }));
-      const nearbyPostIds = pickNearbyPostIds(rankable, viewer.locality);
+      const nearbyPostIds = pickLocalityRelevantPostIds(rankable, viewer.locality);
       const trendingPostIds = pickTrendingPostIds(rankable, now);
       let storyRail = [];
       let alerts = [];
@@ -2048,7 +2048,7 @@ async function handleDb(request, env) {
       return json({
         ok: true,
         posts,
-        nearbyPostIds,
+        nearbyPostIds, // locality-relevant ids, not a 10 km metric
         trendingPostIds,
         storyRail,
         alerts,

@@ -5,7 +5,7 @@ export const LAST_LOCATION_POLICY = {
   staleMs: 6 * 60 * 60 * 1000,
   significantMoveKm: 2,
   accuracy: 'balanced' as const,
-  nearbyRadiusKm: 10,
+  alertRadiusKm: 10,
 };
 
 export const LAST_LOCATION_CACHE_KEY = 'animaldex-last-useful-location';
