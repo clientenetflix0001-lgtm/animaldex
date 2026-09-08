@@ -77,6 +77,10 @@ import {
   parseProtectorAdoptionContact,
 } from '../lib/adoptionContact.ts';
 import {
+  LISTING_RENEW_OWNER_ERROR,
+  listingRenewRejectReason,
+} from '../lib/listingLifecycle.ts';
+import {
   ALERT_ALREADY_RESOLVED,
   ALERT_RENEW_MS,
   ALERT_RESOLVE_OWNER_ERROR,
@@ -319,7 +323,7 @@ const RESERVED_PUBLIC_USERNAMES = new Set([
   'marketplace', 'mercado', 'admin', 'api', 'crear', 'mascotas', 'actividad', 'perfil', 'explorar',
   'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
   'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
-  'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mercado-favoritos', 'transfer',
+  'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mis-productos', 'mercado-favoritos', 'transfer',
   'favicon.ico', 'robots.txt',
   'well-known',
 ]);
@@ -494,6 +498,7 @@ async function ensureListingsContactSchema(env) {
   if (env._listingsContactReady) return;
   try { await env.DB.prepare('ALTER TABLE listings ADD COLUMN contact_method TEXT').run(); } catch (_) {}
   try { await env.DB.prepare('ALTER TABLE listings ADD COLUMN contact_value TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE listings ADD COLUMN renewed_at INTEGER').run(); } catch (_) {}
   env._listingsContactReady = true;
 }
 
@@ -1599,6 +1604,8 @@ function listingRow(r, viewerFavorited) {
     featured: !!r.featured,
     viewsCount: r.views_count || 0,
     createdAt: r.created_at,
+    renewedAt: r.renewed_at ?? null,
+    bumpedAt: r.renewed_at || r.created_at,
     favoriteCount: r.favorite_count || 0,
     commentCount: r.comment_count || 0,
     isFavorited: !!viewerFavorited,
@@ -2454,12 +2461,12 @@ async function handleDb(request, env) {
         conditions.push('LOWER(l.locality) = LOWER(?)');
         params.push(locality);
       }
-      conditions.push('l.created_at < ?');
+      conditions.push('COALESCE(l.renewed_at, l.created_at) < ?');
       params.push(before);
 
-      let orderBy = 'l.created_at DESC';
-      if (section === 'featured') orderBy = 'l.featured DESC, l.created_at DESC';
-      if (section === 'top_rated') orderBy = 'seller_rating DESC, l.created_at DESC';
+      let orderBy = 'COALESCE(l.renewed_at, l.created_at) DESC';
+      if (section === 'featured') orderBy = 'l.featured DESC, COALESCE(l.renewed_at, l.created_at) DESC';
+      if (section === 'top_rated') orderBy = 'seller_rating DESC, COALESCE(l.renewed_at, l.created_at) DESC';
 
       const sql = `${LISTING_SELECT} WHERE ${conditions.join(' AND ')} ORDER BY ${orderBy} LIMIT ?`;
       params.push(limit + 1);
@@ -2550,7 +2557,7 @@ async function handleDb(request, env) {
       const viewerId = await authUser(request, env, body);
       const rows = await d1(
         env,
-        `${LISTING_SELECT} WHERE l.user_id = ? AND l.kind = ? AND l.status = 'active' ORDER BY l.created_at DESC LIMIT 60`,
+        `${LISTING_SELECT} WHERE l.user_id = ? AND l.kind = ? AND l.status = 'active' ORDER BY COALESCE(l.renewed_at, l.created_at) DESC LIMIT 60`,
         [targetId, kind]
       );
       const listings = await attachFavoritedFlags(env, rows, viewerId);
@@ -3063,6 +3070,42 @@ async function handleDb(request, env) {
       if (!rows[0]) return json({ error: 'Esa publicación no es tuya' }, 403);
       await d1(env, "UPDATE listings SET status = 'removed', updated_at = ? WHERE id = ?", [now, listingId]);
       return json({ ok: true });
+    }
+
+    if (action === 'myListings') {
+      const rows = await d1(
+        env,
+        `${LISTING_SELECT} WHERE l.user_id = ? AND l.status IN ('active', 'sold') ORDER BY COALESCE(l.renewed_at, l.created_at) DESC LIMIT 80`,
+        [userId]
+      );
+      const listings = await attachFavoritedFlags(env, rows, userId);
+      return json({ ok: true, listings });
+    }
+
+    if (action === 'renewListing') {
+      const listingId = clean(body.listingId, 80);
+      const owned = await d1(env, 'SELECT id, user_id, status, created_at, renewed_at FROM listings WHERE id = ?', [listingId]);
+      if (!owned[0]) return json({ error: 'Publicación no encontrada' }, 404);
+      if (owned[0].user_id !== userId) return json({ error: LISTING_RENEW_OWNER_ERROR }, 403);
+      const reason = listingRenewRejectReason(
+        { status: owned[0].status, createdAt: owned[0].created_at, renewedAt: owned[0].renewed_at },
+        now
+      );
+      if (reason) return json({ error: reason }, 400);
+      await d1(env, 'UPDATE listings SET renewed_at = ?, updated_at = ? WHERE id = ?', [now, now, listingId]);
+      const rows = await d1(env, `${LISTING_SELECT} WHERE l.id = ?`, [listingId]);
+      const [listing] = await attachFavoritedFlags(env, rows, userId);
+      return json({ ok: true, listing });
+    }
+
+    if (action === 'markListingSold') {
+      const listingId = clean(body.listingId, 80);
+      const owned = await d1(env, 'SELECT id FROM listings WHERE id = ? AND user_id = ?', [listingId, userId]);
+      if (!owned[0]) return json({ error: 'Esa publicación no es tuya' }, 403);
+      await d1(env, "UPDATE listings SET status = 'sold', updated_at = ? WHERE id = ?", [now, listingId]);
+      const rows = await d1(env, `${LISTING_SELECT} WHERE l.id = ?`, [listingId]);
+      const [listing] = await attachFavoritedFlags(env, rows, userId);
+      return json({ ok: true, listing });
     }
 
     if (action === 'listingFavorite') {

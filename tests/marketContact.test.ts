@@ -41,6 +41,14 @@ describe('mercado contacto y patitas', () => {
     assert.match(market, /columnWrapperStyle=\{styles\.gridRow\}/);
     assert.match(market, /gridCellDivider/);
     assert.match(market, /hairlineWidth/);
+    assert.match(market, /MARKET_GRID_GAP/);
+    assert.match(card, /contentFit="cover"/);
+    assert.match(card, /width: '100%'/);
+    assert.match(card, /aspectRatio: 1/);
+    assert.match(card, /listing\.title/);
+    assert.match(card, /listingPriceLabel/);
+    assert.match(card, /distanceLabel/);
+    assert.match(card, /listing\.username/);
     assert.match(market, /navigate\('ListingDetail'/);
     assert.doesNotMatch(market, /horizontal\s*\n\s*data=\{listings\}/);
     assert.doesNotMatch(market, /HomeSectionRow/);

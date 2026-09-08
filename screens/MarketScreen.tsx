@@ -32,10 +32,13 @@ import {
   categoryEmoji,
   ListingKind,
   MARKET_LIST_COLUMNS,
+  MARKET_GRID_GAP,
 } from '../lib/market';
+import { listingBumpedAt } from '../lib/listingLifecycle';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
+import { useStore } from '../lib/store';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -44,6 +47,7 @@ const PAGE_SIZE = 10;
 export default function MarketScreen() {
   const navigation = useNavigation<Nav>();
   const { desktopWeb } = useBreakpoint();
+  const { user } = useStore();
 
   const [locality, setLocality] = useState<string | null>(null);
   const [province, setProvince] = useState<string | null>(null);
@@ -136,7 +140,9 @@ export default function MarketScreen() {
               })
             : res;
         setListings((prev) => (reset ? page.listings : [...prev, ...page.listings]));
-        if (page.listings.length > 0) oldestRef.current = page.listings[page.listings.length - 1].createdAt;
+        if (page.listings.length > 0) {
+          oldestRef.current = listingBumpedAt(page.listings[page.listings.length - 1]);
+        }
         setHasMore(page.hasMore);
       } catch {
         if (reset) setListings([]);
@@ -224,10 +230,18 @@ export default function MarketScreen() {
           <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('MarketFavorites')}>
             <Ionicons name="heart-outline" size={22} color={colors.text} />
           </Pressable>
-          <Pressable style={styles.sellBtn} onPress={() => navigation.navigate('CreateListing')}>
-            <Ionicons name="add" size={16} color="#fff" />
-            <Text style={styles.sellBtnText}>Vender</Text>
-          </Pressable>
+          <View style={styles.headerActionCol}>
+            <Pressable style={styles.sellBtn} onPress={() => navigation.navigate('CreateListing')}>
+              <Ionicons name="add" size={16} color="#fff" />
+              <Text style={styles.sellBtnText}>Vender</Text>
+            </Pressable>
+            <Pressable
+              style={styles.mineProductsBtn}
+              onPress={() => navigation.navigate(user ? 'MyListings' : 'Auth')}
+            >
+              <Text style={styles.mineProductsBtnText}>Mis productos</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -399,7 +413,8 @@ const styles = StyleSheet.create({
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   pawEmoji: { fontSize: 20 },
   title: { fontSize: 22, fontWeight: '900', color: colors.text, letterSpacing: -0.3 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerActions: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  headerActionCol: { alignItems: 'stretch', gap: 6 },
   iconBtn: { padding: 4 },
   sellBtn: {
     flexDirection: 'row',
@@ -412,6 +427,16 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   sellBtnText: { color: '#fff', fontWeight: '800', fontSize: 12.5 },
+  mineProductsBtn: {
+    alignItems: 'center',
+    borderRadius: radius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.secondary,
+  },
+  mineProductsBtnText: { color: colors.secondary, fontWeight: '800', fontSize: 12 },
   localityPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -483,9 +508,9 @@ const styles = StyleSheet.create({
   sectionBlock: { marginTop: spacing.lg },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: colors.text, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
   sectionCard: { width: 160 },
-  gridContent: { paddingBottom: spacing.xl, paddingTop: spacing.sm, paddingHorizontal: spacing.md },
+  gridContent: { paddingBottom: spacing.xl, paddingTop: MARKET_GRID_GAP },
   gridRow: { alignItems: 'stretch' },
-  gridCell: { flex: 1, maxWidth: '50%', paddingHorizontal: 6, paddingBottom: spacing.sm },
+  gridCell: { flex: 1, maxWidth: '50%', minWidth: 0, paddingBottom: MARKET_GRID_GAP },
   gridCellDivider: {
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderLeftColor: 'rgba(45, 32, 22, 0.12)',

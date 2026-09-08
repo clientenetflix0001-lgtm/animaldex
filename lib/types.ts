@@ -39,6 +39,7 @@ export type RootStackParamList = {
   MyAlerts: undefined;
   AlertDetail: { alertId: string };
   CreateListing: undefined;
+  MyListings: undefined;
   ListingDetail: { listingId: string };
   SellerShop: { userId: string };
   MarketFavorites: undefined;

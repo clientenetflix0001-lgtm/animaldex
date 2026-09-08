@@ -48,6 +48,7 @@ import CreateListingScreen from './screens/CreateListingScreen';
 import ListingDetailScreen from './screens/ListingDetailScreen';
 import SellerShopScreen from './screens/SellerShopScreen';
 import MarketFavoritesScreen from './screens/MarketFavoritesScreen';
+import MyListingsScreen from './screens/MyListingsScreen';
 import AdoptionDiscoveryScreen from './screens/AdoptionDiscoveryScreen';
 import MyPetsScreen from './screens/MyPetsScreen';
 
@@ -270,6 +271,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       MyAlerts: 'mis-alertas',
       AlertDetail: 'a/:alertId',
       CreateListing: 'vender',
+      MyListings: 'mis-productos',
       ListingDetail: 'm/:listingId',
       ReelViewer: 'r/:reelId',
       SellerShop: 'tienda/:userId',
@@ -540,6 +542,11 @@ function RootNavigator() {
         name="CreateListing"
         component={CreateListingScreen}
         options={{ title: 'Vender', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="MyListings"
+        component={MyListingsScreen}
+        options={{ title: 'Mis productos', ...screenHeaderOptions }}
       />
       <Stack.Screen
         name="ListingDetail"

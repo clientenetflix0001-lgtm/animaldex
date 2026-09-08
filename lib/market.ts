@@ -11,6 +11,8 @@ export type ListingKind = 'product' | 'service';
 
 /** Scroll vertical. Dos cards por fila; no es carrusel horizontal. */
 export const MARKET_LIST_COLUMNS = 2;
+/** Hueco tipo grilla Bienestar Animal: casi sin margen lateral. */
+export const MARKET_GRID_GAP = 3;
 
 // ---------- Localidad seleccionada para Mercado ----------
 // Misma lógica que Alertas (GPS → localidad, editable manualmente,
