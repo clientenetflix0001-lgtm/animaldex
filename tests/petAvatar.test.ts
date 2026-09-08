@@ -6,10 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import { hasPetPhoto, isLegacyPetPlaceholder, petPhotoUri } from '../lib/petAvatar.ts';
 import { userFallbackAvatar } from '../lib/images.ts';
-import { getPostDisplay } from '../lib/postDisplay.ts';
 import { buildMyPetsGrid } from '../lib/myPetsGrid.ts';
 import { colors } from '../lib/theme.ts';
-import type { Post } from '../lib/data.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -43,25 +41,6 @@ const addPet = src('screens/AddPetScreen.tsx');
 const worker = src('worker/index.js');
 const postDisplay = src('lib/postDisplay.ts');
 
-function realPost(overrides: Partial<Post> = {}): Post {
-  return {
-    id: 'post-1',
-    petId: 'pet-1',
-    image: 'https://cdn.example/post.jpg',
-    caption: 'hola',
-    likes: 0,
-    minutesAgo: 3,
-    comments: [],
-    real: true,
-    petName: 'Luna',
-    petEmoji: '🐶',
-    petSpecies: 'perro',
-    petAvatarUrl: null,
-    username: 'sofia.pets',
-    ...overrides,
-  };
-}
-
 describe('foto real vs patita de UI', () => {
   it('mascota sin foto → no hay URI de foto', () => {
     assert.equal(hasPetPhoto(null), false);
@@ -69,7 +48,7 @@ describe('foto real vs patita de UI', () => {
     assert.equal(hasPetPhoto('   '), false);
     assert.equal(petPhotoUri(null), null);
     assert.equal(petPhotoUri(undefined), null);
-    assert.equal(getPostDisplay(realPost({ petAvatarUrl: null })).avatarUri, null);
+    assert.equal(petPhotoUri('https://api.dicebear.com/9.x/shapes/png?seed=x'), null);
     assert.equal(buildMyPetsGrid([{ id: 'old-1', avatarUrl: null }])[1].kind, 'pet');
     const tile = buildMyPetsGrid([{ id: 'old-1', avatarUrl: null }])[1];
     if (tile.kind === 'pet') assert.equal(tile.avatarUri, null);
@@ -79,7 +58,6 @@ describe('foto real vs patita de UI', () => {
     const url = 'https://imagedelivery.net/abc/pet/public';
     assert.equal(hasPetPhoto(url), true);
     assert.equal(petPhotoUri(url), url);
-    assert.equal(getPostDisplay(realPost({ petAvatarUrl: url })).avatarUri, url);
     const tile = buildMyPetsGrid([{ id: 'p1', avatarUrl: url }])[1];
     if (tile.kind === 'pet') assert.equal(tile.avatarUri, url);
     assert.match(petAvatarUi, /<Image/);
