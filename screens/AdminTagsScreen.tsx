@@ -27,8 +27,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiTag } from '../lib/db';
 import { useStore } from '../lib/store';
 import { TAG_CODE_INVALID, TAG_CODE_REQUIRED, buildTagUrl, parseManualTagCode, qrImageUrl } from '../lib/tags';
-import { thumb, petFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
+import PetAvatar from '../components/PetAvatar';
 import { RootStackParamList } from '../lib/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -135,10 +135,7 @@ export default function AdminTagsScreen() {
             style={styles.tagInfo}
             onPress={() => item.petId && navigation.navigate('PetProfile', { petId: item.petId })}
           >
-            <Image
-              source={{ uri: thumb(item.petAvatar || petFallbackAvatar(item.petName || 'pet'), 60) }}
-              style={styles.petAvatar}
-            />
+            <PetAvatar uri={item.petAvatar} size={34} style={styles.petAvatar} />
             <View style={{ flex: 1 }}>
               <Text style={styles.petName} numberOfLines={1}>
                 {item.petEmoji} {item.petName}

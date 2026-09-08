@@ -11,17 +11,16 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useStore } from '../lib/store';
 import { db } from '../lib/db';
-import { thumb, petFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius } from '../lib/theme';
 import { ProfileSwitcher, useProfiles } from '../features/profiles';
 import { petsForPublishingIdentity, reconcileSelectedPetId } from '../lib/petOwnership';
+import PetAvatar from '../components/PetAvatar';
 import {
   REEL_CAPTION_MAX,
   REEL_DURATION_REJECT_MESSAGE,
@@ -553,10 +552,7 @@ export default function CreateReelScreen() {
                 style={[styles.petOption, active && styles.petOptionActive]}
                 onPress={() => setSelectedPet(p.id)}
               >
-                <Image
-                  source={{ uri: thumb(p.avatarUrl ?? petFallbackAvatar(p.id), 100) }}
-                  style={styles.petOptionImg}
-                />
+                <PetAvatar uri={p.avatarUrl} size={44} style={styles.petOptionImg} />
                 <Text style={[styles.petOptionName, active && { color: colors.primary }]}>
                   {p.name} {p.emoji}
                 </Text>

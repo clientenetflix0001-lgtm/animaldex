@@ -64,7 +64,8 @@ describe('aro de estado de mascota', () => {
   });
 
   it('7. la foto no gira', () => {
-    const imageBlock = avatar.slice(avatar.indexOf('<Image'), avatar.indexOf('/>', avatar.indexOf('<Image')) + 2);
+    const photoStart = avatar.indexOf('<PetAvatar');
+    const imageBlock = avatar.slice(photoStart, avatar.indexOf('/>', photoStart) + 2);
     assert.doesNotMatch(imageBlock, /rotate/);
     assert.doesNotMatch(imageBlock, /transform/);
   });

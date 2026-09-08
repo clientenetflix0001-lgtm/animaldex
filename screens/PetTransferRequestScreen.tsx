@@ -1,14 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiPet, ApiPetTransferRequest, ApiTransferUser } from '../lib/db';
 import { useStore } from '../lib/store';
-import { thumb, petFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
+import PetAvatar from '../components/PetAvatar';
 import { RootStackParamList } from '../lib/types';
 import {
   PET_TRANSFER_STALE,
@@ -117,11 +116,7 @@ export default function PetTransferRequestScreen() {
       ) : (
         <View style={styles.body}>
           <View style={styles.card}>
-            <Image
-              source={{ uri: thumb(pet.avatarUrl || petFallbackAvatar(pet.username || pet.name), 160) }}
-              style={styles.avatar}
-              transition={200}
-            />
+            <PetAvatar uri={pet.avatarUrl} size={88} style={styles.avatar} />
             <Text style={styles.petName}>{pet.name}</Text>
             {!!pet.username && <Text style={styles.handle}>@{pet.username}</Text>}
             <Text style={styles.meta}>

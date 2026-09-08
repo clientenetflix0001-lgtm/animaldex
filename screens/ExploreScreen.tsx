@@ -16,12 +16,13 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Post, generateExplorePage, getPet, PETS, petAvatar, SPECIES_LABEL, Species, formatCount } from '../lib/data';
 import { db, ApiPet } from '../lib/db';
 import { postNavParams } from '../lib/share';
-import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
 import { LoadingFooter } from '../components/LoadingFooter';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
+import PetAvatar from '../components/PetAvatar';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -200,11 +201,7 @@ export default function ExploreScreen() {
                   style={styles.petRow}
                   onPress={() => openPetInTabs(navigation, item.pet.username || item.pet.id)}
                 >
-                  <Image
-                    source={{ uri: thumb(item.pet.avatarUrl ?? petFallbackAvatar(item.pet.id), 120) }}
-                    style={styles.petRowImg}
-                    transition={200}
-                  />
+                  <PetAvatar uri={item.pet.avatarUrl} size={52} style={styles.petRowImg} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.petRowName}>
                       {item.pet.name} {item.pet.emoji}
@@ -224,7 +221,7 @@ export default function ExploreScreen() {
                 style={styles.petRow}
                 onPress={() => openPetInTabs(navigation, p.id)}
               >
-                <Image source={{ uri: thumb(petAvatar(p), 120) }} style={styles.petRowImg} transition={200} />
+                <PetAvatar uri={petAvatar(p)} size={52} style={styles.petRowImg} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.petRowName}>
                     {p.name} {p.emoji}

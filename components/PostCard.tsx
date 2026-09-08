@@ -23,6 +23,7 @@ import { useNavigation } from '@react-navigation/native';
 import { colors, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import { openHumanProfile } from '../lib/publicHandles';
+import PetAvatar from './PetAvatar';
 
 interface Props {
   post: Post;
@@ -54,6 +55,7 @@ function PostCardInner({
   feedMediaPerfNotePostCardRender();
   const navigation = useNavigation<any>();
   const header = resolvePostHeader(post);
+  const disp = header.display;
 
   const heartScale = useSharedValue(1);
   const bigHeart = useSharedValue(0);
@@ -105,11 +107,15 @@ function PostCardInner({
           else openHumanProfile(navigation, { username: header.open.username, userId: header.open.userId });
         }}
       >
-        <Image
-          source={{ uri: thumb(header.avatarUri, 100) }}
-          style={styles.avatar}
-          transition={200}
-        />
+        {header.asProfile && header.avatarUri ? (
+          <Image
+            source={{ uri: thumb(header.avatarUri, 100) }}
+            style={styles.avatar}
+            transition={200}
+          />
+        ) : (
+          <PetAvatar uri={disp.avatarUri} size={42} style={styles.avatar} />
+        )}
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
             <Text style={styles.petName}>{header.title}</Text>

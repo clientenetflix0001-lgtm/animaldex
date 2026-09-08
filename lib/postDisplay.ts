@@ -1,13 +1,14 @@
 // Helper: obtiene los datos de presentación de un post,
 // ya sea real (base de datos) o demo (generado).
 import { getPet, getOwner, petAvatar, SPECIES_LABEL, PETS, type Post, type Species } from './data.ts';
-import { petFallbackAvatar, userFallbackAvatar } from './images.ts';
+import { userFallbackAvatar } from './images.ts';
+import { petPhotoUri } from './petAvatar.ts';
 import { speciesLabel } from './petFields.ts';
 
 export interface PostDisplay {
   petName: string;
   petEmoji: string;
-  avatarUri: string;
+  avatarUri: string | null;
   username: string;
   petUsername?: string;
   speciesLabel: string;
@@ -26,7 +27,7 @@ export type PostHeader = {
   kind: PostHeaderKind;
   title: string;
   subtitle: string | null;
-  avatarUri: string;
+  avatarUri: string | null;
   open: PostHeaderOpen;
   orgType: boolean;
   hasPet: boolean;
@@ -65,7 +66,7 @@ export function getPostDisplay(post: Post): PostDisplay {
     return {
       petName: post.petName ?? 'Mascota',
       petEmoji: post.petEmoji ?? '🐾',
-      avatarUri: post.petAvatarUrl ?? petFallbackAvatar(post.petId),
+      avatarUri: petPhotoUri(post.petAvatarUrl),
       username,
       petUsername: post.petUsername,
       speciesLabel:
@@ -80,7 +81,7 @@ export function getPostDisplay(post: Post): PostDisplay {
   return {
     petName: pet.name,
     petEmoji: pet.emoji,
-    avatarUri: petAvatar(pet),
+    avatarUri: petPhotoUri(petAvatar(pet)),
     username: owner.username,
     petUsername: pet.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9_.]/g, ''),
     speciesLabel: SPECIES_LABEL[pet.species],

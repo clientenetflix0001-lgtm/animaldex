@@ -132,7 +132,7 @@ describe('4–10. pantalla Mis mascotas', () => {
     if (grid[1].kind === 'pet') {
       assert.equal(grid[1].handle, 'Mascota');
       assert.equal(grid[1].ageLabel, '');
-      assert.match(grid[1].avatarUri, /dicebear/);
+      assert.equal(grid[1].avatarUri, null);
     }
     assert.match(myPets, /item\.ageLabel \?/);
   });

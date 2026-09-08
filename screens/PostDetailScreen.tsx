@@ -29,6 +29,7 @@ import { CommentKeyboardView } from '../components/CommentKeyboardView';
 import { useGuestAccess } from '../lib/guestAccess';
 import { openHumanProfile } from '../lib/publicHandles';
 import ProfileBadge from '../features/profiles/ProfileBadge';
+import PetAvatar from '../components/PetAvatar';
 import {
   POST_CAPTION_MAX,
   backgroundTextNeedsSeeMore,
@@ -306,7 +307,11 @@ function PostDetailContent({ post }: { post: Post }) {
   const petHeader = (
     <View style={styles.postHeader}>
       <Pressable style={styles.headerLeft} onPress={openAuthor}>
-        <Image source={{ uri: thumb(headerIdentity.avatarUri, 100) }} style={styles.avatar} transition={200} />
+        {headerIdentity.asProfile && headerIdentity.avatarUri ? (
+          <Image source={{ uri: thumb(headerIdentity.avatarUri, 100) }} style={styles.avatar} transition={200} />
+        ) : (
+          <PetAvatar uri={disp.avatarUri} size={42} style={styles.avatar} />
+        )}
         <View>
           <Text style={styles.petName}>{headerIdentity.title}</Text>
           {headerIdentity.kind === 'page' ? (
