@@ -3,7 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { ApiAlert } from '../lib/db';
 import { db } from '../lib/db';
-import { HOME_MODULE_TITLES } from '../lib/homeFeedModules';
+import { HOME_ALERTS_VISIBLE_MAX, HOME_MODULE_TITLES } from '../lib/homeFeedModules';
 import { AlertCard } from './AlertCard';
 import { HomeModulePressable } from './HomeHorizontalList';
 import { HomeModuleTitle } from './HomeModuleTitle';
@@ -37,7 +37,7 @@ function FeedAlertsRowInner({ alerts }: { alerts: ApiAlert[] }) {
   return (
     <View style={styles.wrap}>
       <HomeModuleTitle>{HOME_MODULE_TITLES.alerts}</HomeModuleTitle>
-      {rows.map((alert) => (
+      {rows.slice(0, HOME_ALERTS_VISIBLE_MAX).map((alert) => (
         <HomeModulePressable
           key={alert.id}
           onPress={() => open(alert.id)}

@@ -8,7 +8,8 @@ export const FEED_COMPOSITION_POLICY = {
   alertRadiusKm: 10,
   firstPagePostLimit: 10,
   laterPagePostLimit: 10,
-  maxAlerts: 3,
+  maxAlerts: 1,
+  alertCandidateLimit: 3,
   maxAdoptions: 2,
   maxReels: 2,
   minPageRecommendations: 3,
@@ -90,6 +91,21 @@ export function dedupeById<T extends { id: string }>(rows: T[]): T[] {
   return out;
 }
 
+/** Una alerta por inserción. Orden de entrada (geo/recencia). Determinista. */
+export function selectHomeModuleAlerts(
+  alerts: ApiAlert[] | null | undefined,
+  usedAlertIds?: Iterable<string>,
+  limit = FEED_COMPOSITION_POLICY.maxAlerts
+): ApiAlert[] {
+  const used = new Set(usedAlertIds || []);
+  const active = dedupeById(
+    (alerts || []).filter((alert) => alert.status !== 'resolved' && !alert.resolvedAt)
+  );
+  const unused = active.filter((alert) => !used.has(alert.id));
+  const pool = unused.length > 0 ? unused : active;
+  return pool.slice(0, Math.max(0, limit));
+}
+
 export type ComposeFeedInput = {
   pageIndex: number;
   posts: Post[];
@@ -103,12 +119,14 @@ export type ComposeFeedInput = {
   adoptions?: AdoptionCard[];
   reels?: ApiReel[];
   usedPostIds?: Iterable<string>;
+  usedAlertIds?: Iterable<string>;
   policy?: typeof FEED_COMPOSITION_POLICY;
 };
 
 export type ComposeFeedResult = {
   items: FeedItem[];
   usedPostIds: string[];
+  usedAlertIds: string[];
   nextCursor: number | undefined;
 };
 
@@ -134,7 +152,9 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
     return 'default';
   };
 
-  const alerts = dedupeById((input.alerts || []).filter((a) => a.status !== 'resolved' && !a.resolvedAt)).slice(0, policy.maxAlerts);
+  const usedAlertIds = new Set(input.usedAlertIds || []);
+  const alerts =
+    input.pageIndex === 0 ? selectHomeModuleAlerts(input.alerts, usedAlertIds, policy.maxAlerts) : [];
   const pages = visibleHomePageRecommendations(dedupeById(input.pages || []), policy.maxPageRecommendations);
   const adoptions = (() => {
     const seen = new Set<string>();
@@ -176,6 +196,7 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
     }
     if (slot === 'alerts' && alerts.length > 0) {
       items.push({ kind: 'alerts', key: feedItemKey('alerts', `p${input.pageIndex}`), alerts });
+      for (const row of alerts) usedAlertIds.add(row.id);
       return true;
     }
     if (slot === 'page_recommendations' && pages.length > 0) {
@@ -241,6 +262,7 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
   return {
     items,
     usedPostIds: [...used],
+    usedAlertIds: [...usedAlertIds],
     nextCursor: chronological.length ? chronological[chronological.length - 1].createdAt : undefined,
   };
 }

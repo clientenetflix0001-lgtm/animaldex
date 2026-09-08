@@ -10,7 +10,7 @@ export const HOME_MODULE_TITLES = {
 
 export const HOME_PAGES_VISIBLE_MIN = 3;
 export const HOME_PAGES_VISIBLE_MAX = 8;
-export const HOME_ALERTS_VISIBLE_MAX = 3;
+export const HOME_ALERTS_VISIBLE_MAX = 1;
 
 export function storiesForYouItems(items: ApiStoryRailItem[] | null | undefined): ApiStoryRailItem[] {
   return (items || []).filter((item) => item.kind === 'identity' || item.kind === 'breed');

@@ -30,6 +30,7 @@ import {
   composerModulesAreAdjacent,
   composeFeedPage,
   postsBetweenComposerModules,
+  selectHomeModuleAlerts,
   feedItemKey,
   feedItemTypes,
   hasVisibleAdSlot,
@@ -358,6 +359,10 @@ describe('COMPOSITION', () => {
     assert.equal(firstPostIds.length, new Set(firstPostIds).size);
     assert.equal(first.items[0].kind === 'post' && first.items[0].bucket, 'locality');
     assert.equal(first.items[1].kind === 'post' && first.items[1].bucket, 'trending');
+    const alertMod = first.items.find((item) => item.kind === 'alerts');
+    assert.equal(alertMod && alertMod.kind === 'alerts' && alertMod.alerts.length, 1);
+    assert.equal(alertMod && alertMod.kind === 'alerts' && alertMod.alerts[0].id, 'a1');
+    assert.equal(FEED_COMPOSITION_POLICY.maxAlerts, 1);
     assert.equal(hasVisibleAdSlot(first.items), false);
     assert.equal(FEED_COMPOSITION_POLICY.ads.enabled, false);
 
@@ -396,6 +401,29 @@ describe('DEDUP', () => {
     });
     const ids = out.items.filter((i) => i.kind === 'post').map((i) => i.kind === 'post' ? i.post.id : '');
     assert.deepEqual(ids, ['same', 'other']);
+  });
+
+  it('22b. una alerta por módulo y no repite si hay alternativas', () => {
+    const pool = [alert('a1'), alert('a2'), alert('a3')];
+    const enoughPosts = [post('p1', 3), post('p2', 2), post('p3', 1)];
+    assert.deepEqual(selectHomeModuleAlerts(pool).map((a) => a.id), ['a1']);
+    assert.deepEqual(selectHomeModuleAlerts(pool, ['a1']).map((a) => a.id), ['a2']);
+    const first = composeFeedPage({
+      pageIndex: 0,
+      posts: enoughPosts,
+      alerts: pool,
+    });
+    const second = composeFeedPage({
+      pageIndex: 0,
+      posts: enoughPosts,
+      alerts: pool,
+      usedAlertIds: first.usedAlertIds,
+    });
+    const firstAlert = first.items.find((i) => i.kind === 'alerts');
+    const secondAlert = second.items.find((i) => i.kind === 'alerts');
+    assert.equal(firstAlert && firstAlert.kind === 'alerts' && firstAlert.alerts[0].id, 'a1');
+    assert.equal(secondAlert && secondAlert.kind === 'alerts' && secondAlert.alerts[0].id, 'a2');
+    assert.doesNotMatch(composition, /Math\.random/);
   });
 
   it('22–23. alert y reel no duplican', () => {
