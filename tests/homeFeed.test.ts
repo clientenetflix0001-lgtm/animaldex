@@ -27,7 +27,9 @@ import {
   FEED_COMPOSITION_POLICY,
   appendFeedItems,
   adoptionsAndReelsAreConsecutive,
+  composerModulesAreAdjacent,
   composeFeedPage,
+  postsBetweenComposerModules,
   feedItemKey,
   feedItemTypes,
   hasVisibleAdSlot,
@@ -250,7 +252,10 @@ describe('CONTRACT INTACT', () => {
       'post',
       'page_recommendations',
       'post',
+      'post',
       'adoptions',
+      'post',
+      'post',
       'reels',
       'remaining_posts',
     ]);
@@ -311,6 +316,9 @@ describe('COMPOSITION', () => {
     post('p5', 600),
     post('p6', 500),
     post('p7', 400),
+    post('p8', 300),
+    post('p9', 200),
+    post('p10', 100),
   ];
 
   it('11–19. secuencia de producto sin huecos ni ads reales', () => {
@@ -335,12 +343,17 @@ describe('COMPOSITION', () => {
       'post',
       'post',
       'page_recommendations',
+      'post',
+      'post',
       'adoptions',
+      'post',
       'post',
       'reels',
     ]);
     assert.equal(adoptionsAndReelsAreConsecutive(first.items), false);
-    assert.deepEqual(postIdsBetweenAdoptionsAndReels(first.items), ['p7']);
+    assert.equal(composerModulesAreAdjacent(first.items), false);
+    assert.ok(postsBetweenComposerModules(first.items).every((n) => n >= 2));
+    assert.deepEqual(postIdsBetweenAdoptionsAndReels(first.items), ['p9', 'p10']);
     const firstPostIds = first.items.filter((i) => i.kind === 'post').map((i) => (i.kind === 'post' ? i.post.id : ''));
     assert.equal(firstPostIds.length, new Set(firstPostIds).size);
     assert.equal(first.items[0].kind === 'post' && first.items[0].bucket, 'locality');
