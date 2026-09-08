@@ -1,9 +1,8 @@
 import React, { memo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { adoptionStatusOverlay, compactAgeLabel } from '../lib/compactTime';
-import { thumb, petFallbackAvatar } from '../lib/images';
+import PetAvatar from './PetAvatar';
 
 export const PROTECTOR_GRID_GAP = 3;
 
@@ -36,11 +35,14 @@ function ProtectorPetGridItem({
       accessibilityRole="button"
       accessibilityLabel={name}
     >
-      <Image
-        source={{ uri: thumb(photo || petFallbackAvatar(petId), 400) }}
+      <PetAvatar
+        uri={photo}
         style={styles.photo}
+        thumbWidth={400}
+        iconSize={40}
         contentFit="cover"
         transition={0}
+        recyclingKey={petId}
       />
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.55)']}

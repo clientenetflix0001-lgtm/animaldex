@@ -44,8 +44,5 @@ export function convertImage(
 export const thumb = (url: string, w = 300) => convertImage(url, w, 70, 'cover');
 export const large = (url: string) => convertImage(url, 1080, 82, 'contain');
 
-export const petFallbackAvatar = (seed: string) =>
-  `https://api.dicebear.com/9.x/shapes/png?seed=${encodeURIComponent(seed)}&size=200`;
-
 export const userFallbackAvatar = (seed: string) =>
   `https://api.dicebear.com/9.x/initials/png?seed=${encodeURIComponent(seed)}&size=200&backgroundColor=FF6B4A`;

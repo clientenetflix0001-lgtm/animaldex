@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useStore } from '../lib/store';
-import { thumb } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import WantToAdoptButton from '../components/WantToAdoptButton';
 import PetStatusAvatar from '../components/PetStatusAvatar';
@@ -69,7 +68,7 @@ export default function MyPetsScreen() {
           accessibilityLabel={item.handle}
         >
           <PetStatusAvatar
-            uri={thumb(item.avatarUri, 200)}
+            uri={item.avatarUri}
             size={72}
             status={personalPets.find((p) => p.id === item.key)?.careStatus}
           />

@@ -1,12 +1,12 @@
 // Helper: obtiene los datos de presentación de un post,
 // ya sea real (base de datos) o demo (generado).
 import { Post, getPet, getOwner, petAvatar, SPECIES_LABEL, Species, PETS } from './data';
-import { petFallbackAvatar } from './images';
+import { petPhotoUri } from './petAvatar';
 
 export interface PostDisplay {
   petName: string;
   petEmoji: string;
-  avatarUri: string;
+  avatarUri: string | null;
   username: string;
   petUsername?: string;
   speciesLabel: string;
@@ -22,7 +22,7 @@ export function getPostDisplay(post: Post): PostDisplay {
     return {
       petName: post.petName ?? 'Mascota',
       petEmoji: post.petEmoji ?? '🐾',
-      avatarUri: post.petAvatarUrl ?? petFallbackAvatar(post.petId),
+      avatarUri: petPhotoUri(post.petAvatarUrl),
       username: post.username ?? 'usuario',
       petUsername: post.petUsername,
       speciesLabel:

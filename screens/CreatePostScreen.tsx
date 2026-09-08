@@ -12,19 +12,18 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useStore, apiPostToPost } from '../lib/store';
 import { db } from '../lib/db';
 import { uploadImage } from '../lib/api';
-import { thumb, petFallbackAvatar } from '../lib/images';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ProfileSwitcher, useProfiles } from '../features/profiles';
 import { PostBackgroundCard, PostBackgroundChip } from '../components/PostBackgroundCard';
 import { SelectedImagePreview } from '../components/SelectedImagePreview';
+import PetAvatar from '../components/PetAvatar';
 import { GALLERY_IMAGE_PICKER_OPTIONS } from '../lib/galleryImagePicker';
 import {
   DEFAULT_POST_BACKGROUND_ID,
@@ -204,11 +203,7 @@ export default function CreatePostScreen() {
                   style={[styles.petOption, active && styles.petOptionActive]}
                   onPress={() => setSelectedPet(p.id)}
                 >
-                  <Image
-                    source={{ uri: thumb(p.avatarUrl ?? petFallbackAvatar(p.id), 100) }}
-                    style={styles.petOptionImg}
-                    transition={200}
-                  />
+                  <PetAvatar uri={p.avatarUrl} size={34} style={styles.petOptionImg} />
                   <Text style={[styles.petOptionName, active && { color: colors.primary }]}>
                     {p.name} {p.emoji}
                   </Text>

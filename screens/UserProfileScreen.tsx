@@ -18,7 +18,8 @@ import { USERS, getPet as getDemoPet, petAvatar, generateUserPosts, formatCount,
 import { db, ApiUser, ApiPet, ApiReel } from '../lib/db';
 import { useStore, apiPostToPost } from '../lib/store';
 import { postNavParams, sharePublicProfile } from '../lib/share';
-import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
+import { petPhotoUri } from '../lib/petAvatar';
 import { FollowButton } from '../components/FollowButton';
 import WantToAdoptButton from '../components/WantToAdoptButton';
 import PetStatusAvatar from '../components/PetStatusAvatar';
@@ -45,7 +46,7 @@ interface DisplayPet {
   name: string;
   emoji: string;
   breed: string;
-  avatarUri: string;
+  avatarUri: string | null;
   username?: string;
   careStatus?: string | null;
 }
@@ -164,7 +165,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         name: p.name,
         emoji: p.emoji,
         breed: p.breed || p.species,
-        avatarUri: p.avatarUrl ?? petFallbackAvatar(p.id),
+        avatarUri: petPhotoUri(p.avatarUrl),
         username: p.username ?? undefined,
         careStatus: p.careStatus,
       }));
@@ -325,7 +326,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
               style={styles.petCard}
               onPress={() => navigation.navigate('PetProfile', { petId: item.username || item.id })}
             >
-              <PetStatusAvatar uri={thumb(item.avatarUri, 150)} size={60} status={item.careStatus} />
+              <PetStatusAvatar uri={item.avatarUri} size={60} status={item.careStatus} />
               <Text style={styles.petName}>
                 {item.username ? item.username : item.name} {item.emoji}
               </Text>

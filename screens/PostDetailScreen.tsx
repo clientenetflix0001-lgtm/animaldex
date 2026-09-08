@@ -21,12 +21,13 @@ import { db, ApiComment, timeAgoMinutes } from '../lib/db';
 import { usePolling } from '../lib/realtime';
 import { resolvePost, sharePost } from '../lib/share';
 import { getPostDisplay } from '../lib/postDisplay';
-import { thumb, large, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from '../components/AdaptivePostImage';
 import { PostBackgroundCard } from '../components/PostBackgroundCard';
 import { CommentKeyboardView } from '../components/CommentKeyboardView';
 import { useGuestAccess } from '../lib/guestAccess';
 import { openHumanProfile } from '../lib/publicHandles';
+import PetAvatar from '../components/PetAvatar';
 import {
   POST_CAPTION_MAX,
   backgroundTextNeedsSeeMore,
@@ -292,7 +293,7 @@ function PostDetailContent({ post }: { post: Post }) {
   const petHeader = (
     <View style={styles.postHeader}>
       <Pressable style={styles.headerLeft} onPress={openAuthor}>
-        <Image source={{ uri: thumb(disp.avatarUri, 100) }} style={styles.avatar} transition={200} />
+        <PetAvatar uri={disp.avatarUri} size={42} style={styles.avatar} />
         <View>
           <Text style={styles.petName}>
             {disp.petUsername || disp.petName.toLowerCase()}{disp.petEmoji}
