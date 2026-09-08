@@ -1,5 +1,5 @@
 import { ageLabelFromBirthDate } from './birthDate.ts';
-import { petFallbackAvatar } from './images.ts';
+import { petPhotoUri } from './petAvatar.ts';
 
 export type MyPetsGridPet = {
   id: string;
@@ -18,7 +18,7 @@ export type MyPetsGridItem =
       petId: string;
       handle: string;
       ageLabel: string;
-      avatarUri: string;
+      avatarUri: string | null;
     };
 
 export function petCardAgeLabel(
@@ -53,7 +53,7 @@ export function buildMyPetsGrid(pets: MyPetsGridPet[], now: Date = new Date()): 
       petId: petProfileNavId(pet),
       handle: petCardHandle(pet),
       ageLabel: petCardAgeLabel(pet.birthDate, pet.age, now),
-      avatarUri: pet.avatarUrl || petFallbackAvatar(pet.id),
+      avatarUri: petPhotoUri(pet.avatarUrl),
     });
   }
   return tiles;

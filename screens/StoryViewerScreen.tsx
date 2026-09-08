@@ -51,6 +51,7 @@ import { openStoryAuthorProfile, openStoryProtagonistProfile, resolveStoryAuthor
 import { thumb, userFallbackAvatar } from '../lib/images';
 import StoryProgress from '../components/StoryProgress';
 import StoryCommentsSheet from '../components/StoryCommentsSheet';
+import PetAvatar from '../components/PetAvatar';
 
 function StoryVideo({ uri, paused }: { uri: string; paused: boolean }) {
   const player = useVideoPlayer(uri, (p) => {
@@ -273,7 +274,10 @@ export default function StoryViewerScreen() {
 
   const author = useMemo(() => (current ? resolveStoryAuthorIdentity(current) : null), [current]);
   const headerName = author?.username || (current ? 'Historia' : '');
-  const headerAvatar = author?.avatarUrl || (headerName ? userFallbackAvatar(headerName) : '');
+  const headerAvatar =
+    author?.kind === 'pet'
+      ? null
+      : author?.avatarUrl || (headerName ? userFallbackAvatar(headerName) : '');
 
   const openAuthor = useCallback(() => {
     if (!current) return;
@@ -445,7 +449,14 @@ export default function StoryViewerScreen() {
           <StoryProgress count={stories.length} index={index} progress={progress} />
           <View style={styles.topRow}>
             <Pressable style={styles.identity} onPress={openAuthor} accessibilityLabel="Ver perfil del autor">
-              <Image source={{ uri: thumb(headerAvatar, 80) }} style={styles.avatar} />
+              {author?.kind === 'pet' ? (
+                <PetAvatar uri={author.avatarUrl} size={32} style={styles.avatar} />
+              ) : (
+                <Image
+                  source={{ uri: thumb(headerAvatar || userFallbackAvatar(headerName || 'historia'), 80) }}
+                  style={styles.avatar}
+                />
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.name} numberOfLines={1}>
                   {headerName}

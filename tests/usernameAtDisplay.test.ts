@@ -60,10 +60,11 @@ describe('contenido: username sin @ visual', () => {
   });
 
   it('Feed, Reels, Alertas, Explore, Mercado sin @', () => {
-    assert.match(postCard, /\$\{profileHandle\}/);
-    assert.match(postCard, /de \(\{disp\.username\}\)/);
+    assert.match(postCard, /\{header\.title\}/);
+    assert.match(postCard, /\{header\.subtitle\}/);
     assert.doesNotMatch(postCard, /`@\$\{profileHandle\}`/);
     assert.doesNotMatch(postCard, /de \(@\{disp\.username\}\)/);
+    assert.doesNotMatch(postCard, /@\{header\.title\}/);
     assert.doesNotMatch(reelCard, /styles\.name\}>@\{/);
     assert.match(alertCard, /Publicado por \{alert\.username\}/);
     assert.match(explore, /\{item\.user\.username\} · Usuario/);

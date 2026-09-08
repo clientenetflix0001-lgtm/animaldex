@@ -2082,7 +2082,7 @@ async function handleDb(request, env) {
           env,
           `SELECT c.*, u.username, u.name AS user_name, u.avatar_url
            FROM comments c LEFT JOIN users u ON u.id = c.user_id
-           WHERE c.post_id = ? ORDER BY c.created_at ASC LIMIT 200`,
+           WHERE c.post_id = ? ORDER BY c.created_at DESC, c.id DESC LIMIT 200`,
           [postId]
         ),
       ]);
@@ -2271,7 +2271,7 @@ async function handleDb(request, env) {
         env,
         `SELECT c.*, u.username, u.name AS user_name, u.avatar_url
          FROM comments c LEFT JOIN users u ON u.id = c.user_id
-         WHERE c.post_id = ? ORDER BY c.created_at ASC LIMIT 200`,
+         WHERE c.post_id = ? ORDER BY c.created_at DESC, c.id DESC LIMIT 200`,
         [postId]
       );
       return json({
@@ -2304,7 +2304,7 @@ async function handleDb(request, env) {
       const since = Number(body.since) || 0;
       const [counts, newComments] = await Promise.all([
         d1(env, 'SELECT (SELECT COUNT(*) FROM likes WHERE post_id = ?) AS likes, (SELECT COUNT(*) FROM comments WHERE post_id = ?) AS comments', [postId, postId]),
-        d1(env, `SELECT c.*, u.username, u.name AS user_name, u.avatar_url FROM comments c LEFT JOIN users u ON u.id = c.user_id WHERE c.post_id = ? AND c.created_at > ? ORDER BY c.created_at ASC LIMIT 50`, [postId, since]),
+        d1(env, `SELECT c.*, u.username, u.name AS user_name, u.avatar_url FROM comments c LEFT JOIN users u ON u.id = c.user_id WHERE c.post_id = ? AND c.created_at > ? ORDER BY c.created_at DESC, c.id DESC LIMIT 50`, [postId, since]),
       ]);
       return json({
         ok: true,

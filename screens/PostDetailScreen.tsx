@@ -20,13 +20,16 @@ import { useStore, apiPostToPost } from '../lib/store';
 import { db, ApiComment, timeAgoMinutes } from '../lib/db';
 import { usePolling } from '../lib/realtime';
 import { resolvePost, sharePost } from '../lib/share';
-import { getPostDisplay } from '../lib/postDisplay';
-import { thumb, large, userFallbackAvatar } from '../lib/images';
+import { resolvePostHeader } from '../lib/postDisplay';
+import { latestCommentCreatedAt, mergeCommentsNewestFirst, sortCommentsNewestFirst } from '../lib/commentsOrder';
+import { thumb, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from '../components/AdaptivePostImage';
 import { PostBackgroundCard } from '../components/PostBackgroundCard';
 import { CommentKeyboardView } from '../components/CommentKeyboardView';
 import { useGuestAccess } from '../lib/guestAccess';
 import { openHumanProfile } from '../lib/publicHandles';
+import ProfileBadge from '../features/profiles/ProfileBadge';
+import PetAvatar from '../components/PetAvatar';
 import {
   POST_CAPTION_MAX,
   backgroundTextNeedsSeeMore,
@@ -132,7 +135,8 @@ function PostDetailContent({ post }: { post: Post }) {
   const [busy, setBusy] = useState(false);
   const { guest, requireLogin, inviteBar } = useGuestAccess({ headerClose: true });
 
-  const disp = getPostDisplay(post);
+  const headerIdentity = resolvePostHeader(post);
+  const disp = headerIdentity.display;
   const liked = likedPosts.includes(post.id);
   const saved = savedPosts.includes(post.id);
   const [draft, setDraft] = useState('');
@@ -146,10 +150,9 @@ function PostDetailContent({ post }: { post: Post }) {
   const loadComments = useCallback(async () => {
     try {
       const { comments } = await db.comments(post.id);
-      setDbComments(comments);
-      if (comments.length > 0) {
-        sinceRef.current = Math.max(sinceRef.current, comments[comments.length - 1].createdAt);
-      }
+      const ordered = sortCommentsNewestFirst(comments);
+      setDbComments(ordered);
+      sinceRef.current = latestCommentCreatedAt(ordered, sinceRef.current);
     } catch {}
   }, [post.id]);
 
@@ -158,24 +161,15 @@ function PostDetailContent({ post }: { post: Post }) {
   }, [loadComments]);
 
   // ========== TIEMPO REAL ==========
-  // Cada 6 s: SOLO los comentarios nuevos desde el último conocido +
-  // contadores frescos. Los nuevos se agregan al final (no mueve el
-  // scroll del lector) y el contador se actualiza en su lugar.
+  // Cada 6 s: comentarios nuevos + contadores. Se mezclan newest-first.
   usePolling(
     useCallback(async () => {
       try {
         const { likeCount, newComments } = await db.postUpdates(post.id, sinceRef.current);
         setDbLikes(likeCount);
         if (newComments.length > 0) {
-          sinceRef.current = Math.max(
-            sinceRef.current,
-            newComments[newComments.length - 1].createdAt
-          );
-          setDbComments((prev) => {
-            const seen = new Set(prev.map((c) => c.id));
-            const fresh = newComments.filter((c) => !seen.has(c.id));
-            return fresh.length > 0 ? [...prev, ...fresh] : prev;
-          });
+          sinceRef.current = latestCommentCreatedAt(newComments, sinceRef.current);
+          setDbComments((prev) => mergeCommentsNewestFirst(prev, newComments));
         }
       } catch {}
     }, [post.id]),
@@ -201,20 +195,42 @@ function PostDetailContent({ post }: { post: Post }) {
       minutesAgo: timeAgoMinutes(c.createdAt),
       mine: user?.id === c.userId,
     }));
-    return [...seed, ...real];
+    const demo = seed
+      .slice()
+      .sort((a, b) => a.minutesAgo - b.minutesAgo);
+    return post.real ? real : [...real, ...demo];
   }, [post, dbComments, user]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text || sending || !user) return;
     setSending(true);
     setDraft('');
+    const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimistic: ApiComment = {
+      id: tempId,
+      userId: user.id,
+      username: user.username,
+      userName: user.name,
+      avatarUrl: user.avatarUrl,
+      text,
+      createdAt: Date.now(),
+    };
+    setDbComments((prev) => mergeCommentsNewestFirst(prev, [optimistic]));
     try {
-      await db.comment(post.id, text);
-      await loadComments();
-    } catch {}
+      const saved = await db.comment(post.id, text);
+      setDbComments((prev) =>
+        mergeCommentsNewestFirst(
+          prev.filter((c) => c.id !== tempId),
+          [{ ...optimistic, id: saved.id, createdAt: saved.createdAt }]
+        )
+      );
+      sinceRef.current = Math.max(sinceRef.current, saved.createdAt);
+    } catch {
+      setDbComments((prev) => prev.filter((c) => c.id !== tempId));
+    }
     setSending(false);
-  }, [draft, post.id, sending, loadComments]);
+  }, [draft, post.id, sending, user]);
 
   // ---------- Editar / eliminar mi publicación ----------
   const startEdit = useCallback(() => {
@@ -276,12 +292,11 @@ function PostDetailContent({ post }: { post: Post }) {
   }, [guest, requireLogin, toggleSave, post.id]);
 
   const openAuthor = useCallback(() => {
-    const org = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
-    const handle = post.authorProfileUsername;
-    if (org && handle) openHumanProfile(navigation, { username: handle });
-    else if (post.petId) navigation.navigate('PetProfile', { petId: post.petId });
-    else openHumanProfile(navigation, { username: disp.username, userId: post.authorUserId });
-  }, [post, navigation, disp.username]);
+    const target = headerIdentity.open;
+    if (target.mode === 'page') openHumanProfile(navigation, { username: target.username });
+    else if (target.mode === 'pet') navigation.navigate('PetProfile', { petId: target.petId });
+    else openHumanProfile(navigation, { username: target.username, userId: target.userId });
+  }, [headerIdentity.open, navigation]);
 
   // Posts reales: contador vivo del servidor. Demo: base + likes reales de la BD.
   const likeCount = post.real
@@ -292,14 +307,18 @@ function PostDetailContent({ post }: { post: Post }) {
   const petHeader = (
     <View style={styles.postHeader}>
       <Pressable style={styles.headerLeft} onPress={openAuthor}>
-        <Image source={{ uri: thumb(disp.avatarUri, 100) }} style={styles.avatar} transition={200} />
+        {headerIdentity.asProfile && headerIdentity.avatarUri ? (
+          <Image source={{ uri: thumb(headerIdentity.avatarUri, 100) }} style={styles.avatar} transition={200} />
+        ) : (
+          <PetAvatar uri={disp.avatarUri} size={42} style={styles.avatar} />
+        )}
         <View>
-          <Text style={styles.petName}>
-            {disp.petUsername || disp.petName.toLowerCase()}{disp.petEmoji}
-          </Text>
-          <Text style={styles.subText}>
-            {(disp.speciesLabel || 'mascota').toLowerCase()} de ({disp.username})
-          </Text>
+          <Text style={styles.petName}>{headerIdentity.title}</Text>
+          {headerIdentity.kind === 'page' ? (
+            <ProfileBadge type={post.authorProfileType} />
+          ) : headerIdentity.subtitle ? (
+            <Text style={styles.subText}>{headerIdentity.subtitle}</Text>
+          ) : null}
         </View>
       </Pressable>
       <View style={styles.headerRight}>
@@ -475,7 +494,7 @@ function PostDetailContent({ post }: { post: Post }) {
               showsVerticalScrollIndicator={false}
             />
             <View style={styles.dtDivider} />
-            {actionsRow}
+            {guest ? actionsRow : null}
             <Text style={[styles.likes, { paddingHorizontal: spacing.lg, paddingTop: spacing.sm }]}>
               {formatCount(likeCount)} me gusta
             </Text>
@@ -504,7 +523,7 @@ function PostDetailContent({ post }: { post: Post }) {
         <PostBackgroundCard backgroundId={post.backgroundId} text={effectiveCaption} />
       ) : null}
 
-      {actionsRow}
+      {guest ? actionsRow : null}
 
       <View style={styles.metaBlock}>
         <Text style={styles.likes}>{formatCount(likeCount)} me gusta</Text>

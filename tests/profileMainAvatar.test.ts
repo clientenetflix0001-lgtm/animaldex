@@ -56,7 +56,7 @@ describe('aro animado más visible, misma implementación', () => {
 describe('badges encima del aro', () => {
   it('overlay de iconos sale después del clip de la foto', () => {
     const photoWrap = avatar.indexOf('styles.photoWrap');
-    const image = avatar.indexOf('<Image');
+    const image = avatar.indexOf('<PetAvatar');
     const badgeLayer = avatar.indexOf('styles.badgeLayer');
     const children = avatar.indexOf('{children}');
     assert.ok(photoWrap > 0 && image > photoWrap && badgeLayer > image && children > badgeLayer);

@@ -6,8 +6,10 @@ import { useNavigation } from '@react-navigation/native';
 import { PETS, petAvatar, formatCount } from '../lib/data';
 import { db, ApiPet } from '../lib/db';
 import { useStore } from '../lib/store';
-import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
+import { petPhotoUri } from '../lib/petAvatar';
 import { FollowButton } from './FollowButton';
+import PetAvatar from './PetAvatar';
 import { colors, spacing, radius } from '../lib/theme';
 import { CONTENT } from '../lib/responsive';
 
@@ -16,7 +18,7 @@ interface Suggestion {
   handle?: string | null;
   name: string;
   sub: string;
-  avatarUri: string;
+  avatarUri: string | null;
   real: boolean;
 }
 
@@ -37,7 +39,7 @@ export function SuggestionsPanel() {
       handle: p.username || null,
       name: `${p.name} ${p.emoji}`,
       sub: p.username ? `${p.username}` : `${p.breed || p.species} · Comunidad`,
-      avatarUri: p.avatarUrl ?? petFallbackAvatar(p.id),
+      avatarUri: petPhotoUri(p.avatarUrl),
       real: true,
     })),
     ...PETS.slice(0, 8).map((p) => ({
@@ -80,7 +82,7 @@ export function SuggestionsPanel() {
               style={styles.suggInfo}
               onPress={() => navigation.navigate('PetProfile', { petId: s.handle || s.id })}
             >
-              <Image source={{ uri: thumb(s.avatarUri, 100) }} style={styles.suggAvatar} transition={200} />
+              <PetAvatar uri={s.avatarUri} size={44} style={styles.suggAvatar} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.suggName} numberOfLines={1}>
                   {s.name}

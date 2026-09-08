@@ -11,9 +11,9 @@ import Animated, {
   withDelay,
 } from 'react-native-reanimated';
 import { Post, formatCount, formatTime } from '../lib/data';
-import { getPostDisplay } from '../lib/postDisplay';
+import { resolvePostHeader } from '../lib/postDisplay';
 import { sharePost } from '../lib/share';
-import { thumb, userFallbackAvatar } from '../lib/images';
+import { thumb } from '../lib/images';
 import { AdaptivePostImage } from './AdaptivePostImage';
 import { PostBackgroundCard } from './PostBackgroundCard';
 import { isTextBackgroundPost } from '../lib/postBackgrounds';
@@ -23,6 +23,7 @@ import { useNavigation } from '@react-navigation/native';
 import { colors, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import { openHumanProfile } from '../lib/publicHandles';
+import PetAvatar from './PetAvatar';
 
 interface Props {
   post: Post;
@@ -53,12 +54,8 @@ function PostCardInner({
 }: Props) {
   feedMediaPerfNotePostCardRender();
   const navigation = useNavigation<any>();
-  const disp = getPostDisplay(post);
-  const hasPet = !!(post.petId && post.petName);
-  const orgType = post.authorProfileType === 'business' || post.authorProfileType === 'protector';
-  const asProfile = orgType || (!hasPet && !!post.authorProfileId);
-  const profileHandle = post.authorProfileUsername || disp.username;
-  const profileAvatar = post.authorProfileAvatar || userFallbackAvatar(profileHandle || 'usuario');
+  const header = resolvePostHeader(post);
+  const disp = header.display;
 
   const heartScale = useSharedValue(1);
   const bigHeart = useSharedValue(0);
@@ -105,31 +102,29 @@ function PostCardInner({
       <Pressable
         style={styles.header}
         onPress={() => {
-          if (orgType && profileHandle) openHumanProfile(navigation, { username: profileHandle });
-          else if (hasPet) onOpenPet(disp.petUsername || post.petId);
-          else openHumanProfile(navigation, { username: profileHandle, userId: post.authorUserId });
+          if (header.open.mode === 'page') openHumanProfile(navigation, { username: header.open.username });
+          else if (header.open.mode === 'pet') onOpenPet(header.open.petId);
+          else openHumanProfile(navigation, { username: header.open.username, userId: header.open.userId });
         }}
       >
-        <Image
-          source={{ uri: thumb(asProfile ? profileAvatar : disp.avatarUri, 100) }}
-          style={styles.avatar}
-          transition={200}
-        />
+        {header.asProfile && header.avatarUri ? (
+          <Image
+            source={{ uri: thumb(header.avatarUri, 100) }}
+            style={styles.avatar}
+            transition={200}
+          />
+        ) : (
+          <PetAvatar uri={disp.avatarUri} size={42} style={styles.avatar} />
+        )}
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
-            <Text style={styles.petName}>
-              {asProfile
-                ? `${profileHandle}`
-                : `${disp.petUsername || disp.petName.toLowerCase()}${disp.petEmoji}`}
-            </Text>
+            <Text style={styles.petName}>{header.title}</Text>
           </View>
-          {asProfile ? (
-            orgType ? <ProfileBadge type={post.authorProfileType} /> : null
-          ) : (
-            <Text style={styles.subText}>
-              {(disp.speciesLabel || 'mascota').toLowerCase()} de ({disp.username})
-            </Text>
-          )}
+          {header.kind === 'page' ? (
+            <ProfileBadge type={post.authorProfileType} />
+          ) : header.subtitle ? (
+            <Text style={styles.subText}>{header.subtitle}</Text>
+          ) : null}
         </View>
         <Text style={styles.time}>{formatTime(post.minutesAgo)}</Text>
       </Pressable>
