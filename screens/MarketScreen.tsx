@@ -30,7 +30,6 @@ import { detectCurrentLocality, withProvinceFallback } from '../lib/geo';
 import {
   saveMarketLocality,
   loadSavedMarketLocality,
-  MARKET_SECTIONS,
   categoriesFor,
   categoryLabel,
   categoryEmoji,
@@ -43,106 +42,6 @@ import { useBreakpoint, CONTENT } from '../lib/responsive';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const PAGE_SIZE = 10;
-const SECTION_SIZE = 8;
-
-// ---------- Fila horizontal de una sección del home (Destacados, etc.) ----------
-function HomeSectionRow({
-  sectionId,
-  label,
-  emoji,
-  kind,
-  locality,
-  viewerLat,
-  viewerLon,
-  onOpen,
-  refreshKey,
-}: {
-  sectionId: 'featured' | 'nearby' | 'top_rated' | 'recent';
-  label: string;
-  emoji: string;
-  kind: ListingKind;
-  locality: string | null;
-  viewerLat: number | null;
-  viewerLon: number | null;
-  onOpen: (listing: ApiListing) => void;
-  refreshKey: number;
-}) {
-  const [items, setItems] = useState<ApiListing[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (sectionId === 'nearby' && !locality) {
-        setItems([]);
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      try {
-        const res = await db.listingsFeed({
-          kind,
-          locality: locality ?? undefined,
-          section: sectionId,
-          limit: SECTION_SIZE,
-        });
-        if (alive) setItems(res.listings);
-      } catch {
-        if (alive) setItems([]);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [sectionId, kind, locality, refreshKey]);
-
-  // El toggle se resuelve con el estado real que YA tenemos en esta fila
-  // (no depende del padre), así el valor enviado al servidor siempre es
-  // el correcto sin importar en qué sección/orden aparezca la tarjeta.
-  const toggleFav = useCallback((listingId: string) => {
-    setItems((prev) =>
-      prev.map((l) => {
-        if (l.id !== listingId) return l;
-        const nextValue = !l.isFavorited;
-        db.listingFavorite(listingId, nextValue).catch(() => {});
-        return { ...l, isFavorited: nextValue, favoriteCount: l.favoriteCount + (nextValue ? 1 : -1) };
-      })
-    );
-  }, []);
-
-  if (!loading && items.length === 0) return null;
-
-  return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionTitle}>
-        {emoji} {label}
-      </Text>
-      {loading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.lg }} />
-      ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(l) => l.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: spacing.sm }}
-          renderItem={({ item }) => (
-            <ListingCard
-              listing={item}
-              onPress={onOpen}
-              onToggleFavorite={toggleFav}
-              viewerLat={viewerLat}
-              viewerLon={viewerLon}
-              style={styles.sectionCard}
-            />
-          )}
-        />
-      )}
-    </View>
-  );
-}
 
 export default function MarketScreen() {
   const navigation = useNavigation<Nav>();
@@ -160,7 +59,6 @@ export default function MarketScreen() {
   const [category, setCategory] = useState<string | null>(null);
   const [queryText, setQueryText] = useState('');
   const [searchActive, setSearchActive] = useState('');
-  const [sectionsRefreshKey, setSectionsRefreshKey] = useState(0);
 
   const [listings, setListings] = useState<ApiListing[]>([]);
   const [loading, setLoading] = useState(false);
@@ -171,7 +69,6 @@ export default function MarketScreen() {
   const oldestRef = useRef<number | undefined>(undefined);
   const didInitialFocusRef = useRef(false);
 
-  const browsing = category !== null || searchActive.trim() !== '';
 
   // ---------- Ubicación inicial (misma lógica que Alertas) ----------
   useEffect(() => {
@@ -206,7 +103,6 @@ export default function MarketScreen() {
       if (entry.lat != null) setViewerLat(entry.lat);
       if (entry.lon != null) setViewerLon(entry.lon);
       saveMarketLocality({ locality: entry.locality, province: entry.province, lat: entry.lat ?? null, lon: entry.lon ?? null });
-      setSectionsRefreshKey((k) => k + 1);
     },
     []
   );
@@ -221,17 +117,29 @@ export default function MarketScreen() {
         setLoadingMore(true);
       }
       try {
+        const section = !searchActive.trim() && !category && locality ? 'nearby' : 'recent';
         const res = await db.listingsFeed({
           kind,
+          locality: locality ?? undefined,
           category: category ?? undefined,
           q: searchActive.trim() || undefined,
-          section: 'recent',
+          section,
           before: reset ? undefined : oldestRef.current,
           limit: PAGE_SIZE,
         });
-        setListings((prev) => (reset ? res.listings : [...prev, ...res.listings]));
-        if (res.listings.length > 0) oldestRef.current = res.listings[res.listings.length - 1].createdAt;
-        setHasMore(res.hasMore);
+        const page =
+          reset && section === 'nearby' && res.listings.length === 0
+            ? await db.listingsFeed({
+                kind,
+                category: category ?? undefined,
+                q: searchActive.trim() || undefined,
+                section: 'recent',
+                limit: PAGE_SIZE,
+              })
+            : res;
+        setListings((prev) => (reset ? page.listings : [...prev, ...page.listings]));
+        if (page.listings.length > 0) oldestRef.current = page.listings[page.listings.length - 1].createdAt;
+        setHasMore(page.hasMore);
       } catch {
         if (reset) setListings([]);
         setHasMore(false);
@@ -241,13 +149,13 @@ export default function MarketScreen() {
         setLoadingMore(false);
       }
     },
-    [kind, category, searchActive]
+    [kind, category, searchActive, locality]
   );
 
   useEffect(() => {
-    if (browsing) fetchPage(true);
+    if (!locating) fetchPage(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [browsing, kind, category, searchActive]);
+  }, [kind, category, searchActive, locality, locating]);
 
   useFocusEffect(
     useCallback(() => {
@@ -255,8 +163,7 @@ export default function MarketScreen() {
         didInitialFocusRef.current = true;
         return;
       }
-      setSectionsRefreshKey((k) => k + 1);
-      if (browsing) fetchPage(true);
+      fetchPage(true);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
   );
@@ -270,12 +177,8 @@ export default function MarketScreen() {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    if (browsing) fetchPage(true);
-    else {
-      setSectionsRefreshKey((k) => k + 1);
-      setRefreshing(false);
-    }
-  }, [browsing, fetchPage]);
+    fetchPage(true);
+  }, [fetchPage]);
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore) return;
@@ -310,7 +213,6 @@ export default function MarketScreen() {
     [toggleFavoriteGrid, toggleFavoriteRemote]
   );
 
-  const wrapStyle = desktopWeb ? styles.desktopWrap : styles.mobileWrap;
   const categories = categoriesFor(kind);
 
   const header = (
@@ -411,77 +313,36 @@ export default function MarketScreen() {
     </View>
   );
 
-  let body: React.ReactNode;
-
-  if (browsing) {
-    body = loading ? (
-      <ActivityIndicator color={colors.primary} style={{ marginTop: 60 }} />
-    ) : (
-      <FlatList
-        // "key" fijo distinto al de la lista de secciones: evita que React
-        // reutilice la misma instancia de FlatList al cambiar numColumns
-        // (1 columna en secciones → 2 columnas en resultados), que es lo que
-        // causaba el congelamiento/pantalla negra al buscar.
-        key="market-grid"
-        data={listings}
-        keyExtractor={(l) => l.id}
-        numColumns={2}
-        columnWrapperStyle={{ gap: spacing.sm, paddingHorizontal: spacing.lg }}
-        contentContainerStyle={{ gap: spacing.sm, paddingBottom: spacing.xl, paddingTop: spacing.sm }}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.5}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>🐾</Text>
-            <Text style={styles.emptyTitle}>Sin resultados</Text>
-            <Text style={styles.emptyText}>Prueba con otra búsqueda o categoría.</Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <ListingCard
-            listing={item}
-            onPress={openListing}
-            onToggleFavorite={handleToggleFavorite}
-            viewerLat={viewerLat}
-            viewerLon={viewerLon}
-            style={{ flex: 1 }}
-          />
-        )}
-        ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.lg }} /> : null}
-      />
-    );
-  } else {
-    body = (
-      <FlatList
-        key="market-sections"
-        data={MARKET_SECTIONS}
-        keyExtractor={(s) => s.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-        contentContainerStyle={{ paddingBottom: spacing.xl, paddingTop: spacing.sm }}
-        renderItem={({ item }) => (
-          <HomeSectionRow
-            sectionId={item.id}
-            label={item.label}
-            emoji={item.emoji}
-            kind={kind}
-            locality={locality}
-            viewerLat={viewerLat}
-            viewerLon={viewerLon}
-            onOpen={openListing}
-            refreshKey={sectionsRefreshKey}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>🐾</Text>
-            <Text style={styles.emptyTitle}>Aún no hay publicaciones</Text>
-            <Text style={styles.emptyText}>Sé el primero en vender un producto o servicio.</Text>
-          </View>
-        }
-      />
-    );
-  }
+  const body = loading ? (
+    <ActivityIndicator color={colors.primary} style={{ marginTop: 60 }} />
+  ) : (
+    <FlatList
+      key="market-vertical"
+      data={listings}
+      keyExtractor={(l) => l.id}
+      contentContainerStyle={{ gap: spacing.sm, paddingBottom: spacing.xl, paddingTop: spacing.sm, paddingHorizontal: spacing.lg }}
+      onEndReached={loadMore}
+      onEndReachedThreshold={0.5}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      ListEmptyComponent={
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyEmoji}>🐾</Text>
+          <Text style={styles.emptyTitle}>Sin resultados</Text>
+          <Text style={styles.emptyText}>Prueba con otra búsqueda o categoría.</Text>
+        </View>
+      }
+      renderItem={({ item }) => (
+        <ListingCard
+          listing={item}
+          onPress={openListing}
+          onToggleFavorite={handleToggleFavorite}
+          viewerLat={viewerLat}
+          viewerLon={viewerLon}
+        />
+      )}
+      ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.lg }} /> : null}
+    />
+  );
 
   const content = (
     <View style={{ flex: 1 }}>

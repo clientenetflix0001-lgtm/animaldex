@@ -490,6 +490,13 @@ async function ensureAlertsSchema(env) {
   env._alertsSchemaReady = true;
 }
 
+async function ensureListingsContactSchema(env) {
+  if (env._listingsContactReady) return;
+  try { await env.DB.prepare('ALTER TABLE listings ADD COLUMN contact_method TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE listings ADD COLUMN contact_value TEXT').run(); } catch (_) {}
+  env._listingsContactReady = true;
+}
+
 async function ensurePetTagsPublicCode(env) {
   if (env._petTagsPublicCodeReady) return;
   try { await env.DB.prepare('ALTER TABLE pet_tags ADD COLUMN public_code TEXT').run(); } catch (_) {}
@@ -1809,6 +1816,7 @@ async function handleDb(request, env) {
     await ensurePetHandleAliasSchema(env);
     await ensureAlertsSchema(env);
     await ensurePetTagsPublicCode(env);
+    await ensureListingsContactSchema(env);
 
     const publicReel = await handlePublicReelAction(env, body, json, clean, request, authUser);
     if (publicReel) return publicReel;
@@ -2471,6 +2479,23 @@ async function handleDb(request, env) {
       return json({ ok: true, listing });
     }
 
+    if (action === 'listingContact') {
+      const listingId = clean(body.listingId, 80);
+      const rows = await d1(env, `${LISTING_SELECT} WHERE l.id = ?`, [listingId]);
+      if (!rows[0]) return json({ error: 'Publicación no encontrada' }, 404);
+      const seller = await d1(env, 'SELECT verified_phone FROM users WHERE id = ?', [rows[0].user_id]);
+      const method = rows[0].contact_method === 'whatsapp' || rows[0].contact_method === 'phone' ? rows[0].contact_method : null;
+      const value = normalizePhone(rows[0].contact_value || '') || null;
+      const fallbackPhone = normalizePhone(seller[0]?.verified_phone || '') || null;
+      return json({
+        ok: true,
+        contactMethod: method,
+        contactValue: value,
+        fallbackPhone,
+        title: rows[0].title || null,
+      });
+    }
+
     if (action === 'listingComments') {
       const listingId = clean(body.listingId, 80);
       const rows = await d1(
@@ -3016,14 +3041,16 @@ async function handleDb(request, env) {
       if (images.some((i) => i.startsWith('data:'))) return json({ error: 'Las imágenes deben subirse primero a Cloudflare' }, 400);
       if (!description) return json({ error: 'Agrega una descripción' }, 400);
       if (!locality) return json({ error: 'Falta la ubicación' }, 400);
-      if (pricePatitas <= 0) return json({ error: 'Ingresa un precio en Patitas' }, 400);
+      const contactMethod = body.contactMethod === 'phone' ? 'phone' : body.contactMethod === 'whatsapp' ? 'whatsapp' : '';
+      const contactValue = normalizePhone(body.contactValue || '');
+      if (!contactMethod || !contactValue) return json({ error: 'Elegí WhatsApp o teléfono e ingresá un número válido.' }, 400);
 
       const id = `listing-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(
         env,
-        `INSERT INTO listings (id, user_id, kind, title, category, description, price_patitas, price_ars, stock, delivery_method, modality, availability, images, locality, province, country, lat, lon, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-        [id, userId, kind, title, category, description, pricePatitas, priceArs, stock, deliveryMethod, modality, availability, JSON.stringify(images), locality, province || null, 'AR', lat, lon, now]
+        `INSERT INTO listings (id, user_id, kind, title, category, description, price_patitas, price_ars, stock, delivery_method, modality, availability, images, locality, province, country, lat, lon, status, created_at, contact_method, contact_value)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+        [id, userId, kind, title, category, description, pricePatitas, priceArs, stock, deliveryMethod, modality, availability, JSON.stringify(images), locality, province || null, 'AR', lat, lon, now, contactMethod, contactValue]
       );
       const rows = await d1(env, `${LISTING_SELECT} WHERE l.id = ?`, [id]);
       const [listing] = await attachFavoritedFlags(env, rows, userId);

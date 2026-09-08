@@ -26,12 +26,14 @@ import { shareListing } from '../lib/share';
 import {
   categoryLabel,
   categoryEmoji,
-  formatPatitas,
   formatArs,
   deliveryLabel,
   modalityLabel,
 } from '../lib/market';
-import { thumb, large, userFallbackAvatar } from '../lib/images';
+import { listingPriceLabel, resolveListingContactAction } from '../lib/listingContact';
+import { openListingContact } from '../lib/openListingContact';
+import ListingImageGallery from '../components/ListingImageGallery';
+import { thumb, userFallbackAvatar } from '../lib/images';
 import { formatTime } from '../lib/data';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
@@ -52,7 +54,7 @@ export default function ListingDetailScreen() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [contactLabel, setContactLabel] = useState('Contactar al vendedor');
 
   const load = useCallback(async () => {
     try {
@@ -72,6 +74,17 @@ export default function ListingDetailScreen() {
   useEffect(() => {
     load();
     db.listingView(listingId).catch(() => {});
+    db.listingContact(listingId)
+      .then((res) => {
+        const action = resolveListingContactAction({
+          method: res.contactMethod,
+          value: res.contactValue,
+          fallbackPhone: res.fallbackPhone,
+          title: res.title || '',
+        });
+        if (action.kind !== 'none') setContactLabel(action.label);
+      })
+      .catch(() => {});
   }, [load, listingId]);
 
   const handleToggleFavorite = useCallback(() => {
@@ -91,11 +104,10 @@ export default function ListingDetailScreen() {
     }
   }, [listing, sharing]);
 
-  const handleBuy = useCallback(() => {
-    const msg = '🐾 La compra con Patitas estará disponible muy pronto. ¡Gracias por tu interés!';
-    if (Platform.OS === 'web' && typeof window !== 'undefined') window.alert(msg);
-    else Alert.alert('Próximamente', msg);
-  }, []);
+  const handleContact = useCallback(() => {
+    if (!listing) return;
+    openListingContact({ listingId: listing.id, title: listing.title }).catch(() => {});
+  }, [listing]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -156,32 +168,8 @@ export default function ListingDetailScreen() {
 
   const header = (
     <View>
-      {/* Galería */}
       <View>
-        <FlatList
-          data={listing.images}
-          keyExtractor={(uri, i) => `${uri}-${i}`}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={(e) => setGalleryIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
-          renderItem={({ item }) => (
-            <Image
-              source={{ uri: large(item) }}
-              style={{ width, height: width }}
-              contentFit="cover"
-              transition={300}
-              placeholder={{ blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' }}
-            />
-          )}
-        />
-        {listing.images.length > 1 && (
-          <View style={styles.dotsRow}>
-            {listing.images.map((_, i) => (
-              <View key={i} style={[styles.dot, i === galleryIndex && styles.dotActive]} />
-            ))}
-          </View>
-        )}
+        <ListingImageGallery images={listing.images} previewWidth={width} />
         <Pressable
           style={styles.backBtn}
           onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Tabs'))}
@@ -214,10 +202,11 @@ export default function ListingDetailScreen() {
           </View>
         </View>
 
-        <View style={styles.priceBlock}>
-          <Text style={styles.pricePatitas}>{formatPatitas(listing.pricePatitas)}</Text>
-          {listing.priceArs != null && <Text style={styles.priceArs}>{formatArs(listing.priceArs)}</Text>}
-        </View>
+        {listingPriceLabel(listing.priceArs) ? (
+          <View style={styles.priceBlock}>
+            <Text style={styles.priceArs}>{formatArs(listing.priceArs as number)}</Text>
+          </View>
+        ) : null}
 
         {listing.kind === 'product' && listing.stock != null && (
           <View style={styles.stockRow}>
@@ -271,9 +260,9 @@ export default function ListingDetailScreen() {
               color={listing.isFavorited ? colors.heart : colors.text}
             />
           </Pressable>
-          <Pressable style={styles.buyBtn} onPress={handleBuy}>
-            <Ionicons name="bag-check-outline" size={17} color="#fff" />
-            <Text style={styles.buyBtnText}>{listing.kind === 'service' ? 'Solicitar servicio' : 'Comprar'}</Text>
+          <Pressable style={styles.buyBtn} onPress={handleContact}>
+            <Ionicons name="logo-whatsapp" size={17} color="#fff" />
+            <Text style={styles.buyBtnText}>{contactLabel}</Text>
           </Pressable>
           <Pressable style={styles.shareBtn} onPress={handleShare} disabled={sharing}>
             <Ionicons name="paper-plane-outline" size={18} color={colors.text} />

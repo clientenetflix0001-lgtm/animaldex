@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, Pressable, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ApiListing } from '../lib/db';
-import { formatPatitas, formatArs } from '../lib/market';
+import { formatArs } from '../lib/market';
+import { listingPriceLabel } from '../lib/listingContact';
 import { formatDistance, haversineKm } from '../lib/geo';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { colors, radius, shadow, spacing } from '../lib/theme';
@@ -62,13 +63,10 @@ function ListingCardInner({ listing, onPress, onToggleFavorite, viewerLat, viewe
           {listing.title}
         </Text>
 
-        <View style={styles.priceRow}>
-          <Text style={styles.pricePatitas} numberOfLines={1}>
-            {formatPatitas(listing.pricePatitas)}
-          </Text>
-        </View>
-        {listing.priceArs != null && (
-          <Text style={styles.priceArs}>{formatArs(listing.priceArs)}</Text>
+        {listingPriceLabel(listing.priceArs) ? (
+          <Text style={styles.priceArs}>{formatArs(listing.priceArs as number)}</Text>
+        ) : (
+          <Text style={styles.priceArs}>Consultar</Text>
         )}
 
         <View style={styles.metaRow}>
