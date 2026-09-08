@@ -70,7 +70,7 @@ import {
   applyAppLinkIfReady,
   rememberIncomingAppLink,
 } from './lib/appLinks';
-import { getStateFromPublicPath, setLinkingHasUser } from './lib/webLinking';
+import { getStateFromPublicPath, setLinkingHasUser, shouldAutoOpenPendingTag } from './lib/webLinking';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -328,6 +328,13 @@ function TagDeepLinkHandler() {
 
   useEffect(() => {
     if (!authReady || !user || pendingTagCode == null || handledRef.current) return;
+    const href =
+      Platform.OS === 'web' && typeof window !== 'undefined'
+        ? `${window.location.pathname}${window.location.search}`
+        : '';
+    if (!shouldAutoOpenPendingTag({ platform: Platform.OS, href, pendingTagCode })) {
+      return;
+    }
     handledRef.current = true;
     const code = pendingTagCode;
     // pendingTagCode se limpia en AddPet cuando create+claim terminan bien.

@@ -1,5 +1,6 @@
 import { resolveAppLink } from './appLinks.ts';
 import { PUBLIC_WEB_ORIGIN } from './publicWeb.ts';
+import { extractTagCode } from './tags.ts';
 
 let linkingHasUser = false;
 
@@ -40,6 +41,23 @@ export function webHomeState(hasUser = linkingHasUser) {
     };
   }
   return { routes: [{ name: 'Auth' }] };
+}
+
+/**
+ * En web, visitar `/` a mano no debe reabrir TagWelcome por un QR
+ * pendiente guardado. `?qr=` en la URL sí abre el flujo.
+ * Nativo conserva el pending para sobrevivir login/registro.
+ */
+export function shouldAutoOpenPendingTag(opts: {
+  platform: string;
+  href: string;
+  pendingTagCode?: string | null;
+}): boolean {
+  if (!opts.pendingTagCode) return false;
+  if (opts.platform !== 'web') return true;
+  if (extractTagCode(opts.href)) return true;
+  if (isWebRootPath(opts.href)) return false;
+  return true;
 }
 
 export function getStateFromPublicPath(path: string, options?: object) {

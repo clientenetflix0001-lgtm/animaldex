@@ -5,10 +5,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { resolveAppLink } from '../lib/appLinks.ts';
+import { postOwnerSubtitle } from '../lib/postDisplay.ts';
 import {
   getStateFromPublicPath,
   isWebRootPath,
   setLinkingHasUser,
+  shouldAutoOpenPendingTag,
   webHomeState,
 } from '../lib/webLinking.ts';
 
@@ -52,5 +54,35 @@ describe('web root animaldex.com', () => {
     assert.match(app, /WebUrlSync/);
     assert.match(pages, /index\.html/);
     assert.doesNotMatch(pages, /301.*www/);
+  });
+
+  it('QR pendiente no reabre al escribir /; ?qr= sí abre', () => {
+    assert.equal(
+      shouldAutoOpenPendingTag({ platform: 'web', href: '/', pendingTagCode: 'AAA123' }),
+      false
+    );
+    assert.equal(
+      shouldAutoOpenPendingTag({ platform: 'web', href: 'https://animaldex.com/', pendingTagCode: 'AAA123' }),
+      false
+    );
+    assert.equal(
+      shouldAutoOpenPendingTag({ platform: 'web', href: 'https://animaldex.com/?qr=AAA123', pendingTagCode: 'AAA123' }),
+      true
+    );
+    assert.equal(
+      shouldAutoOpenPendingTag({ platform: 'web', href: '/entrar', pendingTagCode: 'AAA123' }),
+      true
+    );
+    assert.equal(
+      shouldAutoOpenPendingTag({ platform: 'ios', href: '/', pendingTagCode: 'AAA123' }),
+      true
+    );
+    const root = getStateFromPublicPath('https://animaldex.com/');
+    assert.ok(!JSON.stringify(root).includes('TagWelcome'));
+    assert.ok(!JSON.stringify(root).includes('qr'));
+    assert.ok(!JSON.stringify(root).includes('petId'));
+    assert.match(app, /shouldAutoOpenPendingTag/);
+    assert.equal(postOwnerSubtitle('otro', 'lucasfuentes'), 'mascota de (lucasfuentes)');
+    assert.doesNotMatch(postOwnerSubtitle('otro', 'lucasfuentes'), /otro de/);
   });
 });
