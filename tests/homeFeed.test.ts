@@ -26,11 +26,13 @@ import { pickLocalityRelevantPostIds, pickTrendingPostIds, trendingScore } from 
 import {
   FEED_COMPOSITION_POLICY,
   appendFeedItems,
+  adoptionsAndReelsAreConsecutive,
   composeFeedPage,
   feedItemKey,
   feedItemTypes,
   hasVisibleAdSlot,
   keysAreStable,
+  postIdsBetweenAdoptionsAndReels,
   type FeedItem,
 } from '../lib/feedComposition.ts';
 import { prioritizeUserBreedStoryItems, uniqueBreedChannelsFromPets } from '../lib/stories.ts';
@@ -333,10 +335,14 @@ describe('COMPOSITION', () => {
       'post',
       'post',
       'page_recommendations',
-      'post',
       'adoptions',
+      'post',
       'reels',
     ]);
+    assert.equal(adoptionsAndReelsAreConsecutive(first.items), false);
+    assert.deepEqual(postIdsBetweenAdoptionsAndReels(first.items), ['p7']);
+    const firstPostIds = first.items.filter((i) => i.kind === 'post').map((i) => (i.kind === 'post' ? i.post.id : ''));
+    assert.equal(firstPostIds.length, new Set(firstPostIds).size);
     assert.equal(first.items[0].kind === 'post' && first.items[0].bucket, 'locality');
     assert.equal(first.items[1].kind === 'post' && first.items[1].bucket, 'trending');
     assert.equal(hasVisibleAdSlot(first.items), false);

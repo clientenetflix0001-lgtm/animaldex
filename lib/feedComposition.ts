@@ -122,20 +122,6 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
     return 'default';
   };
 
-  const takePost = (prefer: FeedPostBucket | 'any'): Post | null => {
-    let id: string | null = null;
-    if (prefer === 'locality') id = takeNext(localityQueue);
-    else if (prefer === 'trending') id = takeNext(trendingQueue);
-    else id = takeNext(regularQueue) || takeNext(localityQueue) || takeNext(trendingQueue);
-    if (!id) return null;
-    const post = byId.get(id);
-    if (!post) return null;
-    byId.delete(id);
-    consumed.push(post);
-    used.add(id);
-    return post;
-  };
-
   const alerts = dedupeById((input.alerts || []).filter((a) => a.status !== 'resolved' && !a.resolvedAt)).slice(0, policy.maxAlerts);
   const pages = visibleHomePageRecommendations(dedupeById(input.pages || []), policy.maxPageRecommendations);
   const adoptions = (() => {
@@ -152,6 +138,37 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
   })();
   const reels = dedupeById(input.reels || []).slice(0, policy.maxReels);
   const stories = input.storyItems || [];
+
+  const queuedCount = () => localityQueue.length + trendingQueue.length + regularQueue.length;
+  let reserveAdoptionReelBridge =
+    input.pageIndex === 0 && adoptions.length > 0 && reels.length > 0 && posts.length > 0;
+
+  const takePost = (prefer: FeedPostBucket | 'any', consumeReserved = false): Post | null => {
+    if (reserveAdoptionReelBridge && !consumeReserved && queuedCount() <= 1) return null;
+    let id: string | null = null;
+    if (prefer === 'locality') id = takeNext(localityQueue);
+    else if (prefer === 'trending') id = takeNext(trendingQueue);
+    else id = takeNext(regularQueue) || takeNext(localityQueue) || takeNext(trendingQueue);
+    if (!id) return null;
+    const post = byId.get(id);
+    if (!post) return null;
+    byId.delete(id);
+    consumed.push(post);
+    used.add(id);
+    return post;
+  };
+
+  const insertPostBetweenAdoptionsAndReels = () => {
+    if (!reserveAdoptionReelBridge) return;
+    const last = items[items.length - 1];
+    if (last?.kind === 'adoptions') {
+      const post = takePost('any', true);
+      if (post) {
+        items.push({ kind: 'post', key: feedItemKey('post', post.id), post, bucket: bucketFor(post.id, 'any') });
+      }
+    }
+    reserveAdoptionReelBridge = false;
+  };
 
   const sequence: FeedCompositionSlot[] =
     input.pageIndex === 0 ? [...policy.firstPageSequence] : ['remaining_posts'];
@@ -173,6 +190,7 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
       continue;
     }
     if (slot === 'remaining_posts') {
+      reserveAdoptionReelBridge = false;
       while (true) {
         const post = takePost('any');
         if (!post) break;
@@ -194,7 +212,10 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
     } else if (slot === 'adoptions' && adoptions.length > 0) {
       items.push({ kind: 'adoptions', key: feedItemKey('adoptions', `p${input.pageIndex}`), pets: adoptions });
     } else if (slot === 'reels' && reels.length > 0) {
+      insertPostBetweenAdoptionsAndReels();
       items.push({ kind: 'reels', key: feedItemKey('reels', `p${input.pageIndex}`), reels });
+    } else if (slot === 'reels') {
+      reserveAdoptionReelBridge = false;
     }
   }
 
@@ -240,6 +261,23 @@ export function hasVisibleAdSlot(items: FeedItem[]): boolean {
 
 export function feedItemTypes(items: FeedItem[]): Array<FeedItem['kind']> {
   return items.map((item) => item.kind);
+}
+
+export function adoptionsAndReelsAreConsecutive(items: FeedItem[]): boolean {
+  for (let i = 0; i < items.length - 1; i++) {
+    if (items[i].kind === 'adoptions' && items[i + 1].kind === 'reels') return true;
+  }
+  return false;
+}
+
+export function postIdsBetweenAdoptionsAndReels(items: FeedItem[]): string[] {
+  const start = items.findIndex((item) => item.kind === 'adoptions');
+  const end = items.findIndex((item) => item.kind === 'reels');
+  if (start < 0 || end < 0 || end <= start) return [];
+  return items
+    .slice(start + 1, end)
+    .filter((item): item is Extract<FeedItem, { kind: 'post' }> => item.kind === 'post')
+    .map((item) => item.post.id);
 }
 
 export function keysAreStable(items: FeedItem[]): boolean {
