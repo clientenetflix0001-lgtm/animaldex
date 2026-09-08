@@ -3,10 +3,7 @@
 // ============================================================
 // Home: header con ubicación editable (misma lógica que Alertas),
 // buscador, categorías horizontales, selector Productos/Servicios,
-// y secciones (Destacados, Cerca de vos, Mejor valorados, Recién
-// publicados) mientras no hay búsqueda/categoría activa. Al buscar
-// o filtrar por categoría, cambia a una grilla paginada de 2 columnas
-// con scroll infinito.
+// y un listado vertical de 2 productos por fila (no carrusel).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -34,6 +31,7 @@ import {
   categoryLabel,
   categoryEmoji,
   ListingKind,
+  MARKET_LIST_COLUMNS,
 } from '../lib/market';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
@@ -317,10 +315,12 @@ export default function MarketScreen() {
     <ActivityIndicator color={colors.primary} style={{ marginTop: 60 }} />
   ) : (
     <FlatList
-      key="market-vertical"
+      key="market-grid-2"
+      numColumns={MARKET_LIST_COLUMNS}
       data={listings}
       keyExtractor={(l) => l.id}
-      contentContainerStyle={{ gap: spacing.sm, paddingBottom: spacing.xl, paddingTop: spacing.sm, paddingHorizontal: spacing.lg }}
+      columnWrapperStyle={styles.gridRow}
+      contentContainerStyle={styles.gridContent}
       onEndReached={loadMore}
       onEndReachedThreshold={0.5}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
@@ -331,14 +331,17 @@ export default function MarketScreen() {
           <Text style={styles.emptyText}>Prueba con otra búsqueda o categoría.</Text>
         </View>
       }
-      renderItem={({ item }) => (
-        <ListingCard
-          listing={item}
-          onPress={openListing}
-          onToggleFavorite={handleToggleFavorite}
-          viewerLat={viewerLat}
-          viewerLon={viewerLon}
-        />
+      renderItem={({ item, index }) => (
+        <View style={[styles.gridCell, index % 2 === 1 && styles.gridCellDivider]}>
+          <ListingCard
+            listing={item}
+            onPress={openListing}
+            onToggleFavorite={handleToggleFavorite}
+            viewerLat={viewerLat}
+            viewerLon={viewerLon}
+            style={styles.gridCard}
+          />
+        </View>
       )}
       ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.lg }} /> : null}
     />
@@ -480,6 +483,14 @@ const styles = StyleSheet.create({
   sectionBlock: { marginTop: spacing.lg },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: colors.text, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
   sectionCard: { width: 160 },
+  gridContent: { paddingBottom: spacing.xl, paddingTop: spacing.sm, paddingHorizontal: spacing.md },
+  gridRow: { alignItems: 'stretch' },
+  gridCell: { flex: 1, maxWidth: '50%', paddingHorizontal: 6, paddingBottom: spacing.sm },
+  gridCellDivider: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: 'rgba(45, 32, 22, 0.12)',
+  },
+  gridCard: { flex: 1 },
   emptyState: { alignItems: 'center', paddingTop: 60, paddingHorizontal: spacing.xl, gap: 4 },
   emptyEmoji: { fontSize: 40 },
   emptyTitle: { fontSize: 16, fontWeight: '800', color: colors.text, marginTop: 4 },
