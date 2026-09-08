@@ -4,11 +4,12 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { adoptionStatusOverlay, compactAgeLabel } from '../lib/compactTime';
-import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
 import { sharePetProfile } from '../lib/share';
 import { db } from '../lib/db';
 import { ADOPTION_CONTACT_MISSING, adoptCtaLabel, resolveAdoptionOpenAction } from '../lib/adoptionContact';
 import WantToAdoptButton from './WantToAdoptButton';
+import PetAvatar from './PetAvatar';
 import type { AdoptionCard } from '../lib/adoptionDiscovery';
 import { colors, spacing } from '../lib/theme';
 
@@ -35,7 +36,6 @@ function AdoptionDiscoveryCard({
 }: Props) {
   const ageText = compactAgeLabel(card.birthDate);
   const statusText = adoptionStatusOverlay(card.careStatus, card.adoptionStartedAt) || '❤️ En adopción';
-  const photo = thumb(card.photo || petFallbackAvatar(card.petId || card.id), 1080);
   const pad = Math.max(spacing.md, bottomPad);
   const shelterHandle = card.shelterUsername || card.shelterName;
   const shelterAvatar = thumb(
@@ -82,7 +82,14 @@ function AdoptionDiscoveryCard({
   return (
     <View style={[styles.page, { height }]}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onOpenPet} accessibilityLabel={card.name}>
-        <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} contentFit="cover" transition={0} />
+        <PetAvatar
+          uri={card.photo}
+          style={StyleSheet.absoluteFill}
+          thumbWidth={1080}
+          iconSize={72}
+          contentFit="cover"
+          transition={0}
+        />
       </Pressable>
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.72)']}

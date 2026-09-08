@@ -29,7 +29,8 @@ import { db, ApiPet } from '../lib/db';
 import { uploadImage } from '../lib/api';
 import { useStore, apiPostToPost } from '../lib/store';
 import { postNavParams, sharePetProfile } from '../lib/share';
-import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
+import { petPhotoUri } from '../lib/petAvatar';
 import { FollowButton } from '../components/FollowButton';
 import PetStatusAvatar from '../components/PetStatusAvatar';
 import QrLostPetModal from '../components/QrLostPetModal';
@@ -262,7 +263,7 @@ export default function PetProfileScreen() {
   const neuteredText =
     realPet?.neutered == null ? '' : realPet.neutered ? 'Castrado' : 'Sin castrar';
   const isProtectorPet = !!realPet?.profileId;
-  const avatarUri = demoPet ? petAvatar(demoPet) : realPet?.avatarUrl ?? petFallbackAvatar(petId);
+  const avatarUri = demoPet ? petAvatar(demoPet) : petPhotoUri(realPet?.avatarUrl);
   const followerBase = demoPet ? demoPet.followers : realStats?.followers ?? 0;
   const followerTotal = followerBase + (following && !demoPet ? 0 : following ? 1 : 0);
   const ownerName = demoPet ? getOwner(demoPet).name : realOwner?.name ?? '';
@@ -353,7 +354,7 @@ export default function PetProfileScreen() {
           accessibilityLabel={isMyPet ? 'Cambiar foto de perfil' : undefined}
         >
           <PetStatusAvatar
-            uri={thumb(avatarUri, 200)}
+            uri={avatarUri}
             size={98}
             status={realPet?.careStatus}
           >

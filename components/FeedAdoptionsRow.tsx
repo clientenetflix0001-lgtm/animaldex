@@ -1,23 +1,24 @@
 import React, { memo, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import type { AdoptionCard } from '../lib/adoptionDiscovery';
-import { thumb, petFallbackAvatar } from '../lib/images';
 import { HOME_MODULE_TITLES } from '../lib/homeFeedModules';
 import { HomeHorizontalList, HomeModulePressable } from './HomeHorizontalList';
 import { HomeModuleTitle } from './HomeModuleTitle';
+import PetAvatar from './PetAvatar';
 import { colors, radius, spacing } from '../lib/theme';
 
 function AdoptionChip({ card, onPress }: { card: AdoptionCard; onPress: () => void }) {
   return (
     <HomeModulePressable onPress={onPress} style={styles.card} accessibilityRole="button" accessibilityLabel="Ver mascota en adopción">
-      <Image
-        source={{ uri: thumb(card.photo || petFallbackAvatar(card.petId || card.id), 240) }}
+      <PetAvatar
+        uri={card.photo}
         style={styles.photo}
-        contentFit="cover"
-        cachePolicy="memory-disk"
+        radius={radius.md}
+        thumbWidth={240}
+        iconSize={48}
         recyclingKey={card.id}
+        contentFit="cover"
       />
       <Text style={styles.name} numberOfLines={1}>
         {card.name}

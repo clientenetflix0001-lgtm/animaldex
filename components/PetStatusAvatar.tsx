@@ -1,19 +1,18 @@
 import React, { memo, useEffect, type ReactNode } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import {
   PET_STATUS_RING_GAP,
   PET_STATUS_RING_MS,
-  PET_STATUS_RING_WIDTH,
   petStatusRingColors,
   petStatusRingOuterSize,
 } from '../lib/petStatusRing';
 import { colors } from '../lib/theme';
+import PetAvatar from './PetAvatar';
 
 type Props = {
-  uri: string;
+  uri?: string | null;
   size: number;
   status?: string | null;
   children?: ReactNode;
@@ -41,7 +40,6 @@ function PetStatusAvatar({ uri, size, status, children }: Props) {
     transform: [{ rotate: `${rotation.value}deg` }],
   }));
 
-  const photoRadius = size / 2;
   const hole = size + PET_STATUS_RING_GAP * 2;
 
   return (
@@ -74,18 +72,13 @@ function PetStatusAvatar({ uri, size, status, children }: Props) {
           },
         ]}
       >
-        <Image
-          source={{ uri }}
+        <PetAvatar
+          uri={uri}
+          size={size}
           style={{
-            width: size,
-            height: size,
-            borderRadius: photoRadius,
-            backgroundColor: colors.border,
             borderWidth: palette ? 0 : 3,
             borderColor: colors.primarysoft,
           }}
-          contentFit="cover"
-          transition={250}
         />
       </View>
       {children ? (

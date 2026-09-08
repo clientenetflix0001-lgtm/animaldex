@@ -16,6 +16,7 @@ import { openHumanProfile } from '../lib/publicHandles';
 import { useStore } from '../lib/store';
 import PushPermissionBanner from '../components/PushPermissionBanner';
 import { locationActivityCopy } from '../lib/pushPolicy';
+import PetAvatar from '../components/PetAvatar';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -153,6 +154,8 @@ export default function ActivityScreen() {
               <View style={[styles.avatar, styles.locationAvatar]}>
                 <Ionicons name="paw" size={20} color={colors.secondary} />
               </View>
+            ) : isTransfer ? (
+              <PetAvatar uri={n.actorAvatar} size={48} style={styles.avatar} />
             ) : (
               <Image
                 source={{ uri: thumb(n.actorAvatar ?? userFallbackAvatar(n.actorUsername), 100) }}

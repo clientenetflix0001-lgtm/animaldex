@@ -23,6 +23,7 @@ import { useNavigation } from '@react-navigation/native';
 import { colors, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import { openHumanProfile } from '../lib/publicHandles';
+import PetAvatar from './PetAvatar';
 
 interface Props {
   post: Post;
@@ -110,11 +111,15 @@ function PostCardInner({
           else openHumanProfile(navigation, { username: profileHandle, userId: post.authorUserId });
         }}
       >
-        <Image
-          source={{ uri: thumb(asProfile ? profileAvatar : disp.avatarUri, 100) }}
-          style={styles.avatar}
-          transition={200}
-        />
+        {asProfile ? (
+          <Image
+            source={{ uri: thumb(profileAvatar, 100) }}
+            style={styles.avatar}
+            transition={200}
+          />
+        ) : (
+          <PetAvatar uri={disp.avatarUri} size={42} style={styles.avatar} />
+        )}
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
             <Text style={styles.petName}>
