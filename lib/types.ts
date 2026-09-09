@@ -35,8 +35,9 @@ export type RootStackParamList = {
   QRScanner: undefined;
   TagWelcome: { code: string };
   AdminTags: undefined;
-  CreateAlert: undefined;
+  CreateAlert: { purpose?: 'flyer' } | undefined;
   MyAlerts: undefined;
+  AlertFlyerPreview: { alertId?: string; session?: import('./alertFlyer').AlertFlyerSession };
   AlertDetail: { alertId: string };
   CreateListing: undefined;
   MyListings: undefined;

@@ -153,6 +153,13 @@ export default function MyAlertsScreen() {
         {!resolved ? (
           <View style={styles.actions}>
             <Pressable
+              style={styles.flyerBtn}
+              onPress={() => navigation.navigate('AlertFlyerPreview', { alertId: item.id })}
+              disabled={busy}
+            >
+              <Text style={styles.flyerText}>Crear flyer</Text>
+            </Pressable>
+            <Pressable
               style={[styles.renewBtn, !renewUi.canRenew && styles.renewBtnOff]}
               onPress={() => { if (renewUi.canRenew) renew(item); }}
               disabled={busy || !renewUi.canRenew}
@@ -234,6 +241,16 @@ const styles = StyleSheet.create({
   context: { fontSize: 13, color: colors.text, marginTop: 4, fontWeight: '600' },
   meta: { fontSize: 11, color: colors.textMuted, marginTop: 4 },
   actions: { marginTop: 12, gap: 8 },
+  flyerBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.full,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.secondary,
+  },
+  flyerText: { color: colors.secondary, fontWeight: '800', fontSize: 12 },
   renewBtn: {
     borderWidth: 1,
     borderColor: colors.border,
