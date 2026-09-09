@@ -61,7 +61,7 @@ describe('páginas legales públicas Play', () => {
     assert.match(privacy, /13\. Contacto/);
     assert.match(privacy, /Animaldex/);
     assert.match(privacy, /Argentina/);
-    assert.match(privacy, /Correo: <a href="mailto:soporte@animaldex\.com">soporte@animaldex\.com<\/a>/);
+    assert.match(privacy, /Correo: <!--email_off--><a href="mailto:soporte@animaldex\.com">soporte@animaldex\.com<\/a><!--\/email_off-->/);
     assert.match(privacy, /href="\/eliminar-cuenta"/);
     assert.match(privacy, /Solicitar eliminación de cuenta/);
     assert.match(privacy, /canonical" href="https:\/\/animaldex\.com\/privacidad"/);
@@ -86,7 +86,7 @@ describe('páginas legales públicas Play', () => {
     assert.match(deletion, /Solicitud de eliminación de cuenta - Animaldex/);
     assert.match(deletion, /Cuenta\/usuario\/correo:/);
     assert.match(deletion, /Identificá la cuenta para armar la solicitud/);
-    assert.match(deletion, /Correo: <a href="mailto:soporte@animaldex\.com">soporte@animaldex\.com<\/a>/);
+    assert.match(deletion, /Correo: <!--email_off--><a href="mailto:soporte@animaldex\.com">soporte@animaldex\.com<\/a><!--\/email_off-->/);
     assert.doesNotMatch(deletion, /fetch\(|\/api\/|createAlert|deleteAccount/);
     assert.doesNotMatch(deletion, /Tu cuenta fue eliminada|cuenta eliminada con éxito/i);
     assert.doesNotMatch(deletion, /todavía no está publicado|No se inventó un email/);
