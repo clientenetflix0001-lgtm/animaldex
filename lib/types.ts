@@ -37,7 +37,7 @@ export type RootStackParamList = {
   AdminTags: undefined;
   CreateAlert: { purpose?: 'flyer' } | undefined;
   MyAlerts: undefined;
-  AlertFlyerPreview: { alertId?: string; source?: import('./alertFlyer').AlertFlyerSource };
+  AlertFlyerPreview: { alertId?: string; from?: import('./alertFlyer').AlertFlyerSource };
   AlertDetail: { alertId: string };
   CreateListing: undefined;
   MyListings: undefined;

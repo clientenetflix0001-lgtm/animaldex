@@ -24,7 +24,7 @@ export function AlertFlyerCanvas({ flyer }: { flyer: AlertFlyer }) {
       <View style={styles.heroRow}>
         {flyer.image ? (
           <View style={styles.photoWrap}>
-            <Image source={{ uri: flyer.image }} style={styles.photo} resizeMode="cover" />
+            <Image source={{ uri: flyer.image }} style={styles.photo} resizeMode="contain" />
           </View>
         ) : (
           <View style={[styles.photoWrap, styles.photoEmpty]} />
@@ -85,7 +85,9 @@ export function AlertFlyerCanvas({ flyer }: { flyer: AlertFlyer }) {
 export function FlyerCanvasFallback() {
   return (
     <View style={styles.fallback}>
-      <Text style={styles.fallbackText}>No pudimos crear el flyer. Revisá los datos.</Text>
+      <Text style={styles.fallbackText}>
+        No pudimos preparar el flyer. Revisá los datos e intentá nuevamente.
+      </Text>
     </View>
   );
 }
@@ -118,29 +120,29 @@ const styles = StyleSheet.create({
   paw: { position: 'absolute', fontSize: 16, color: '#C4B6A8', opacity: 0.45 },
   pawTR: { top: 12, right: 14 },
   pawBR: { bottom: 10, right: 14 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   logo: { width: 22, height: 22 },
   brand: { fontWeight: '900', fontSize: 15, color: '#2D2016', letterSpacing: 0.3 },
   heroBand: {
-    borderRadius: 14,
-    paddingVertical: 10,
+    borderRadius: 12,
+    paddingVertical: 7,
     paddingHorizontal: 12,
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   hero: {
     color: '#fff',
     fontWeight: '900',
-    fontSize: 26,
-    letterSpacing: 0.6,
+    fontSize: 20,
+    letterSpacing: 0.4,
     textAlign: 'center',
   },
   heroCta: {
-    marginTop: 4,
+    marginTop: 2,
     color: '#fff',
     fontWeight: '800',
-    fontSize: 11,
-    letterSpacing: 0.8,
+    fontSize: 10,
+    letterSpacing: 0.6,
     textAlign: 'center',
     opacity: 0.95,
   },

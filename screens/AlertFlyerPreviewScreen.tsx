@@ -14,7 +14,7 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AlertFlyerCanvas, FlyerCanvasFallback, FlyerRenderGuard } from '../components/AlertFlyerCanvas';
 import { FLYER_ASPECT, flyerFromApiAlert, type AlertFlyerSession } from '../lib/alertFlyer';
-import { getFlyerDraft, resolveFlyerPreviewOrigin } from '../lib/alertFlyerSession';
+import { clearFlyerDraft, getFlyerDraft, isFlyerDraftReady, resolveFlyerPreviewOrigin } from '../lib/alertFlyerSession';
 import { shareFlyerCanvas } from '../lib/alertFlyerShare';
 import { db } from '../lib/db';
 import { colors, radius, shadow, spacing } from '../lib/theme';
@@ -26,22 +26,29 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function AlertFlyerPreviewScreen() {
   const navigation = useNavigation<Nav>();
   const params = useRoute<Rt>().params || {};
-  const origin = resolveFlyerPreviewOrigin(params);
   const flyerRef = useRef<View>(null);
-  const [session, setSession] = useState<AlertFlyerSession | null>(
-    origin.mode === 'draft' ? getFlyerDraft() : null
-  );
-  const [loading, setLoading] = useState(origin.mode === 'existing');
+  const [session, setSession] = useState<AlertFlyerSession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    const origin = resolveFlyerPreviewOrigin(params);
     if (origin.mode === 'draft') {
-      setSession(getFlyerDraft());
+      const draft = getFlyerDraft();
+      if (isFlyerDraftReady(draft) && draft) {
+        setSession(draft);
+        setFailed(false);
+      } else {
+        setSession(null);
+        setFailed(true);
+      }
       setLoading(false);
       return;
     }
     if (origin.mode === 'invalid') {
       setSession(null);
+      setFailed(true);
       setLoading(false);
       return;
     }
@@ -51,10 +58,12 @@ export default function AlertFlyerPreviewScreen() {
         const res = await db.alertDetail(origin.alertId);
         if (cancelled) return;
         setSession({ source: 'existing', alertId: origin.alertId, flyer: flyerFromApiAlert(res.alert) });
+        setFailed(false);
       } catch (e: any) {
         if (!cancelled) {
           setSession(null);
-          Alert.alert('No se pudo armar el flyer', e?.message || 'Inténtalo de nuevo');
+          setFailed(true);
+          Alert.alert('No pudimos preparar el flyer', e?.message || 'Revisá los datos e intentá nuevamente.');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -63,10 +72,10 @@ export default function AlertFlyerPreviewScreen() {
     return () => {
       cancelled = true;
     };
-  }, [origin.mode, origin.mode === 'existing' ? origin.alertId : '']);
+  }, [params.alertId, params.from]);
 
   const share = useCallback(async () => {
-    if (!session) return;
+    if (!session?.flyer) return;
     setBusy(true);
     try {
       await shareFlyerCanvas(flyerRef.current, session.flyer, session.alertId);
@@ -80,6 +89,7 @@ export default function AlertFlyerPreviewScreen() {
     setBusy(true);
     try {
       const { alert } = await db.createAlert(session.publish);
+      clearFlyerDraft();
       setSession({ ...session, source: 'existing', alertId: alert.id, publish: undefined });
       Alert.alert('Alerta publicada', 'El flyer no reemplaza la alerta: ya está en Alertas.', [
         { text: 'Ver alerta', onPress: () => navigation.replace('AlertDetail', { alertId: alert.id }) },
@@ -95,12 +105,15 @@ export default function AlertFlyerPreviewScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
-        <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+        <View style={styles.preparing}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.preparingText}>Preparando flyer…</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
-  if (!session) {
+  if (failed || !session?.flyer) {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
         <View style={styles.missing}>
@@ -152,7 +165,9 @@ const styles = StyleSheet.create({
     borderColor: '#F0E6DA',
     backgroundColor: '#FFF9F2',
   },
-  missing: { flex: 1, padding: spacing.xl },
+  preparing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.bg },
+  preparingText: { fontWeight: '800', fontSize: 15, color: colors.text },
+  missing: { flex: 1, padding: spacing.xl, backgroundColor: colors.bg },
   primary: {
     flexDirection: 'row',
     alignItems: 'center',

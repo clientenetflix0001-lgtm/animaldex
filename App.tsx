@@ -528,7 +528,7 @@ function RootNavigator() {
       <Stack.Screen
         name="CreateAlert"
         component={CreateAlertScreen}
-        options={{ title: 'Crear alerta', ...screenHeaderOptions }}
+        options={{ title: 'Crear alerta', ...screenHeaderOptions, contentStyle: { backgroundColor: colors.bg } }}
       />
       <Stack.Screen
         name="MyAlerts"
@@ -538,7 +538,7 @@ function RootNavigator() {
       <Stack.Screen
         name="AlertFlyerPreview"
         component={AlertFlyerPreviewScreen}
-        options={{ title: 'Flyer', ...screenHeaderOptions }}
+        options={{ title: 'Flyer', ...screenHeaderOptions, contentStyle: { backgroundColor: colors.bg } }}
       />
       <Stack.Screen
         name="AlertDetail"

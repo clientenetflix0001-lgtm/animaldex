@@ -20,7 +20,7 @@ export function clearFlyerDraft(): void {
 
 export type FlyerPreviewParams = {
   alertId?: string;
-  source?: AlertFlyerSource;
+  from?: AlertFlyerSource;
 };
 
 export type FlyerPreviewOrigin =
@@ -28,9 +28,17 @@ export type FlyerPreviewOrigin =
   | { mode: 'draft' }
   | { mode: 'invalid' };
 
+export function isFlyerDraftReady(session: AlertFlyerSession | null | undefined = flyerDraft): boolean {
+  if (!session || session.source !== 'draft') return false;
+  const image = String(session.flyer?.image || session.publish?.image || '').trim();
+  const locality = String(session.flyer?.location || session.publish?.locality || '').trim();
+  const type = session.flyer?.type || session.publish?.type;
+  return Boolean(type && image && locality);
+}
+
 export function resolveFlyerPreviewOrigin(params?: FlyerPreviewParams | null): FlyerPreviewOrigin {
   const alertId = String(params?.alertId || '').trim();
   if (alertId) return { mode: 'existing', alertId };
-  if (params?.source === 'draft' || flyerDraft) return { mode: 'draft' };
+  if (params?.from === 'draft' && isFlyerDraftReady(flyerDraft)) return { mode: 'draft' };
   return { mode: 'invalid' };
 }

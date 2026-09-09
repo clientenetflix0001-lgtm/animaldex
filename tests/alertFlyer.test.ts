@@ -32,10 +32,12 @@ import {
 import {
   clearFlyerDraft,
   getFlyerDraft,
+  isFlyerDraftReady,
   resolveFlyerPreviewOrigin,
   setFlyerDraft,
 } from '../lib/alertFlyerSession.ts';
 import { createChooserDestination, createChooserOpen, createChooserParams } from '../lib/createChooser.ts';
+import { navigateRoot } from '../lib/rootNavigate.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
@@ -115,7 +117,7 @@ describe('flyer UI wiring', () => {
     assert.match(chooser, /accessibilityLabel="Crear flyer"/);
     assert.match(chooser, /accessibilityLabel="Crear historia"/);
     assert.match(chooser, /createChooserOpen/);
-    assert.match(chooser, /navigation\.navigate\(screen, params\)/);
+    assert.match(chooser, /navigateRoot\(navigation, screen, params\)/);
     assert.doesNotMatch(chooser, /getParent/);
     const create = read('screens/CreateAlertScreen.tsx');
     assert.match(create, /Publicar alerta/);
@@ -123,8 +125,9 @@ describe('flyer UI wiring', () => {
     assert.match(create, /purpose === 'flyer'/);
     assert.match(create, /buildAlertFlyerData/);
     assert.match(create, /setFlyerDraft/);
-    assert.match(create, /navigate\('AlertFlyerPreview', \{ source: 'draft' \}\)/);
-    assert.doesNotMatch(create, /session:/);
+    assert.match(create, /isFlyerDraftReady/);
+    assert.match(create, /navigateRoot\(navigation, 'AlertFlyerPreview', \{ from: 'draft' \}\)/);
+    assert.doesNotMatch(create, /AlertFlyerPreview',\s*\{\s*source/);
     const preview = read('screens/AlertFlyerPreviewScreen.tsx');
     assert.match(preview, /db\.createAlert/);
     assert.match(preview, /shareFlyerCanvas/);
@@ -149,13 +152,19 @@ describe('flyer UI wiring', () => {
     assert.match(canvas, /sidePanel/);
     assert.match(canvas, /SI TENÉS INFORMACIÓN/);
     assert.match(canvas, /Juntos los encontramos/);
+    assert.match(canvas, /resizeMode="contain"/);
+    assert.doesNotMatch(canvas, /resizeMode="cover"/);
+    assert.match(canvas, /fontSize: 20/);
+    assert.match(canvas, /paddingVertical: 7/);
   });
 });
 
 describe('flyer + draft preview', () => {
-  it('CreateChooser → draft → Preview no exige alert.id', () => {
+  it('CreateChooser → draft válido abre preview; draft faltante no navega', () => {
     clearFlyerDraft();
+    assert.equal(isFlyerDraftReady(), false);
     assert.deepEqual(resolveFlyerPreviewOrigin({}), { mode: 'invalid' });
+    assert.deepEqual(resolveFlyerPreviewOrigin({ from: 'draft' }), { mode: 'invalid' });
     const flyer = buildAlertFlyerData({
       type: 'lost',
       petName: 'Nina',
@@ -164,6 +173,18 @@ describe('flyer + draft preview', () => {
       image: 'https://example.com/nina.jpg',
       description: 'Collar rojo',
     });
+    setFlyerDraft({
+      source: 'draft',
+      flyer: { ...flyer, image: undefined },
+      publish: {
+        type: 'lost',
+        species: 'perro',
+        description: 'Collar rojo',
+        image: '',
+        locality: 'Cerrillos',
+      },
+    });
+    assert.equal(isFlyerDraftReady(), false);
     setFlyerDraft({
       source: 'draft',
       flyer,
@@ -178,15 +199,32 @@ describe('flyer + draft preview', () => {
     const draft = getFlyerDraft();
     assert.equal(draft?.source, 'draft');
     assert.equal(draft?.alertId, undefined);
-    assert.deepEqual(resolveFlyerPreviewOrigin({ source: 'draft' }), { mode: 'draft' });
+    assert.equal(isFlyerDraftReady(), true);
+    assert.deepEqual(resolveFlyerPreviewOrigin({ from: 'draft' }), { mode: 'draft' });
     assert.deepEqual(resolveFlyerPreviewOrigin({ alertId: 'alert_1' }), { mode: 'existing', alertId: 'alert_1' });
     assert.equal(finiteCoord(Number.NaN), null);
     assert.equal(finiteCoord(24.1), 24.1);
     const preview = read('screens/AlertFlyerPreviewScreen.tsx');
     assert.doesNotMatch(preview, /session\.alert\.id/);
     assert.match(preview, /origin\.mode === 'draft'/);
+    assert.match(preview, /Preparando flyer/);
+    assert.match(preview, /No pudimos preparar el flyer/);
     assert.match(read('screens/MyAlertsScreen.tsx'), /alertId: item\.id/);
+    const create = read('screens/CreateAlertScreen.tsx');
+    assert.match(create, /isFlyerDraftReady\(\)/);
+    assert.doesNotMatch(create, /navigateRoot[\s\S]*from: 'draft'[\s\S]*setFlyerDraft/);
+    const calls: Array<[string, object?]> = [];
+    const root = { navigate: (n: string, p?: object) => calls.push([n, p]) };
+    const tabs = { getParent: () => root, navigate: () => { throw new Error('tab'); } };
+    const screen = { getParent: () => tabs, navigate: () => { throw new Error('screen'); } };
+    navigateRoot(screen, 'CreateAlert', { purpose: 'flyer' });
+    navigateRoot(screen, 'AlertFlyerPreview', { from: 'draft' });
+    assert.deepEqual(calls, [
+      ['CreateAlert', { purpose: 'flyer' }],
+      ['AlertFlyerPreview', { from: 'draft' }],
+    ]);
     clearFlyerDraft();
+    assert.equal(isFlyerDraftReady(), false);
   });
 });
 

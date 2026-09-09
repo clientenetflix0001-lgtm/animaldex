@@ -36,7 +36,8 @@ import {
   dateStringToTimestamp,
 } from '../lib/alerts';
 import { buildAlertFlyerData, finiteCoord } from '../lib/alertFlyer';
-import { setFlyerDraft } from '../lib/alertFlyerSession';
+import { isFlyerDraftReady, setFlyerDraft } from '../lib/alertFlyerSession';
+import { navigateRoot } from '../lib/rootNavigate';
 import { PET_SEXES } from '../lib/petFields';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
@@ -211,7 +212,11 @@ export default function CreateAlertScreen() {
         }),
         publish: payload,
       });
-      navigation.navigate('AlertFlyerPreview', { source: 'draft' });
+      if (!isFlyerDraftReady()) {
+        Alert.alert('No pudimos preparar el flyer', 'Revisá los datos e intentá nuevamente.');
+        return;
+      }
+      navigateRoot(navigation, 'AlertFlyerPreview', { from: 'draft' });
       return;
     }
 
