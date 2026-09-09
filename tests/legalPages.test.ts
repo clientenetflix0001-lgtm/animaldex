@@ -118,8 +118,8 @@ describe('páginas legales públicas Play', () => {
     assert.match(copy, /dist\/eliminar-cuenta\/index.html/);
     assert.match(copy, /dist\/legal\/privacidad.html/);
     assert.match(copy, /dist\/legal\/eliminar-cuenta.html/);
-    assert.match(pages, /\/legal\/privacidad\.html/);
-    assert.match(pages, /\/legal\/eliminar-cuenta\.html/);
+    assert.match(pages, /\/legal\/privacidad'/);
+    assert.match(pages, /\/legal\/eliminar-cuenta'/);
   });
 
   it('no caen a mascota, QR, Auth ni username', () => {
@@ -127,8 +127,8 @@ describe('páginas legales públicas Play', () => {
     assert.equal(isPublicLegalPath('/privacidad/'), true);
     assert.equal(isPublicLegalPath('/eliminar-cuenta?x=1'), true);
     assert.equal(isPublicLegalPath('/nina.pet'), false);
-    assert.equal(legalPageAssetPath('/privacidad/'), '/legal/privacidad.html');
-    assert.equal(legalPageAssetPath('/eliminar-cuenta'), '/legal/eliminar-cuenta.html');
+    assert.equal(legalPageAssetPath('/privacidad/'), '/legal/privacidad');
+    assert.equal(legalPageAssetPath('/eliminar-cuenta'), '/legal/eliminar-cuenta');
     assert.equal(isReservedPublicUsername('privacidad'), true);
     assert.equal(resolveAppLink('https://animaldex.com/privacidad'), null);
     assert.equal(resolveAppLink('https://animaldex.com/eliminar-cuenta'), null);

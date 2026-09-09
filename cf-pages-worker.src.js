@@ -41,9 +41,9 @@ const PUBLIC_WEB_ORIGIN = 'https://animaldex.com';
 /** HTML estático de Play/privacidad. Se sirve ANTES de OG y de la SPA. */
 function legalPageAssetPath(pathname) {
   const p = String(pathname || '').replace(/\/+$/, '') || '/';
-  // Copias planas: Pages hace 308 de /foo/index.html → /foo/ con body vacío.
-  if (p === '/privacidad') return '/legal/privacidad.html';
-  if (p === '/eliminar-cuenta') return '/legal/eliminar-cuenta.html';
+  // Pages hace 308 de *.html → sin extensión. Pedir la pretty URL.
+  if (p === '/privacidad') return '/legal/privacidad';
+  if (p === '/eliminar-cuenta') return '/legal/eliminar-cuenta';
   return null;
 }
 
@@ -577,7 +577,9 @@ export default {
     //     sin login, sin SPA, sin perfil/mascota/QR. Incluye bots (Play).
     const legalAsset = legalPageAssetPath(url.pathname);
     if (legalAsset) {
-      const legalRes = await env.ASSETS.fetch(new Request(new URL(legalAsset, url.origin).toString(), request));
+      const legalRes = await env.ASSETS.fetch(
+        new Request(new URL(legalAsset, url.origin).toString(), { method: 'GET' })
+      );
       const htmlHeaders = {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'public, max-age=300, must-revalidate',
