@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useLayoutEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { db } from '../lib/db';
@@ -35,6 +35,9 @@ import {
   isValidDateString,
   dateStringToTimestamp,
 } from '../lib/alerts';
+import { buildAlertFlyerData, finiteCoord } from '../lib/alertFlyer';
+import { isFlyerDraftReady, setFlyerDraft } from '../lib/alertFlyerSession';
+import { navigateRoot } from '../lib/rootNavigate';
 import { PET_SEXES } from '../lib/petFields';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
@@ -47,7 +50,13 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function CreateAlertScreen() {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<RouteProp<RootStackParamList, 'CreateAlert'>>();
+  const flyerMode = route.params?.purpose === 'flyer';
   const { activeProfile } = useProfiles();
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ title: flyerMode ? 'Crear flyer' : 'Crear alerta' });
+  }, [flyerMode, navigation]);
 
   const [primary, setPrimary] = useState<AlertCreatePrimaryId>('lost');
   const [seenKind, setSeenKind] = useState<'sighting' | 'found' | null>(null);
@@ -166,32 +175,61 @@ export default function CreateAlertScreen() {
       contactPhoneNorm = parsed.phone;
     }
 
+    const eventDate = dateText.trim() ? dateStringToTimestamp(dateText.trim()) ?? undefined : undefined;
+    const payload = {
+      type: resolvedType,
+      species,
+      petName: petName.trim() || undefined,
+      sex: resolvedType === 'adoption' ? sex : undefined,
+      description: description.trim(),
+      image,
+      locality,
+      province: province || undefined,
+      lat: finiteCoord(lat),
+      lon: finiteCoord(lon),
+      eventDate,
+      authorProfileId: resolvedType === 'adoption' ? activeProfile?.id : undefined,
+      contactWhatsapp: contactWhatsappNorm,
+      contactPhone: contactPhoneNorm,
+    };
+
+    if (flyerMode) {
+      setFlyerDraft({
+        source: 'draft',
+        flyer: buildAlertFlyerData({
+          type: resolvedType,
+          image,
+          petName: payload.petName,
+          species,
+          sex: payload.sex,
+          locality,
+          province,
+          eventDate,
+          description: payload.description,
+          contactWhatsapp: contactWhatsappNorm,
+          contactPhone: contactPhoneNorm,
+          userName: activeProfile?.name,
+        }),
+        publish: payload,
+      });
+      if (!isFlyerDraftReady()) {
+        Alert.alert('No pudimos preparar el flyer', 'Revisá los datos e intentá nuevamente.');
+        return;
+      }
+      navigateRoot(navigation, 'AlertFlyerPreview', { from: 'draft' });
+      return;
+    }
+
     setSaving(true);
     try {
-      const eventDate = dateText.trim() ? dateStringToTimestamp(dateText.trim()) ?? undefined : undefined;
-      const { alert } = await db.createAlert({
-        type: resolvedType,
-        species,
-        petName: petName.trim() || undefined,
-        sex: resolvedType === 'adoption' ? sex : undefined,
-        description: description.trim(),
-        image,
-        locality,
-        province: province || undefined,
-        lat,
-        lon,
-        eventDate,
-        authorProfileId: resolvedType === 'adoption' ? activeProfile?.id : undefined,
-        contactWhatsapp: contactWhatsappNorm,
-        contactPhone: contactPhoneNorm,
-      });
+      const { alert } = await db.createAlert(payload);
       navigation.replace('AlertDetail', { alertId: alert.id });
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo publicar la alerta');
     } finally {
       setSaving(false);
     }
-  }, [image, description, locality, province, lat, lon, primary, seenKind, species, petName, sex, dateText, navigation, activeProfile, contactWhatsapp, contactPhone]);
+  }, [image, description, locality, province, lat, lon, primary, seenKind, species, petName, sex, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -386,7 +424,7 @@ export default function CreateAlertScreen() {
             ) : (
               <>
                 <Ionicons name="megaphone" size={17} color="#fff" />
-                <Text style={styles.saveText}>Publicar alerta</Text>
+                <Text style={styles.saveText}>{flyerMode ? 'Generar flyer' : 'Publicar alerta'}</Text>
               </>
             )}
           </Pressable>

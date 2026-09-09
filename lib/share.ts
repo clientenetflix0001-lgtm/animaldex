@@ -222,6 +222,23 @@ export async function shareAlert(alert: ApiAlert): Promise<void> {
   await shareLink(meta.title, meta.shareText || meta.title, url);
 }
 
+export async function shareAlertFlyer(
+  flyer: {
+    headline: string;
+    petName?: string;
+    location?: string;
+    description?: string;
+    cta: string;
+    image?: string;
+  },
+  alertId?: string
+): Promise<void> {
+  const title = flyer.petName ? `${flyer.headline} · ${flyer.petName}` : flyer.headline;
+  const lines = [title, flyer.location ? `📍 ${flyer.location}` : '', flyer.description || '', flyer.cta].filter(Boolean);
+  const url = alertId ? alertShareUrl(alertId) : flyer.image || siteOrigin();
+  await shareLink(title, lines.join('\n'), url);
+}
+
 // ---------- Mercado: compartir una publicación (producto/servicio) ----------
 export function listingShareUrl(listingId: string): string {
   return `${siteOrigin()}/m/${listingId}`;

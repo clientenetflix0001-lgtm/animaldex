@@ -247,7 +247,7 @@ describe('client cannot push to another user + web safe', () => {
     const appJson = readFileSync(join(root, 'app.json'), 'utf8');
     assert.match(push, /Platform\.OS === 'web'/);
     assert.doesNotMatch(push, /serviceWorker/);
-    assert.match(appJson, /"version": "1.1.0"/);
+    assert.match(appJson, /"version": "1.1.1"/);
     assert.match(appJson, /googleServicesFile/);
     assert.match(appJson, /pathPrefix": "\/p\//);
     assert.match(appJson, /pathAdvancedPattern/);

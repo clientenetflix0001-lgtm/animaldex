@@ -5,7 +5,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
-import { createChooserDestination, type CreateChooserKind } from '../lib/createChooser';
+import { createChooserOpen, type CreateChooserKind } from '../lib/createChooser';
+import { navigateRoot } from '../lib/rootNavigate';
 
 export default function CreateChooserScreen() {
   const navigation = useNavigation<any>();
@@ -13,9 +14,8 @@ export default function CreateChooserScreen() {
 
   const open = useCallback(
     (kind: CreateChooserKind) => {
-      const dest = createChooserDestination(kind);
-      const parent = navigation.getParent?.() ?? navigation;
-      parent.navigate(dest);
+      const { screen, params } = createChooserOpen(kind);
+      navigateRoot(navigation, screen, params);
     },
     [navigation]
   );
@@ -54,6 +54,22 @@ export default function CreateChooserScreen() {
           <View style={styles.copy}>
             <Text style={styles.cardTitle}>Historia</Text>
             <Text style={styles.cardHint}>Foto o video de 24 horas</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </Pressable>
+
+        <Pressable
+          style={styles.card}
+          onPress={() => open('flyer')}
+          accessibilityRole="button"
+          accessibilityLabel="Crear flyer"
+        >
+          <View style={[styles.iconWrap, { backgroundColor: colors.primarysoft }]}>
+            <Ionicons name="newspaper-outline" size={26} color={colors.primary} />
+          </View>
+          <View style={styles.copy}>
+            <Text style={styles.cardTitle}>Crear flyer</Text>
+            <Text style={styles.cardHint}>Diseño para compartir una alerta</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
         </Pressable>

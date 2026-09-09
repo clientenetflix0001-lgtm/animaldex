@@ -36,6 +36,7 @@ import AdminTagsScreen from './screens/AdminTagsScreen';
 import AlertsScreen from './screens/AlertsScreen';
 import CreateAlertScreen from './screens/CreateAlertScreen';
 import MyAlertsScreen from './screens/MyAlertsScreen';
+import AlertFlyerPreviewScreen from './screens/AlertFlyerPreviewScreen';
 import AlertDetailScreen from './screens/AlertDetailScreen';
 import FeedReelsSwiper from './screens/FeedReelsSwiper';
 import CreateReelScreen from './screens/CreateReelScreen';
@@ -269,6 +270,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       AdminTags: 'admin/chapitas',
       CreateAlert: 'crear-alerta',
       MyAlerts: 'mis-alertas',
+      AlertFlyerPreview: 'crear-flyer',
       AlertDetail: 'a/:alertId',
       CreateListing: 'vender',
       MyListings: 'mis-productos',
@@ -526,12 +528,17 @@ function RootNavigator() {
       <Stack.Screen
         name="CreateAlert"
         component={CreateAlertScreen}
-        options={{ title: 'Crear alerta', ...screenHeaderOptions }}
+        options={{ title: 'Crear alerta', ...screenHeaderOptions, contentStyle: { backgroundColor: colors.bg } }}
       />
       <Stack.Screen
         name="MyAlerts"
         component={MyAlertsScreen}
         options={{ title: 'Mis alertas', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="AlertFlyerPreview"
+        component={AlertFlyerPreviewScreen}
+        options={{ title: 'Flyer', ...screenHeaderOptions, contentStyle: { backgroundColor: colors.bg } }}
       />
       <Stack.Screen
         name="AlertDetail"
