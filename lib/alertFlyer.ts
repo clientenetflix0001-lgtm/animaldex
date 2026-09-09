@@ -1,5 +1,4 @@
 import {
-  ALERT_TYPES,
   type AlertType,
   parseAlertType,
   speciesLabel,
@@ -18,6 +17,7 @@ export interface AlertFlyer {
   headline: string;
   cta: string;
   accent: string;
+  locationLabel: string;
   image?: string;
   petName?: string;
   speciesLabel?: string;
@@ -25,11 +25,18 @@ export interface AlertFlyer {
   ageLabel?: string;
   sizeLabel?: string;
   breed?: string;
+  colorLabel?: string;
   location?: string;
   dateLabel?: string;
   description?: string;
   contact?: string;
   authorName?: string;
+}
+
+export interface AlertFlyerFactRow {
+  icon: string;
+  label: string;
+  value: string;
 }
 
 export interface AlertFlyerPublishPayload {
@@ -56,18 +63,32 @@ export interface AlertFlyerSession {
   publish?: AlertFlyerPublishPayload;
 }
 
+const FLYER_HERO: Record<AlertType, string> = {
+  lost: '¡SE BUSCA!',
+  sighting: 'MASCOTA AVISTADA',
+  found: 'MASCOTA ENCONTRADA',
+  adoption: 'BUSCA UN HOGAR',
+};
+
 const FLYER_CTA: Record<AlertType, string> = {
   lost: 'AYUDANOS A ENCONTRARLA',
   sighting: '¿LA RECONOCÉS?',
   found: 'AYUDANOS A REUNIRLA CON SU FAMILIA',
-  adoption: 'BUSCA UN HOGAR',
+  adoption: 'AYUDALA A ENCONTRAR UNA FAMILIA',
 };
 
 const FLYER_ACCENT: Record<AlertType, string> = {
   lost: '#D97A68',
-  sighting: '#6BAF7C',
+  sighting: '#4E9C9A',
   found: '#6BAF7C',
   adoption: '#A78BB8',
+};
+
+const FLYER_LOCATION_LABEL: Record<AlertType, string> = {
+  lost: 'Última ubicación',
+  sighting: 'Lugar del avistamiento',
+  found: 'Lugar donde fue encontrada',
+  adoption: 'Ubicación',
 };
 
 function present(value: unknown): string | undefined {
@@ -79,18 +100,6 @@ function sexLabel(sex?: string | null): string | undefined {
   if (sex === 'macho') return 'Macho';
   if (sex === 'hembra') return 'Hembra';
   return undefined;
-}
-
-function speciesSexFact(species?: string | null, sex?: string | null): string | undefined {
-  const id = String(species || '').trim().toLowerCase();
-  if (id === 'perro' && sex === 'hembra') return 'Perra';
-  if (id === 'perro' && sex === 'macho') return 'Perro';
-  if (id === 'gato' && sex === 'hembra') return 'Gata';
-  if (id === 'gato' && sex === 'macho') return 'Gato';
-  const spec = present(species) ? speciesLabel(species!) : undefined;
-  const sexText = sexLabel(sex);
-  if (spec && sexText) return `${spec} · ${sexText}`;
-  return spec || sexText;
 }
 
 function locationLine(locality?: string | null, province?: string | null): string | undefined {
@@ -111,8 +120,7 @@ function contactLine(whatsapp?: string | null, phone?: string | null): string | 
 }
 
 export function flyerHeadlineForType(type: AlertType): string {
-  const cfg = ALERT_TYPES[type];
-  return `${cfg.emoji} ${cfg.label}`;
+  return FLYER_HERO[type];
 }
 
 export function flyerCtaForType(type: AlertType, sex?: string | null): string {
@@ -121,6 +129,18 @@ export function flyerCtaForType(type: AlertType, sex?: string | null): string {
     if (sex === 'hembra') return 'AYUDANOS A ENCONTRARLA';
   }
   return FLYER_CTA[type];
+}
+
+export function flyerAccentForType(type: AlertType): string {
+  return FLYER_ACCENT[type];
+}
+
+export function flyerLocationLabelForType(type: AlertType): string {
+  return FLYER_LOCATION_LABEL[type];
+}
+
+export function finiteCoord(value?: number | null): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 export function buildAlertFlyerData(input: {
@@ -132,6 +152,7 @@ export function buildAlertFlyerData(input: {
   age?: string | null;
   size?: string | null;
   breed?: string | null;
+  color?: string | null;
   locality?: string | null;
   province?: string | null;
   eventDate?: number | null;
@@ -147,13 +168,15 @@ export function buildAlertFlyerData(input: {
     headline: flyerHeadlineForType(type),
     cta: flyerCtaForType(type, input.sex),
     accent: FLYER_ACCENT[type],
+    locationLabel: FLYER_LOCATION_LABEL[type],
     image: present(input.image),
     petName: present(input.petName),
-    speciesLabel: speciesSexFact(input.species, input.sex),
-    sexLabel: undefined,
+    speciesLabel: present(input.species) ? speciesLabel(input.species!) : undefined,
+    sexLabel: sexLabel(input.sex),
     ageLabel: present(input.age),
     sizeLabel: present(input.size),
     breed: present(input.breed),
+    colorLabel: present(input.color),
     location: locationLine(input.locality, input.province),
     dateLabel: dateLabel(input.eventDate) || dateLabel(input.createdAt),
     description: present(input.description),
@@ -163,9 +186,39 @@ export function buildAlertFlyerData(input: {
 }
 
 export function flyerFromApiAlert(alert: ApiAlert): AlertFlyer {
-  return buildAlertFlyerData(alert);
+  return buildAlertFlyerData({
+    type: alert.type,
+    image: alert.image,
+    petName: alert.petName,
+    species: alert.species,
+    sex: alert.sex,
+    breed: alert.breed,
+    locality: alert.locality,
+    province: alert.province,
+    eventDate: alert.eventDate,
+    createdAt: alert.createdAt,
+    description: alert.description,
+    userName: alert.userName,
+  });
 }
 
 export function visibleFlyerFacts(flyer: AlertFlyer): string[] {
-  return [flyer.speciesLabel, flyer.ageLabel, flyer.sizeLabel, flyer.breed].filter(Boolean) as string[];
+  return flyerFactRows(flyer).map((row) => row.value);
+}
+
+export function flyerFactRows(flyer: AlertFlyer): AlertFlyerFactRow[] {
+  const rows: AlertFlyerFactRow[] = [];
+  if (flyer.speciesLabel) rows.push({ icon: '🐾', label: 'Especie', value: flyer.speciesLabel });
+  if (flyer.breed) rows.push({ icon: '🐕', label: 'Raza', value: flyer.breed });
+  if (flyer.sexLabel) {
+    rows.push({
+      icon: flyer.sexLabel === 'Hembra' ? '♀' : '♂',
+      label: 'Sexo',
+      value: flyer.sexLabel,
+    });
+  }
+  if (flyer.colorLabel) rows.push({ icon: '🎨', label: 'Color', value: flyer.colorLabel });
+  if (flyer.ageLabel) rows.push({ icon: '⏳', label: 'Edad', value: flyer.ageLabel });
+  if (flyer.sizeLabel) rows.push({ icon: '📏', label: 'Tamaño', value: flyer.sizeLabel });
+  return rows;
 }

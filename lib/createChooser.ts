@@ -11,3 +11,11 @@ export function createChooserDestination(kind: CreateChooserKind): CreateChooser
 export function createChooserParams(kind: CreateChooserKind): { purpose: 'flyer' } | undefined {
   return kind === 'flyer' ? { purpose: 'flyer' } : undefined;
 }
+
+/** Destino del Root Stack. Navegar desde la pantalla +, no desde el Tab parent. */
+export function createChooserOpen(kind: CreateChooserKind): {
+  screen: CreateChooserDestination;
+  params?: { purpose: 'flyer' };
+} {
+  return { screen: createChooserDestination(kind), params: createChooserParams(kind) };
+}

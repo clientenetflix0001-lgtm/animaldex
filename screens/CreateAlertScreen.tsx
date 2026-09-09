@@ -35,7 +35,8 @@ import {
   isValidDateString,
   dateStringToTimestamp,
 } from '../lib/alerts';
-import { buildAlertFlyerData } from '../lib/alertFlyer';
+import { buildAlertFlyerData, finiteCoord } from '../lib/alertFlyer';
+import { setFlyerDraft } from '../lib/alertFlyerSession';
 import { PET_SEXES } from '../lib/petFields';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
@@ -183,8 +184,8 @@ export default function CreateAlertScreen() {
       image,
       locality,
       province: province || undefined,
-      lat,
-      lon,
+      lat: finiteCoord(lat),
+      lon: finiteCoord(lon),
       eventDate,
       authorProfileId: resolvedType === 'adoption' ? activeProfile?.id : undefined,
       contactWhatsapp: contactWhatsappNorm,
@@ -192,26 +193,25 @@ export default function CreateAlertScreen() {
     };
 
     if (flyerMode) {
-      navigation.navigate('AlertFlyerPreview', {
-        session: {
-          source: 'draft',
-          flyer: buildAlertFlyerData({
-            type: resolvedType,
-            image,
-            petName: payload.petName,
-            species,
-            sex: payload.sex,
-            locality,
-            province,
-            eventDate,
-            description: payload.description,
-            contactWhatsapp: contactWhatsappNorm,
-            contactPhone: contactPhoneNorm,
-            userName: activeProfile?.name,
-          }),
-          publish: payload,
-        },
+      setFlyerDraft({
+        source: 'draft',
+        flyer: buildAlertFlyerData({
+          type: resolvedType,
+          image,
+          petName: payload.petName,
+          species,
+          sex: payload.sex,
+          locality,
+          province,
+          eventDate,
+          description: payload.description,
+          contactWhatsapp: contactWhatsappNorm,
+          contactPhone: contactPhoneNorm,
+          userName: activeProfile?.name,
+        }),
+        publish: payload,
       });
+      navigation.navigate('AlertFlyerPreview', { source: 'draft' });
       return;
     }
 

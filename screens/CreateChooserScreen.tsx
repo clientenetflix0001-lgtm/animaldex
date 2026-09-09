@@ -5,7 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
-import { createChooserDestination, createChooserParams, type CreateChooserKind } from '../lib/createChooser';
+import { createChooserOpen, type CreateChooserKind } from '../lib/createChooser';
 
 export default function CreateChooserScreen() {
   const navigation = useNavigation<any>();
@@ -13,9 +13,8 @@ export default function CreateChooserScreen() {
 
   const open = useCallback(
     (kind: CreateChooserKind) => {
-      const dest = createChooserDestination(kind);
-      const parent = navigation.getParent?.() ?? navigation;
-      parent.navigate(dest, createChooserParams(kind));
+      const { screen, params } = createChooserOpen(kind);
+      navigation.navigate(screen, params);
     },
     [navigation]
   );
