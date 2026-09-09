@@ -246,11 +246,15 @@ describe('META ACTIVA', () => {
 });
 
 describe('MIS ALERTAS', () => {
-  it('23. botón visible bajo Crear alerta', () => {
+  it('23. Crear alerta y Mis alertas en la misma fila', () => {
     const createIdx = feed.indexOf('Crear alerta');
     const mineIdx = feed.indexOf('Mis alertas');
     assert.ok(createIdx > 0 && mineIdx > createIdx);
+    assert.match(feed, /alertActionsRow/);
+    assert.match(feed, /navigate\('MyAlerts'\)/);
+    assert.match(feed, /navigate\('CreateAlert'\)/);
     assert.doesNotMatch(feed, /titleActions/);
+    assert.equal((feed.match(/navigate\('MyAlerts'\)/g) || []).length, 1);
   });
 
   it('24. thumbnail', () => {

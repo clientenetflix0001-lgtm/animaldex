@@ -52,6 +52,7 @@ export const RESERVED_PUBLIC_USERNAMES: readonly string[] = [
   'editar-perfil-publico',
   'crear-alerta',
   'mis-alertas',
+  'mis-productos',
   'mercado-favoritos',
   'transfer',
   'favicon.ico',

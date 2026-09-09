@@ -81,6 +81,7 @@ const RESERVED_SEGMENTS = new Set([
   'editar-perfil-publico',
   'crear-alerta',
   'mis-alertas',
+  'mis-productos',
   'mercado-favoritos',
   'transfer',
   'favicon.ico',

@@ -32,6 +32,9 @@ import {
 } from '../lib/market';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
+import { parseListingContact, LISTING_CONTACT_REQUIRED } from '../lib/listingContact';
+import { useStore } from '../lib/store';
+import type { ListingContactMethod } from '../lib/listingContact';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -39,6 +42,7 @@ const MAX_IMAGES = 6;
 
 export default function CreateListingScreen() {
   const navigation = useNavigation<Nav>();
+  const { verifiedPhone } = useStore();
 
   const [step, setStep] = useState<'choose' | 'form'>('choose');
   const [kind, setKind] = useState<ListingKind>('product');
@@ -48,8 +52,9 @@ export default function CreateListingScreen() {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const [description, setDescription] = useState('');
-  const [pricePatitas, setPricePatitas] = useState('');
   const [priceArs, setPriceArs] = useState('');
+  const [contactMethod, setContactMethod] = useState<ListingContactMethod>('whatsapp');
+  const [contactValue, setContactValue] = useState('');
   const [stock, setStock] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState<string | null>(null);
   const [modality, setModality] = useState<string | null>(null);
@@ -75,6 +80,10 @@ export default function CreateListingScreen() {
       setLocating(false);
     })();
   }, []);
+
+  useEffect(() => {
+    if (verifiedPhone && !contactValue) setContactValue(verifiedPhone);
+  }, [verifiedPhone, contactValue]);
 
   const chooseKind = useCallback((k: ListingKind) => {
     setKind(k);
@@ -148,9 +157,9 @@ export default function CreateListingScreen() {
       Alert.alert('Falta la ubicación', 'Indica desde dónde vendes.');
       return;
     }
-    const patitasNum = Number(pricePatitas.replace(/[^\d]/g, ''));
-    if (!patitasNum || patitasNum <= 0) {
-      Alert.alert('Falta el precio', 'Ingresa un precio en Patitas mayor a cero.');
+    const parsedContact = parseListingContact(contactMethod, contactValue);
+    if (!parsedContact.ok) {
+      Alert.alert('Falta el contacto', parsedContact.error || LISTING_CONTACT_REQUIRED);
       return;
     }
 
@@ -161,8 +170,10 @@ export default function CreateListingScreen() {
         title: title.trim(),
         category: category ?? 'otros',
         description: description.trim(),
-        pricePatitas: patitasNum,
+        pricePatitas: 0,
         priceArs: priceArs.trim() ? Number(priceArs.replace(/[^\d]/g, '')) : undefined,
+        contactMethod: parsedContact.method,
+        contactValue: parsedContact.value,
         stock: kind === 'product' && stock.trim() ? Number(stock.replace(/[^\d]/g, '')) : undefined,
         deliveryMethod: kind === 'product' ? deliveryMethod ?? undefined : undefined,
         modality: kind === 'service' ? modality ?? undefined : undefined,
@@ -179,7 +190,7 @@ export default function CreateListingScreen() {
     } finally {
       setSaving(false);
     }
-  }, [images, title, description, locality, province, lat, lon, kind, category, pricePatitas, priceArs, stock, deliveryMethod, modality, availability, navigation]);
+  }, [images, title, description, locality, province, lat, lon, kind, category, priceArs, stock, deliveryMethod, modality, availability, contactMethod, contactValue, navigation]);
 
   // ---------- Paso 1: elegir tipo ----------
   if (step === 'choose') {
@@ -268,22 +279,7 @@ export default function CreateListingScreen() {
             ))}
           </View>
 
-          {/* Precio */}
-          <Text style={styles.label}>Precio en Patitas *</Text>
-          <View style={styles.priceInputWrap}>
-            <Text style={styles.pricePrefix}>🐾</Text>
-            <TextInput
-              style={styles.priceInput}
-              placeholder="8500"
-              placeholderTextColor={colors.textMuted}
-              value={pricePatitas}
-              onChangeText={setPricePatitas}
-              keyboardType="number-pad"
-              maxLength={9}
-            />
-          </View>
-
-          <Text style={styles.label}>Precio normal (opcional)</Text>
+          <Text style={styles.label}>Precio (opcional)</Text>
           <View style={styles.priceInputWrap}>
             <Text style={styles.pricePrefix}>$</Text>
             <TextInput
@@ -296,6 +292,31 @@ export default function CreateListingScreen() {
               maxLength={12}
             />
           </View>
+
+          <Text style={styles.label}>Contacto *</Text>
+          <View style={styles.chipsWrap}>
+            <Pressable
+              style={[styles.chip, contactMethod === 'whatsapp' && styles.chipActive]}
+              onPress={() => setContactMethod('whatsapp')}
+            >
+              <Text style={[styles.chipText, contactMethod === 'whatsapp' && { color: '#fff' }]}>WhatsApp</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.chip, contactMethod === 'phone' && styles.chipActive]}
+              onPress={() => setContactMethod('phone')}
+            >
+              <Text style={[styles.chipText, contactMethod === 'phone' && { color: '#fff' }]}>Teléfono</Text>
+            </Pressable>
+          </View>
+          <TextInput
+            style={styles.input}
+            placeholder="+54 9 11 1234 5678"
+            placeholderTextColor={colors.textMuted}
+            value={contactValue}
+            onChangeText={setContactValue}
+            keyboardType="phone-pad"
+            maxLength={20}
+          />
 
           {/* Stock (solo productos) */}
           {kind === 'product' && (

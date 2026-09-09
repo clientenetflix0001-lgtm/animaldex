@@ -76,6 +76,7 @@ export default function FeedScreen() {
   const newestRef = useRef<number>(0);
   const realDoneRef = useRef(false);
   const usedPostIdsRef = useRef<Set<string>>(new Set());
+  const usedAlertIdsRef = useRef<Set<string>>(new Set());
   const listRef = useRef<FlatList<FeedItem>>(null);
   const feedItemsRef = useRef<FeedItem[]>(feedItems);
   feedItemsRef.current = feedItems;
@@ -92,9 +93,13 @@ export default function FeedScreen() {
       });
       if (reset) setStoryRailItems(buckets.storyRail || []);
       const pageIndex = reset ? 0 : 1;
-      if (reset) usedPostIdsRef.current = new Set();
-      const page = composeHomeFeedPage(buckets, pageIndex, usedPostIdsRef.current);
+      if (reset) {
+        usedPostIdsRef.current = new Set();
+        usedAlertIdsRef.current = new Set();
+      }
+      const page = composeHomeFeedPage(buckets, pageIndex, usedPostIdsRef.current, usedAlertIdsRef.current);
       usedPostIdsRef.current = new Set(page.usedPostIds);
+      usedAlertIdsRef.current = new Set(page.usedAlertIds);
       if (page.nextCursor) oldestRef.current = page.nextCursor;
       const firstPost = page.items.find((item) => item.kind === 'post');
       if (firstPost && firstPost.kind === 'post' && firstPost.post.createdAt) {

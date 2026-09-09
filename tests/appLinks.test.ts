@@ -15,6 +15,7 @@ import {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const app = readFileSync(join(root, 'App.tsx'), 'utf8');
+const webLinking = readFileSync(join(root, 'lib/webLinking.ts'), 'utf8');
 const appJson = JSON.parse(readFileSync(join(root, 'app.json'), 'utf8'));
 const pagesWorker = readFileSync(join(root, 'cf-pages-worker.src.js'), 'utf8');
 
@@ -252,7 +253,7 @@ describe('App.tsx y app.json: animaldex.com + pages.dev', () => {
     assert.match(app, /function AppLinkHandler/);
     assert.match(app, /name="ListingDetail"/);
     assert.match(app, /getInitialURL/);
-    assert.match(app, /PUBLIC_WEB_ORIGIN/);
+    assert.match(webLinking, /PUBLIC_WEB_ORIGIN/);
   });
 
   it('intentFilters agregan animaldex.com y conservan pages.dev', () => {

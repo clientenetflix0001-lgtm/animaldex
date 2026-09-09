@@ -33,6 +33,7 @@ export type HomeFeedBuckets = {
 export type HomeFeedPage = {
   items: FeedItem[];
   usedPostIds: string[];
+  usedAlertIds: string[];
   nextCursor?: number;
   hasMore: boolean;
   source: 'homeFeed' | 'fallback';
@@ -118,7 +119,7 @@ async function fallbackBuckets(input: {
     );
     if (locality) {
       tasks.push(
-        db.alertsFeed(locality, undefined, FEED_COMPOSITION_POLICY.maxAlerts).then((res) => {
+        db.alertsFeed(locality, undefined, FEED_COMPOSITION_POLICY.alertCandidateLimit).then((res) => {
           alerts = (res.alerts || []).filter((a) => a.status !== 'resolved');
         }).catch(() => {})
       );
@@ -180,7 +181,8 @@ export async function fetchHomeFeedBuckets(input: {
 export function composeHomeFeedPage(
   buckets: HomeFeedBuckets,
   pageIndex: number,
-  usedPostIds?: Iterable<string>
+  usedPostIds?: Iterable<string>,
+  usedAlertIds?: Iterable<string>
 ): HomeFeedPage {
   const posts: Post[] = (buckets.posts || []).map(apiPostToPost);
   const composed = composeFeedPage({
@@ -194,10 +196,12 @@ export function composeHomeFeedPage(
     adoptions: buckets.adoptions,
     reels: buckets.reels,
     usedPostIds,
+    usedAlertIds,
   });
   return {
     items: composed.items,
     usedPostIds: composed.usedPostIds,
+    usedAlertIds: composed.usedAlertIds,
     nextCursor: buckets.nextCursor ?? composed.nextCursor,
     hasMore: buckets.hasMore ?? (buckets.posts.length >= FEED_COMPOSITION_POLICY.laterPagePostLimit),
     source: 'homeFeed',

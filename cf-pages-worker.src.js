@@ -283,7 +283,7 @@ async function buildOgMeta(request, env, url) {
     'marketplace', 'mercado', 'admin', 'api', 'crear', 'mascotas', 'actividad', 'perfil', 'explorar',
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
-    'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
+    'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mis-productos', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
     'well-known',
   ]);
 

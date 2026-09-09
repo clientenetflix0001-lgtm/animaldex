@@ -8,7 +8,8 @@ export const FEED_COMPOSITION_POLICY = {
   alertRadiusKm: 10,
   firstPagePostLimit: 10,
   laterPagePostLimit: 10,
-  maxAlerts: 3,
+  maxAlerts: 1,
+  alertCandidateLimit: 3,
   maxAdoptions: 2,
   maxReels: 2,
   minPageRecommendations: 3,
@@ -18,6 +19,7 @@ export const FEED_COMPOSITION_POLICY = {
     enabled: false,
     afterOrganicItems: 8,
   },
+  postsBetweenModules: 2,
   firstPageSequence: [
     'locality_relevant_post',
     'trending_post',
@@ -29,11 +31,22 @@ export const FEED_COMPOSITION_POLICY = {
     'post',
     'page_recommendations',
     'post',
+    'post',
     'adoptions',
+    'post',
+    'post',
     'reels',
     'remaining_posts',
   ] as const,
 };
+
+export const COMPOSER_MODULE_KINDS = [
+  'story_channels',
+  'alerts',
+  'page_recommendations',
+  'adoptions',
+  'reels',
+] as const;
 
 export type FeedCompositionSlot = (typeof FEED_COMPOSITION_POLICY.firstPageSequence)[number];
 
@@ -78,6 +91,21 @@ export function dedupeById<T extends { id: string }>(rows: T[]): T[] {
   return out;
 }
 
+/** Una alerta por inserción. Orden de entrada (geo/recencia). Determinista. */
+export function selectHomeModuleAlerts(
+  alerts: ApiAlert[] | null | undefined,
+  usedAlertIds?: Iterable<string>,
+  limit = FEED_COMPOSITION_POLICY.maxAlerts
+): ApiAlert[] {
+  const used = new Set(usedAlertIds || []);
+  const active = dedupeById(
+    (alerts || []).filter((alert) => alert.status !== 'resolved' && !alert.resolvedAt)
+  );
+  const unused = active.filter((alert) => !used.has(alert.id));
+  const pool = unused.length > 0 ? unused : active;
+  return pool.slice(0, Math.max(0, limit));
+}
+
 export type ComposeFeedInput = {
   pageIndex: number;
   posts: Post[];
@@ -91,12 +119,14 @@ export type ComposeFeedInput = {
   adoptions?: AdoptionCard[];
   reels?: ApiReel[];
   usedPostIds?: Iterable<string>;
+  usedAlertIds?: Iterable<string>;
   policy?: typeof FEED_COMPOSITION_POLICY;
 };
 
 export type ComposeFeedResult = {
   items: FeedItem[];
   usedPostIds: string[];
+  usedAlertIds: string[];
   nextCursor: number | undefined;
 };
 
@@ -122,7 +152,9 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
     return 'default';
   };
 
-  const alerts = dedupeById((input.alerts || []).filter((a) => a.status !== 'resolved' && !a.resolvedAt)).slice(0, policy.maxAlerts);
+  const usedAlertIds = new Set(input.usedAlertIds || []);
+  const alerts =
+    input.pageIndex === 0 ? selectHomeModuleAlerts(input.alerts, usedAlertIds, policy.maxAlerts) : [];
   const pages = visibleHomePageRecommendations(dedupeById(input.pages || []), policy.maxPageRecommendations);
   const adoptions = (() => {
     const seen = new Set<string>();
@@ -139,12 +171,7 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
   const reels = dedupeById(input.reels || []).slice(0, policy.maxReels);
   const stories = input.storyItems || [];
 
-  const queuedCount = () => localityQueue.length + trendingQueue.length + regularQueue.length;
-  let reserveAdoptionReelBridge =
-    input.pageIndex === 0 && adoptions.length > 0 && reels.length > 0 && posts.length > 0;
-
-  const takePost = (prefer: FeedPostBucket | 'any', consumeReserved = false): Post | null => {
-    if (reserveAdoptionReelBridge && !consumeReserved && queuedCount() <= 1) return null;
+  const takePost = (prefer: FeedPostBucket | 'any'): Post | null => {
     let id: string | null = null;
     if (prefer === 'locality') id = takeNext(localityQueue);
     else if (prefer === 'trending') id = takeNext(trendingQueue);
@@ -158,65 +185,70 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
     return post;
   };
 
-  const insertPostBetweenAdoptionsAndReels = () => {
-    if (!reserveAdoptionReelBridge) return;
-    const last = items[items.length - 1];
-    if (last?.kind === 'adoptions') {
-      const post = takePost('any', true);
-      if (post) {
-        items.push({ kind: 'post', key: feedItemKey('post', post.id), post, bucket: bucketFor(post.id, 'any') });
-      }
-    }
-    reserveAdoptionReelBridge = false;
+  const pushPost = (post: Post, bucket: FeedPostBucket) => {
+    items.push({ kind: 'post', key: feedItemKey('post', post.id), post, bucket });
   };
 
-  const sequence: FeedCompositionSlot[] =
-    input.pageIndex === 0 ? [...policy.firstPageSequence] : ['remaining_posts'];
-
-  for (const slot of sequence) {
-    if (slot === 'locality_relevant_post') {
-      const post = takePost('locality');
-      if (post) items.push({ kind: 'post', key: feedItemKey('post', post.id), post, bucket: 'locality' });
-      continue;
-    }
-    if (slot === 'trending_post') {
-      const post = takePost('trending');
-      if (post) items.push({ kind: 'post', key: feedItemKey('post', post.id), post, bucket: 'trending' });
-      continue;
-    }
-    if (slot === 'post') {
-      const post = takePost('any');
-      if (post) items.push({ kind: 'post', key: feedItemKey('post', post.id), post, bucket: bucketFor(post.id, 'any') });
-      continue;
-    }
-    if (slot === 'remaining_posts') {
-      reserveAdoptionReelBridge = false;
-      while (true) {
-        const post = takePost('any');
-        if (!post) break;
-        items.push({ kind: 'post', key: feedItemKey('post', post.id), post, bucket: bucketFor(post.id, 'any') });
-      }
-      continue;
-    }
-    if (input.pageIndex > 0 && policy.modulesOnFirstPageOnly) continue;
+  const pushAvailableModule = (slot: FeedCompositionSlot): boolean => {
     if (slot === 'story_channels' && storiesForYouItems(stories).length > 0) {
       items.push({ kind: 'story_channels', key: feedItemKey('story_channels', `p${input.pageIndex}`), items: stories });
-    } else if (slot === 'alerts' && alerts.length > 0) {
+      return true;
+    }
+    if (slot === 'alerts' && alerts.length > 0) {
       items.push({ kind: 'alerts', key: feedItemKey('alerts', `p${input.pageIndex}`), alerts });
-    } else if (slot === 'page_recommendations' && pages.length > 0) {
+      for (const row of alerts) usedAlertIds.add(row.id);
+      return true;
+    }
+    if (slot === 'page_recommendations' && pages.length > 0) {
       items.push({
         kind: 'page_recommendations',
         key: feedItemKey('page_recommendations', `p${input.pageIndex}`),
         pages,
       });
-    } else if (slot === 'adoptions' && adoptions.length > 0) {
-      items.push({ kind: 'adoptions', key: feedItemKey('adoptions', `p${input.pageIndex}`), pets: adoptions });
-    } else if (slot === 'reels' && reels.length > 0) {
-      insertPostBetweenAdoptionsAndReels();
-      items.push({ kind: 'reels', key: feedItemKey('reels', `p${input.pageIndex}`), reels });
-    } else if (slot === 'reels') {
-      reserveAdoptionReelBridge = false;
+      return true;
     }
+    if (slot === 'adoptions' && adoptions.length > 0) {
+      items.push({ kind: 'adoptions', key: feedItemKey('adoptions', `p${input.pageIndex}`), pets: adoptions });
+      return true;
+    }
+    if (slot === 'reels' && reels.length > 0) {
+      items.push({ kind: 'reels', key: feedItemKey('reels', `p${input.pageIndex}`), reels });
+      return true;
+    }
+    return false;
+  };
+
+  const gap = policy.postsBetweenModules ?? 2;
+
+  if (input.pageIndex === 0) {
+    const localityPost = takePost('locality');
+    if (localityPost) pushPost(localityPost, 'locality');
+    const trendingPost = takePost('trending');
+    if (trendingPost) pushPost(trendingPost, 'trending');
+
+    let postsSinceModule = items.filter((item) => item.kind === 'post').length;
+    for (const kind of COMPOSER_MODULE_KINDS) {
+      const available =
+        (kind === 'story_channels' && storiesForYouItems(stories).length > 0) ||
+        (kind === 'alerts' && alerts.length > 0) ||
+        (kind === 'page_recommendations' && pages.length > 0) ||
+        (kind === 'adoptions' && adoptions.length > 0) ||
+        (kind === 'reels' && reels.length > 0);
+      if (!available) continue;
+      while (postsSinceModule < gap) {
+        const post = takePost('any');
+        if (!post) break;
+        pushPost(post, bucketFor(post.id, 'any'));
+        postsSinceModule += 1;
+      }
+      if (pushAvailableModule(kind)) postsSinceModule = 0;
+    }
+  }
+
+  while (true) {
+    const post = takePost('any');
+    if (!post) break;
+    pushPost(post, bucketFor(post.id, 'any'));
   }
 
   if (policy.ads.enabled) {
@@ -230,6 +262,7 @@ export function composeFeedPage(input: ComposeFeedInput): ComposeFeedResult {
   return {
     items,
     usedPostIds: [...used],
+    usedAlertIds: [...usedAlertIds],
     nextCursor: chronological.length ? chronological[chronological.length - 1].createdAt : undefined,
   };
 }
@@ -261,6 +294,33 @@ export function hasVisibleAdSlot(items: FeedItem[]): boolean {
 
 export function feedItemTypes(items: FeedItem[]): Array<FeedItem['kind']> {
   return items.map((item) => item.kind);
+}
+
+export function isComposerModule(item: FeedItem): boolean {
+  return (COMPOSER_MODULE_KINDS as readonly string[]).includes(item.kind);
+}
+
+export function composerModulesAreAdjacent(items: FeedItem[]): boolean {
+  for (let i = 0; i < items.length - 1; i++) {
+    if (isComposerModule(items[i]) && isComposerModule(items[i + 1])) return true;
+  }
+  return false;
+}
+
+export function postsBetweenComposerModules(items: FeedItem[]): number[] {
+  const gaps: number[] = [];
+  let count = 0;
+  let seenModule = false;
+  for (const item of items) {
+    if (isComposerModule(item)) {
+      if (seenModule) gaps.push(count);
+      seenModule = true;
+      count = 0;
+    } else if (item.kind === 'post' && seenModule) {
+      count += 1;
+    }
+  }
+  return gaps;
 }
 
 export function adoptionsAndReelsAreConsecutive(items: FeedItem[]): boolean {

@@ -48,6 +48,7 @@ import CreateListingScreen from './screens/CreateListingScreen';
 import ListingDetailScreen from './screens/ListingDetailScreen';
 import SellerShopScreen from './screens/SellerShopScreen';
 import MarketFavoritesScreen from './screens/MarketFavoritesScreen';
+import MyListingsScreen from './screens/MyListingsScreen';
 import AdoptionDiscoveryScreen from './screens/AdoptionDiscoveryScreen';
 import MyPetsScreen from './screens/MyPetsScreen';
 
@@ -69,9 +70,8 @@ import {
   APP_LINK_PREFIXES,
   applyAppLinkIfReady,
   rememberIncomingAppLink,
-  resolveAppLink,
 } from './lib/appLinks';
-import { PUBLIC_WEB_ORIGIN } from './lib/publicWeb';
+import { getStateFromPublicPath, setLinkingHasUser, shouldAutoOpenPendingTag } from './lib/webLinking';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -271,6 +271,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       MyAlerts: 'mis-alertas',
       AlertDetail: 'a/:alertId',
       CreateListing: 'vender',
+      MyListings: 'mis-productos',
       ListingDetail: 'm/:listingId',
       ReelViewer: 'r/:reelId',
       SellerShop: 'tienda/:userId',
@@ -279,27 +280,7 @@ const linking: LinkingOptions<RootStackParamList> = {
     },
   },
   getStateFromPath(path, options) {
-    const href = path.startsWith('http')
-      ? path
-      : `${PUBLIC_WEB_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`;
-    const target = resolveAppLink(href);
-    if (target?.screen === 'PetProfile') {
-      return {
-        routes: [
-          { name: 'Tabs' },
-          { name: 'PetProfile', params: target.params },
-        ],
-      };
-    }
-    if (target?.screen === 'PetTransferRequest') {
-      return {
-        routes: [
-          { name: 'Tabs' },
-          { name: 'PetTransferRequest', params: target.params },
-        ],
-      };
-    }
-    return rnGetStateFromPath(path, options);
+    return getStateFromPublicPath(path) ?? rnGetStateFromPath(path, options);
   },
   async getInitialURL() {
     const url = await Linking.getInitialURL();
@@ -349,6 +330,13 @@ function TagDeepLinkHandler() {
 
   useEffect(() => {
     if (!authReady || !user || pendingTagCode == null || handledRef.current) return;
+    const href =
+      Platform.OS === 'web' && typeof window !== 'undefined'
+        ? `${window.location.pathname}${window.location.search}`
+        : '';
+    if (!shouldAutoOpenPendingTag({ platform: Platform.OS, href, pendingTagCode })) {
+      return;
+    }
     handledRef.current = true;
     const code = pendingTagCode;
     // pendingTagCode se limpia en AddPet cuando create+claim terminan bien.
@@ -447,6 +435,27 @@ function PublicNavigator() {
   );
 }
 
+function WebUrlSync() {
+  const { user, authReady } = useStore();
+
+  useEffect(() => {
+    setLinkingHasUser(!!user);
+  }, [user]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !authReady) return;
+    const apply = () => {
+      if (!navigationRef.isReady()) return;
+      const path = `${window.location.pathname}${window.location.search}`;
+      const state = getStateFromPublicPath(path) ?? rnGetStateFromPath(path, linking.config);
+      if (state) navigationRef.resetRoot(state);
+    };
+    apply();
+  }, [authReady, user]);
+
+  return null;
+}
+
 function RootNavigator() {
   const { user, authReady } = useStore();
 
@@ -533,6 +542,11 @@ function RootNavigator() {
         name="CreateListing"
         component={CreateListingScreen}
         options={{ title: 'Vender', ...screenHeaderOptions }}
+      />
+      <Stack.Screen
+        name="MyListings"
+        component={MyListingsScreen}
+        options={{ title: 'Mis productos', ...screenHeaderOptions }}
       />
       <Stack.Screen
         name="ListingDetail"
@@ -651,6 +665,7 @@ export default function App() {
                 <TagDeepLinkHandler />
                 <AppLinkHandler />
                 <PushBootstrap />
+                <WebUrlSync />
                 <RootNavigator />
               </NavigationContainer>
             </NotificationsProvider>

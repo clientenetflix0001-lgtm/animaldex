@@ -269,10 +269,12 @@ export interface ApiListing {
   country: string;
   lat: number | null;
   lon: number | null;
-  status: 'active' | 'removed';
+  status: 'active' | 'removed' | 'sold';
   featured: boolean;
   viewsCount: number;
   createdAt: number;
+  renewedAt?: number | null;
+  bumpedAt?: number | null;
   favoriteCount: number;
   commentCount: number;
   isFavorited: boolean;
@@ -708,6 +710,12 @@ export const db = {
   }): Promise<{ listings: ApiListing[]; hasMore: boolean }> => call('/db', { action: 'listingsFeed', ...params }),
   listingDetail: (listingId: string): Promise<{ listing: ApiListing }> =>
     call('/db', { action: 'listingDetail', listingId }),
+  listingContact: (listingId: string): Promise<{
+    contactMethod: 'whatsapp' | 'phone' | null;
+    contactValue: string | null;
+    fallbackPhone: string | null;
+    title: string | null;
+  }> => call('/db', { action: 'listingContact', listingId }),
   listingComments: (listingId: string): Promise<{ comments: ApiComment[] }> =>
     call('/db', { action: 'listingComments', listingId }),
   listingView: (listingId: string): Promise<{ ok: boolean }> => call('/db', { action: 'listingView', listingId }),
@@ -727,8 +735,15 @@ export const db = {
     province?: string;
     lat?: number | null;
     lon?: number | null;
+    contactMethod?: 'whatsapp' | 'phone';
+    contactValue?: string;
   }): Promise<{ listing: ApiListing }> => call('/db', { action: 'createListing', ...listing }),
   deleteListing: (listingId: string): Promise<{ ok: boolean }> => call('/db', { action: 'deleteListing', listingId }),
+  myListings: (): Promise<{ listings: ApiListing[] }> => call('/db', { action: 'myListings' }),
+  renewListing: (listingId: string): Promise<{ listing: ApiListing }> =>
+    call('/db', { action: 'renewListing', listingId }),
+  markListingSold: (listingId: string): Promise<{ listing: ApiListing }> =>
+    call('/db', { action: 'markListingSold', listingId }),
   listingFavorite: (listingId: string, value: boolean): Promise<{ favoriteCount: number }> =>
     call('/db', { action: 'listingFavorite', listingId, value }),
   myFavoriteListings: (): Promise<{ listings: ApiListing[] }> => call('/db', { action: 'myFavoriteListings' }),

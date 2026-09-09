@@ -147,8 +147,10 @@ describe('HOME FEED VISUAL MODULES', () => {
 
   it('Alertas Home usan presentación completa y Difundir', () => {
     assert.equal(HOME_MODULE_TITLES.alerts, '🚨 Alertas cerca de ti');
-    assert.equal(HOME_ALERTS_VISIBLE_MAX, 3);
-    assert.equal(FEED_COMPOSITION_POLICY.maxAlerts, 3);
+    assert.equal(HOME_ALERTS_VISIBLE_MAX, 1);
+    assert.equal(FEED_COMPOSITION_POLICY.maxAlerts, 1);
+    assert.match(alertsRow, /HOME_ALERTS_VISIBLE_MAX/);
+    assert.match(alertsRow, /rows\.slice\(0, HOME_ALERTS_VISIBLE_MAX\)/);
     assert.match(alertsRow, /AlertCard/);
     assert.match(alertsRow, /HOME_MODULE_TITLES\.alerts/);
     assert.doesNotMatch(alertsRow, /AlertChip/);

@@ -36,6 +36,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const worker = readFileSync(join(root, 'worker/index.js'), 'utf8');
 const addPet = readFileSync(join(root, 'screens/AddPetScreen.tsx'), 'utf8');
 const app = readFileSync(join(root, 'App.tsx'), 'utf8');
+const webLinking = readFileSync(join(root, 'lib/webLinking.ts'), 'utf8');
 const pages = readFileSync(join(root, 'cf-pages-worker.src.js'), 'utf8');
 const createPost = readFileSync(join(root, 'screens/CreatePostScreen.tsx'), 'utf8');
 const createReel = readFileSync(join(root, 'screens/CreateReelScreen.tsx'), 'utf8');
@@ -195,7 +196,7 @@ describe('rutas públicas', () => {
       params: { petId: 'nina.pet' },
     });
     assert.match(app, /getStateFromPath/);
-    assert.match(app, /target\?\.screen === 'PetProfile'/);
+    assert.match(webLinking, /target\?\.screen === 'PetProfile'/);
   });
 
   it('22. /lucas → PublicProfile', () => {

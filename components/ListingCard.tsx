@@ -3,10 +3,11 @@ import { View, Text, StyleSheet, Pressable, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ApiListing } from '../lib/db';
-import { formatPatitas, formatArs } from '../lib/market';
+import { formatArs } from '../lib/market';
+import { listingPriceLabel } from '../lib/listingContact';
 import { formatDistance, haversineKm } from '../lib/geo';
 import { thumb, userFallbackAvatar } from '../lib/images';
-import { colors, radius, shadow, spacing } from '../lib/theme';
+import { colors, radius } from '../lib/theme';
 
 interface Props {
   listing: ApiListing;
@@ -58,17 +59,18 @@ function ListingCardInner({ listing, onPress, onToggleFavorite, viewerLat, viewe
       </View>
 
       <View style={styles.body}>
-        <Text style={styles.title} numberOfLines={2}>
+        <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
           {listing.title}
         </Text>
 
-        <View style={styles.priceRow}>
-          <Text style={styles.pricePatitas} numberOfLines={1}>
-            {formatPatitas(listing.pricePatitas)}
+        {listingPriceLabel(listing.priceArs) ? (
+          <Text style={styles.price} numberOfLines={1}>
+            {formatArs(listing.priceArs as number)}
           </Text>
-        </View>
-        {listing.priceArs != null && (
-          <Text style={styles.priceArs}>{formatArs(listing.priceArs)}</Text>
+        ) : (
+          <Text style={styles.price} numberOfLines={1}>
+            Consultar
+          </Text>
         )}
 
         <View style={styles.metaRow}>
@@ -101,12 +103,12 @@ export const ListingCard = memo(ListingCardInner);
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: colors.bg,
     overflow: 'hidden',
-    ...shadow.card,
   },
-  imageWrap: { position: 'relative' },
+  imageWrap: { position: 'relative', width: '100%' },
   image: { width: '100%', aspectRatio: 1, backgroundColor: colors.border },
   imageEmpty: { alignItems: 'center', justifyContent: 'center' },
   favBtn: {
@@ -131,17 +133,18 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   availBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  body: { padding: spacing.sm, gap: 3 },
-  title: { fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17, minHeight: 34 },
+  body: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 8, gap: 2, minWidth: 0 },
+  title: { fontSize: 13, fontWeight: '700', color: colors.text, lineHeight: 17, minWidth: 0 },
+  price: { fontSize: 13, fontWeight: '800', color: colors.text, minWidth: 0 },
   priceRow: { marginTop: 2 },
   pricePatitas: { fontSize: 13, fontWeight: '800', color: colors.primary },
-  priceArs: { fontSize: 11, color: colors.textMuted, textDecorationLine: 'line-through' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 2, flexWrap: 'wrap' },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  priceArs: { fontSize: 11, color: colors.textMuted },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, minWidth: 0 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
   ratingText: { fontSize: 11, fontWeight: '700', color: colors.text },
-  locRow: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 1 },
-  locText: { fontSize: 11, color: colors.textMuted, flexShrink: 1 },
-  sellerRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  locRow: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 1, minWidth: 0 },
+  locText: { fontSize: 11, color: colors.textMuted, flexShrink: 1, minWidth: 0 },
+  sellerRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, minWidth: 0 },
   sellerAvatar: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.border },
-  sellerName: { fontSize: 11, color: colors.textMuted, flexShrink: 1 },
+  sellerName: { fontSize: 11, color: colors.textMuted, flexShrink: 1, minWidth: 0 },
 });

@@ -169,15 +169,19 @@ export default function AlertsScreen() {
   const header = (
     <View style={styles.headerBlock}>
       <Text style={styles.title}>🚨 ALERTAS</Text>
-      <Pressable style={styles.createBtn} onPress={() => navigation.navigate('CreateAlert')}>
-        <Ionicons name="add" size={16} color="#fff" />
-        <Text style={styles.createBtnText}>Crear alerta</Text>
-      </Pressable>
-      {user ? (
-        <Pressable style={styles.mineBtn} onPress={() => navigation.navigate('MyAlerts')}>
-          <Text style={styles.mineBtnText}>Mis alertas</Text>
+      <View style={styles.alertActionsRow}>
+        <Pressable style={styles.createBtn} onPress={() => navigation.navigate('CreateAlert')}>
+          <Ionicons name="add" size={16} color="#fff" />
+          <Text style={styles.createBtnText}>Crear alerta</Text>
         </Pressable>
-      ) : null}
+        {user ? (
+          <Pressable style={styles.mineBtn} onPress={() => navigation.navigate('MyAlerts')}>
+            <Text style={styles.mineBtnText}>Mis alertas</Text>
+          </Pressable>
+        ) : (
+          <View />
+        )}
+      </View>
 
       <Pressable style={styles.localityPill} onPress={() => setPickerVisible(true)}>
         <Ionicons name="location" size={15} color={colors.primary} />
@@ -286,12 +290,22 @@ const styles = StyleSheet.create({
   mobileWrap: { width: '100%' },
   headerBlock: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
   title: { fontSize: 22, fontWeight: '900', color: colors.text, letterSpacing: -0.3 },
-  mineBtn: {
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-    paddingHorizontal: 2,
+  alertActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
   },
-  mineBtnText: { color: colors.textMuted, fontWeight: '700', fontSize: 13 },
+  mineBtn: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: radius.full,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.secondary,
+  },
+  mineBtnText: { color: colors.secondary, fontWeight: '800', fontSize: 12.5 },
   createBtn: {
     flexDirection: 'row',
     alignItems: 'center',
