@@ -1,28 +1,21 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   Pressable,
   ActivityIndicator,
   Alert,
-  Linking,
+  Text,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AlertFlyerCanvas } from '../components/AlertFlyerCanvas';
-import { flyerFromApiAlert, type AlertFlyerSession } from '../lib/alertFlyer';
-import {
-  canvaAutofillStatus,
-  canvaSetupHint,
-  canvaTemplateSearchUrl,
-  createCanvaAutofillJob,
-} from '../lib/canvaConnect';
+import { FLYER_ASPECT, flyerFromApiAlert, type AlertFlyerSession } from '../lib/alertFlyer';
+import { shareFlyerCanvas } from '../lib/alertFlyerShare';
 import { db } from '../lib/db';
-import { shareAlertFlyer } from '../lib/share';
 import { colors, radius, shadow, spacing } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 
@@ -32,10 +25,10 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function AlertFlyerPreviewScreen() {
   const navigation = useNavigation<Nav>();
   const { alertId, session: incoming } = useRoute<Rt>().params || {};
+  const flyerRef = useRef<View>(null);
   const [session, setSession] = useState<AlertFlyerSession | null>(incoming || null);
   const [loading, setLoading] = useState(!incoming);
   const [busy, setBusy] = useState(false);
-  const [canvaNote, setCanvaNote] = useState('');
 
   useEffect(() => {
     if (incoming || !alertId) {
@@ -62,28 +55,9 @@ export default function AlertFlyerPreviewScreen() {
 
   const share = useCallback(async () => {
     if (!session) return;
-    await shareAlertFlyer(session.flyer, session.alertId);
-  }, [session]);
-
-  const editInCanva = useCallback(async () => {
-    if (!session) return;
     setBusy(true);
-    setCanvaNote('');
     try {
-      const status = canvaAutofillStatus();
-      if (status === 'ready') {
-        const result = await createCanvaAutofillJob(session.flyer);
-        if (result.ok) {
-          await Linking.openURL(result.editUrl);
-          return;
-        }
-        setCanvaNote(result.error);
-      } else {
-        setCanvaNote(canvaSetupHint(status));
-      }
-      await Linking.openURL(canvaTemplateSearchUrl(session.flyer.type));
-    } catch {
-      setCanvaNote('No se pudo abrir Canva. El resto de Animaldex sigue funcionando.');
+      await shareFlyerCanvas(flyerRef.current, session.flyer, session.alertId);
     } finally {
       setBusy(false);
     }
@@ -119,14 +93,18 @@ export default function AlertFlyerPreviewScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <AlertFlyerCanvas flyer={session.flyer} />
-        {canvaNote ? <Text style={styles.note}>{canvaNote}</Text> : null}
+        <View ref={flyerRef} collapsable={false} style={styles.flyerFrame}>
+          <AlertFlyerCanvas flyer={session.flyer} />
+        </View>
         <Pressable style={styles.primary} onPress={share} disabled={busy}>
-          <Ionicons name="share-outline" size={18} color="#fff" />
-          <Text style={styles.primaryText}>Compartir</Text>
-        </Pressable>
-        <Pressable style={styles.outline} onPress={editInCanva} disabled={busy}>
-          {busy ? <ActivityIndicator color={colors.text} /> : <Text style={styles.outlineText}>Editar en Canva</Text>}
+          {busy ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="share-outline" size={18} color="#fff" />
+              <Text style={styles.primaryText}>Compartir</Text>
+            </>
+          )}
         </Pressable>
         {canPublish ? (
           <Pressable style={styles.secondary} onPress={publishAlert} disabled={busy}>
@@ -141,7 +119,15 @@ export default function AlertFlyerPreviewScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { padding: spacing.lg, paddingBottom: 48, gap: spacing.md, maxWidth: 520, width: '100%', alignSelf: 'center' },
-  note: { fontSize: 12, lineHeight: 17, color: colors.textMuted, fontWeight: '600' },
+  flyerFrame: {
+    width: '100%',
+    aspectRatio: FLYER_ASPECT,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#F0E6DA',
+    backgroundColor: '#FFF9F2',
+  },
   primary: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -153,15 +139,6 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   primaryText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  outline: {
-    borderWidth: 1,
-    borderColor: colors.secondary,
-    borderRadius: radius.full,
-    paddingVertical: 13,
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  outlineText: { color: colors.secondary, fontWeight: '800', fontSize: 15 },
   secondary: {
     borderWidth: 1,
     borderColor: colors.border,
