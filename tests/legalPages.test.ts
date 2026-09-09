@@ -116,6 +116,10 @@ describe('páginas legales públicas Play', () => {
     assert.match(deploy, /copy-legal-pages\.sh/);
     assert.match(copy, /dist\/privacidad\/index.html/);
     assert.match(copy, /dist\/eliminar-cuenta\/index.html/);
+    assert.match(copy, /dist\/legal\/privacidad.html/);
+    assert.match(copy, /dist\/legal\/eliminar-cuenta.html/);
+    assert.match(pages, /\/legal\/privacidad\.html/);
+    assert.match(pages, /\/legal\/eliminar-cuenta\.html/);
   });
 
   it('no caen a mascota, QR, Auth ni username', () => {
@@ -123,8 +127,8 @@ describe('páginas legales públicas Play', () => {
     assert.equal(isPublicLegalPath('/privacidad/'), true);
     assert.equal(isPublicLegalPath('/eliminar-cuenta?x=1'), true);
     assert.equal(isPublicLegalPath('/nina.pet'), false);
-    assert.equal(legalPageAssetPath('/privacidad/'), '/privacidad/index.html');
-    assert.equal(legalPageAssetPath('/eliminar-cuenta'), '/eliminar-cuenta/index.html');
+    assert.equal(legalPageAssetPath('/privacidad/'), '/legal/privacidad.html');
+    assert.equal(legalPageAssetPath('/eliminar-cuenta'), '/legal/eliminar-cuenta.html');
     assert.equal(isReservedPublicUsername('privacidad'), true);
     assert.equal(resolveAppLink('https://animaldex.com/privacidad'), null);
     assert.equal(resolveAppLink('https://animaldex.com/eliminar-cuenta'), null);
@@ -155,6 +159,8 @@ describe('páginas legales públicas Play', () => {
     assert.equal(existsSync(join(root, 'dist/eliminar-cuenta/index.html')), true);
     assert.equal(existsSync(join(root, 'dist/legal/legal.css')), true);
     assert.equal(existsSync(join(root, 'dist/legal/animaldex-logo-mark.png')), true);
+    assert.equal(existsSync(join(root, 'dist/legal/privacidad.html')), true);
+    assert.equal(existsSync(join(root, 'dist/legal/eliminar-cuenta.html')), true);
     assert.match(read('dist/privacidad/index.html'), /Política de Privacidad de Animaldex/);
     assert.match(read('dist/privacidad/index.html'), /mailto:soporte@animaldex\.com/);
     assert.match(read('dist/eliminar-cuenta/index.html'), /Enviar solicitud por correo/);

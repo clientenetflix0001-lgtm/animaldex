@@ -2,8 +2,8 @@
 export const LEGAL_PAGE_PATHS = ['/privacidad', '/eliminar-cuenta'] as const;
 
 export const LEGAL_ASSET_FILES = {
-  '/privacidad': '/privacidad/index.html',
-  '/eliminar-cuenta': '/eliminar-cuenta/index.html',
+  '/privacidad': '/legal/privacidad.html',
+  '/eliminar-cuenta': '/legal/eliminar-cuenta.html',
 } as const;
 
 export function normalizeLegalPath(path: string): string {

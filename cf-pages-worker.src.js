@@ -41,8 +41,9 @@ const PUBLIC_WEB_ORIGIN = 'https://animaldex.com';
 /** HTML estático de Play/privacidad. Se sirve ANTES de OG y de la SPA. */
 function legalPageAssetPath(pathname) {
   const p = String(pathname || '').replace(/\/+$/, '') || '/';
-  if (p === '/privacidad') return '/privacidad/index.html';
-  if (p === '/eliminar-cuenta') return '/eliminar-cuenta/index.html';
+  // Copias planas: Pages hace 308 de /foo/index.html → /foo/ con body vacío.
+  if (p === '/privacidad') return '/legal/privacidad.html';
+  if (p === '/eliminar-cuenta') return '/legal/eliminar-cuenta.html';
   return null;
 }
 
@@ -582,7 +583,7 @@ export default {
         'Cache-Control': 'public, max-age=300, must-revalidate',
         'X-Robots-Tag': 'index, follow',
       };
-      if (legalRes.status !== 404) {
+      if (legalRes.ok) {
         return new Response(legalRes.body, { status: 200, headers: htmlHeaders });
       }
       return new Response(
