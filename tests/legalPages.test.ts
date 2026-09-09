@@ -23,6 +23,7 @@ const deploy = read('scripts/deploy-cf-pages.sh');
 const copy = read('scripts/copy-legal-pages.sh');
 const workerApi = read('worker/index.js');
 const app = read('App.tsx');
+const userProfile = read('screens/UserProfileScreen.tsx');
 
 describe('páginas legales públicas Play', () => {
   it('archivos HTML existen y no son PDF', () => {
@@ -60,9 +61,11 @@ describe('páginas legales públicas Play', () => {
     assert.match(privacy, /13\. Contacto/);
     assert.match(privacy, /Animaldex/);
     assert.match(privacy, /Argentina/);
+    assert.match(privacy, /Correo: <a href="mailto:soporte@animaldex\.com">soporte@animaldex\.com<\/a>/);
     assert.match(privacy, /href="\/eliminar-cuenta"/);
     assert.match(privacy, /Solicitar eliminación de cuenta/);
     assert.match(privacy, /canonical" href="https:\/\/animaldex\.com\/privacidad"/);
+    assert.doesNotMatch(privacy, /todavía no está publicado|No se inventó un email/);
     assert.doesNotMatch(privacy, /COPPA|menores de 13|no permitimos menores/);
   });
 
@@ -75,9 +78,18 @@ describe('páginas legales públicas Play', () => {
     assert.match(deletion, /Se eliminarán la cuenta y los datos asociados/);
     assert.match(deletion, /href="\/privacidad"/);
     assert.match(deletion, /Política de Privacidad/);
-    assert.match(deletion, /no elimina la cuenta al instante ni simula que ya fue borrada/);
+    assert.match(deletion, /inicia una solicitud de eliminación/);
+    assert.match(deletion, /no significa que la cuenta ya fue eliminada/);
+    assert.match(deletion, />Copiar solicitud</);
+    assert.match(deletion, />Enviar solicitud por correo</);
+    assert.match(deletion, /mailto:soporte@animaldex\.com/);
+    assert.match(deletion, /Solicitud de eliminación de cuenta - Animaldex/);
+    assert.match(deletion, /Cuenta\/usuario\/correo:/);
+    assert.match(deletion, /Identificá la cuenta para armar la solicitud/);
+    assert.match(deletion, /Correo: <a href="mailto:soporte@animaldex\.com">soporte@animaldex\.com<\/a>/);
     assert.doesNotMatch(deletion, /fetch\(|\/api\/|createAlert|deleteAccount/);
     assert.doesNotMatch(deletion, /Tu cuenta fue eliminada|cuenta eliminada con éxito/i);
+    assert.doesNotMatch(deletion, /todavía no está publicado|No se inventó un email/);
   });
 
   it('diseño Animaldex local, sin servicios externos', () => {
@@ -87,8 +99,8 @@ describe('páginas legales públicas Play', () => {
     assert.match(deletion, /animaldex-logo-mark\.png/);
     assert.doesNotMatch(privacy, /fonts\.google|googleapis|gstatic|cdn\.jsdelivr|unpkg|canva/i);
     assert.doesNotMatch(deletion, /fonts\.google|googleapis|gstatic|cdn\.jsdelivr|unpkg|canva/i);
-    assert.doesNotMatch(privacy, /mailto:/i);
-    assert.doesNotMatch(deletion, /mailto:/i);
+    assert.match(privacy, /mailto:soporte@animaldex\.com/);
+    assert.match(deletion, /mailto:soporte@animaldex\.com/);
   });
 
   it('Pages intercepta las URLs antes de OG y de la SPA', () => {
@@ -144,5 +156,18 @@ describe('páginas legales públicas Play', () => {
     assert.equal(existsSync(join(root, 'dist/legal/legal.css')), true);
     assert.equal(existsSync(join(root, 'dist/legal/animaldex-logo-mark.png')), true);
     assert.match(read('dist/privacidad/index.html'), /Política de Privacidad de Animaldex/);
+    assert.match(read('dist/privacidad/index.html'), /mailto:soporte@animaldex\.com/);
+    assert.match(read('dist/eliminar-cuenta/index.html'), /Enviar solicitud por correo/);
+  });
+
+  it('el perfil propio abre privacidad y eliminación con Linking existente', () => {
+    assert.match(userProfile, /Política de privacidad/);
+    assert.match(userProfile, /Eliminar cuenta/);
+    assert.match(userProfile, /publicWebUrl\('\/privacidad'\)/);
+    assert.match(userProfile, /publicWebUrl\('\/eliminar-cuenta'\)/);
+    assert.match(userProfile, /Linking\.openURL/);
+    assert.match(userProfile, /Podés solicitar la eliminación permanente de tu cuenta de Animaldex y de los datos asociados/);
+    assert.match(userProfile, /text: 'Continuar'/);
+    assert.doesNotMatch(userProfile, /deleteAccount|env\.DB|\/api\/delete/);
   });
 });

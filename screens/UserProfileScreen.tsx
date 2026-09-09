@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -33,6 +34,7 @@ import { PROFILE_TYPE_LABEL, type PublicProfile } from '../features/profiles/pro
 import { filterPersonalPets } from '../lib/petOwnership';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
+import { publicWebUrl } from '../lib/publicWeb';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -140,6 +142,26 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
       ]);
     }
   }, [logout]);
+
+  const openPrivacyPolicy = useCallback(() => {
+    Linking.openURL(publicWebUrl('/privacidad')).catch(() => {});
+  }, []);
+
+  const confirmDeleteAccount = useCallback(() => {
+    const message =
+      'Podés solicitar la eliminación permanente de tu cuenta de Animaldex y de los datos asociados.';
+    const openDeletion = () => {
+      Linking.openURL(publicWebUrl('/eliminar-cuenta')).catch(() => {});
+    };
+    if (typeof window !== 'undefined' && (window as any).confirm) {
+      if ((window as any).confirm(message)) openDeletion();
+    } else {
+      Alert.alert('Eliminar cuenta', message, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Continuar', onPress: openDeletion },
+      ]);
+    }
+  }, []);
 
   // ---------- Datos de presentación ----------
   const displayName = demoUser?.name ?? profile?.name ?? me?.name ?? '';
@@ -302,6 +324,19 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
+      )}
+
+      {isMe && (
+        <View style={styles.accountLinks}>
+          <Pressable style={styles.accountLink} onPress={openPrivacyPolicy}>
+            <Text style={styles.accountLinkText}>Política de privacidad</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+          <Pressable style={styles.accountLink} onPress={confirmDeleteAccount}>
+            <Text style={styles.accountLinkText}>Eliminar cuenta</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+        </View>
       )}
 
       {/* Mascotas */}
@@ -551,6 +586,25 @@ const styles = StyleSheet.create({
   },
   verifyTitle: { fontWeight: '700', fontSize: 14, color: colors.text },
   verifySub: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  accountLinks: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  accountLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  accountLinkText: { fontWeight: '700', fontSize: 14, color: colors.text },
   sectionTitle: {
     fontWeight: '800',
     fontSize: 16,

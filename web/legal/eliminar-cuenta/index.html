@@ -53,7 +53,7 @@
         </li>
       </ol>
 
-      <p class="note">Esta página no elimina la cuenta al instante ni simula que ya fue borrada. No hay un endpoint web de eliminación en Animaldex todavía. La solicitud se hace por el canal oficial de contacto.</p>
+      <p class="note">Esta página inicia una solicitud de eliminación. Completar el formulario, copiar el texto o enviar el correo no significa que la cuenta ya fue eliminada. Animaldex revisará la solicitud antes de borrar nada. No hay borrado automático ni un endpoint web de eliminación.</p>
 
       <form class="form" id="delete-form" novalidate>
         <div>
@@ -66,6 +66,7 @@
         </div>
         <div class="actions">
           <button type="submit">Copiar solicitud</button>
+          <button type="button" class="secondary" id="email-request">Enviar solicitud por correo</button>
         </div>
         <p class="status" id="status" role="status"></p>
       </form>
@@ -76,9 +77,9 @@
       <h2>Contacto</h2>
       <p>
         Animaldex<br />
-        Argentina
+        Argentina<br />
+        Correo: <a href="mailto:soporte@animaldex.com">soporte@animaldex.com</a>
       </p>
-      <p class="note">El correo oficial de privacidad y soporte todavía no está publicado en el repositorio. Hasta definirlo, usá el texto copiado de esta página para enviar la solicitud por el canal oficial que Animaldex indique. No se inventó un email ni un endpoint.</p>
     </main>
 
     <footer class="footer">
@@ -90,9 +91,23 @@
     (function () {
       var form = document.getElementById('delete-form');
       var status = document.getElementById('status');
+      var emailBtn = document.getElementById('email-request');
+      function accountValue() {
+        return (document.getElementById('account').value || '').trim();
+      }
+      function detailsValue() {
+        return (document.getElementById('details').value || '').trim();
+      }
+      function requireAccount() {
+        var account = accountValue();
+        if (account) return account;
+        status.textContent = 'Identificá la cuenta para armar la solicitud.';
+        document.getElementById('account').focus();
+        return '';
+      }
       function buildRequest() {
-        var account = (document.getElementById('account').value || '').trim();
-        var details = (document.getElementById('details').value || '').trim();
+        var account = accountValue();
+        var details = detailsValue();
         var lines = [
           'Solicitud de eliminación de cuenta — Animaldex',
           '',
@@ -103,16 +118,25 @@
         lines.push('', 'Enviado desde https://animaldex.com/eliminar-cuenta');
         return lines.join('\n');
       }
+      function buildMailtoBody(account, details) {
+        return [
+          'Hola, solicito la eliminación de mi cuenta de Animaldex y de los datos personales asociados.',
+          '',
+          'Cuenta/usuario/correo:',
+          account,
+          '',
+          'Información adicional:',
+          details,
+          '',
+          'Gracias.',
+        ].join('\n');
+      }
       form.addEventListener('submit', function (event) {
         event.preventDefault();
-        var account = (document.getElementById('account').value || '').trim();
-        if (!account) {
-          status.textContent = 'Identificá la cuenta para armar la solicitud.';
-          return;
-        }
+        if (!requireAccount()) return;
         var text = buildRequest();
         function ok() {
-          status.textContent = 'Solicitud copiada. Todavía no se eliminó ninguna cuenta: enviala por el canal oficial de Animaldex.';
+          status.textContent = 'Solicitud copiada. Esto inicia una solicitud: todavía no se eliminó ninguna cuenta.';
         }
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(text).then(ok).catch(function () {
@@ -123,6 +147,15 @@
           window.prompt('Copiá esta solicitud:', text);
           ok();
         }
+      });
+      emailBtn.addEventListener('click', function () {
+        var account = requireAccount();
+        if (!account) return;
+        var mailto = 'mailto:soporte@animaldex.com'
+          + '?subject=' + encodeURIComponent('Solicitud de eliminación de cuenta - Animaldex')
+          + '&body=' + encodeURIComponent(buildMailtoBody(account, detailsValue()));
+        window.location.href = mailto;
+        status.textContent = 'Se abrió el correo para iniciar la solicitud. Esto no significa que la cuenta ya fue eliminada.';
       });
     })();
   </script>
