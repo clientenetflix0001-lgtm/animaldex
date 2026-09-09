@@ -23,6 +23,8 @@ import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
 import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
+import { LocalityPicker } from '../components/LocalityPicker';
+import type { ProfileType } from '../features/profiles/profileTypes';
 
 export default function EditPublicProfileScreen() {
   const navigation = useNavigation<any>();
@@ -32,6 +34,10 @@ export default function EditPublicProfileScreen() {
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
   const [location, setLocation] = useState('');
+  const [locality, setLocality] = useState<string | null>(null);
+  const [province, setProvince] = useState<string | null>(null);
+  const [profileType, setProfileType] = useState<ProfileType | null>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
   const [phone, setPhone] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -45,10 +51,12 @@ export default function EditPublicProfileScreen() {
         setUsername(profile.username);
         setBio(profile.bio || '');
         setLocation(profile.location || '');
+        setLocality(profile.locality || null);
+        setProfileType(profile.type || null);
         setPhone(profile.phone || '');
         setAvatarUrl(profile.avatar);
       })
-      .catch((e) => Alert.alert('Error', e?.message || 'No se pudo cargar el perfil'))
+      .catch((e) => Alert.alert('Error', e?.message || 'No se pudo cargar la página'))
       .finally(() => setLoading(false));
   }, [profileId]);
 
@@ -89,7 +97,7 @@ export default function EditPublicProfileScreen() {
   const save = useCallback(async () => {
     const handle = normalizePublicUsername(username);
     if (name.trim().length < 2) {
-      Alert.alert('Falta el nombre', 'Escribe el nombre del perfil.');
+      Alert.alert('Falta el nombre', 'Escribe el nombre de la página.');
       return;
     }
     if (!isValidPublicUsername(handle)) {
@@ -107,6 +115,7 @@ export default function EditPublicProfileScreen() {
         username: handle,
         bio: bio.trim(),
         location: location.trim(),
+        locality: profileType === 'protector' ? locality : undefined,
         phone: phone.trim(),
         avatar: avatarUrl,
       });
@@ -117,7 +126,7 @@ export default function EditPublicProfileScreen() {
     } finally {
       setSaving(false);
     }
-  }, [profileId, name, username, bio, location, phone, avatarUrl, refreshProfiles, navigation]);
+  }, [profileId, name, username, bio, location, locality, profileType, phone, avatarUrl, refreshProfiles, navigation]);
 
   if (loading) {
     return (
@@ -144,7 +153,7 @@ export default function EditPublicProfileScreen() {
                 <Ionicons name="camera" size={16} color="#fff" />
               )}
             </View>
-            <Text style={styles.avatarHint}>Cambiar foto de perfil</Text>
+            <Text style={styles.avatarHint}>Cambiar foto de la página</Text>
           </Pressable>
 
           <Text style={styles.label}>Nombre</Text>
@@ -153,7 +162,7 @@ export default function EditPublicProfileScreen() {
             value={name}
             onChangeText={setName}
             maxLength={60}
-            placeholder="Nombre del perfil"
+            placeholder="Nombre de la página"
             placeholderTextColor={colors.textMuted}
           />
 
@@ -176,7 +185,7 @@ export default function EditPublicProfileScreen() {
             onChangeText={setBio}
             maxLength={200}
             multiline
-            placeholder="Contá de qué se trata este perfil..."
+            placeholder="Contá de qué se trata esta página..."
             placeholderTextColor={colors.textMuted}
           />
 
@@ -201,11 +210,38 @@ export default function EditPublicProfileScreen() {
             placeholderTextColor={colors.textMuted}
           />
 
+          {profileType === 'protector' ? (
+            <>
+              <Text style={styles.label}>Localidad</Text>
+              <Pressable style={styles.locationBox} onPress={() => setPickerVisible(true)}>
+                <Ionicons name="location" size={18} color={colors.primary} />
+                <Text style={styles.locationText} numberOfLines={1}>
+                  {locality || 'Elegir localidad'}
+                </Text>
+                <Text style={styles.changeLocText}>Cambiar</Text>
+              </Pressable>
+              <Text style={styles.localityHint}>
+                Se usa para mostrar tus mascotas en Adoptar. La dirección de arriba sigue siendo texto libre.
+              </Text>
+            </>
+          ) : null}
+
           <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading}>
             {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Guardar cambios</Text>}
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+      <LocalityPicker
+        visible={pickerVisible}
+        currentProvince={province}
+        title="Localidad del refugio"
+        onClose={() => setPickerVisible(false)}
+        onSelect={(entry) => {
+          setLocality(entry.locality);
+          setProvince(entry.province);
+          setPickerVisible(false);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -248,6 +284,20 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   bioInput: { minHeight: 90, textAlignVertical: 'top' },
+  locationBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 12,
+  },
+  locationText: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text },
+  changeLocText: { fontSize: 12, fontWeight: '700', color: colors.primary },
+  localityHint: { fontSize: 12, color: colors.textMuted, marginTop: 6, lineHeight: 17 },
   saveBtn: {
     backgroundColor: colors.primary,
     borderRadius: radius.full,

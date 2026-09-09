@@ -17,6 +17,8 @@ import { thumb, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from './AdaptivePostImage';
 import { PostBackgroundCard } from './PostBackgroundCard';
 import { isTextBackgroundPost } from '../lib/postBackgrounds';
+import { FEED_TEXT_BACKGROUND_ASPECT } from '../lib/feedMediaLayout';
+import { feedMediaPerfNoteLikeToggle, feedMediaPerfNotePostCardRender } from '../lib/feedMediaPerf';
 import { useNavigation } from '@react-navigation/native';
 import { colors, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
@@ -49,6 +51,7 @@ function PostCardInner({
   onOpenPet,
   onOpenPost,
 }: Props) {
+  feedMediaPerfNotePostCardRender();
   const navigation = useNavigation<any>();
   const disp = getPostDisplay(post);
   const hasPet = !!(post.petId && post.petName);
@@ -71,6 +74,7 @@ function PostCardInner({
   }, [heartScale]);
 
   const handleLikePress = useCallback(() => {
+    feedMediaPerfNoteLikeToggle();
     if (!liked) animateLike();
     onToggleLike(post.id);
   }, [liked, post.id, onToggleLike, animateLike]);
@@ -137,7 +141,8 @@ function PostCardInner({
             uri={post.image}
             imageWidth={post.imageWidth}
             imageHeight={post.imageHeight}
-            containerHeight={350}
+            layout="feed"
+            recyclingKey={post.id}
             onDoubleTap={handleImageDoubleTap}
           />
           <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">
@@ -153,6 +158,7 @@ function PostCardInner({
             <PostBackgroundCard
               backgroundId={post.backgroundId}
               text={post.caption}
+              aspectRatio={FEED_TEXT_BACKGROUND_ASPECT}
               onSeeMore={() => onOpenPost(post)}
             />
             <Animated.View style={[styles.bigHeart, bigHeartStyle]} pointerEvents="none">

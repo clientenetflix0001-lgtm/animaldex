@@ -5,6 +5,7 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
+  ScrollView,
   useWindowDimensions,
   ActivityIndicator,
 } from 'react-native';
@@ -17,7 +18,7 @@ import { db, ApiPet } from '../lib/db';
 import { apiPostToPost } from '../lib/store';
 import { Post, formatCount } from '../lib/data';
 import { postNavParams, sharePublicProfile } from '../lib/share';
-import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
+import { thumb, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
@@ -25,30 +26,37 @@ import { colors, spacing, radius } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import type { PublicProfile } from '../features/profiles/profileTypes';
-import { ageLabelFromBirthDate } from '../lib/birthDate';
+import { editIdentityLabel, isManagedPageType } from '../features/profiles/profileTypes';
 import UserProfileScreen from './UserProfileScreen';
 import {
   filterProtectorPets,
-  careStatusLabel,
-  waitingLabel,
   type StatusFilter,
   type SpeciesFilter,
 } from '../lib/petFields';
+import ProtectorPetGridItem, { PROTECTOR_GRID_GAP } from '../components/ProtectorPetGridItem';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
 import { isReservedPublicUsername } from '../lib/publicHandles';
+import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
+import type { ApiReel } from '../lib/db';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-type TabKey = 'mascotas' | 'posts';
+type TabKey = 'mascotas' | 'posts' | 'reels';
 
-const TABS: { id: TabKey; label: string }[] = [
+const PROTECTOR_TABS: { id: TabKey; label: string }[] = [
   { id: 'mascotas', label: 'Mascotas' },
   { id: 'posts', label: 'Publicaciones' },
+  { id: 'reels', label: 'Reels' },
+];
+
+const PAGE_TABS: { id: TabKey; label: string }[] = [
+  { id: 'posts', label: 'Publicaciones' },
+  { id: 'reels', label: 'Reels' },
 ];
 
 const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
   { id: 'todas', label: 'Todas' },
-  { id: 'en_adopcion', label: 'En adopción' },
-  { id: 'en_recuperacion', label: 'En recuperación' },
+  { id: 'en_adopcion', label: 'Adopción' },
+  { id: 'en_recuperacion', label: 'Recuperación' },
 ];
 
 const SPECIES_FILTERS: { id: SpeciesFilter; label: string }[] = [
@@ -110,6 +118,7 @@ export default function PublicProfileScreen() {
       });
       setIsOwner(pub.isOwner);
       setFollowing(pub.isFollowing);
+      setTab(pub.profile.type === 'protector' ? 'mascotas' : 'posts');
       setPosts(feed.posts.map(apiPostToPost));
     } catch {
       setProfile(null);
@@ -146,9 +155,15 @@ export default function PublicProfileScreen() {
     () => filterProtectorPets(pets, statusFilter, speciesFilter),
     [pets, statusFilter, speciesFilter]
   );
+  const gridPets = useMemo(
+    () => (filteredPets.length % 2 === 1 ? [...filteredPets, null] : filteredPets),
+    [filteredPets]
+  );
 
-  const tile = (width - spacing.lg * 2 - 12) / 2;
   const postTile = (width - spacing.lg * 2 - 4) / 3;
+  const reelScope = profile && profile.type !== 'personal' ? { type: 'profile' as const, id: profile.id } : null;
+  const reelsGrid = useReelGrid(reelScope, tab === 'reels' && !!reelScope);
+  const isOwnerViewer = isOwner;
 
   if (!loading && profile?.type === 'personal' && profile.accountId) {
     return <UserProfileScreen userId={profile.accountId} showBack />;
@@ -211,7 +226,7 @@ export default function PublicProfileScreen() {
           <Text style={styles.name}>{profile.name}</Text>
           {isProtector && <Ionicons name="checkmark-circle" size={18} color={colors.secondary} />}
         </View>
-        <Text style={styles.handle}>@{profile.username}</Text>
+        {!isProtector ? <Text style={styles.handle}>@{profile.username}</Text> : null}
         <ProfileBadge type={profile.type} />
         {!!profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
         {!!profile.phone && (
@@ -243,7 +258,7 @@ export default function PublicProfileScreen() {
               style={styles.editBtn}
               onPress={() => navigation.navigate('EditPublicProfile', { profileId: profile.id })}
             >
-              <Text style={styles.editText}>Editar perfil</Text>
+              <Text style={styles.editText}>{editIdentityLabel(profile.type)}</Text>
             </Pressable>
             {isProtector && (
               <Pressable
@@ -264,57 +279,78 @@ export default function PublicProfileScreen() {
         )}
       </View>
 
-      {isProtector && (
-        <>
-          <View style={styles.tabRow}>
-            {TABS.map((t) => (
-              <Pressable
-                key={t.id}
-                style={[styles.tabBtn, tab === t.id && styles.tabActive]}
-                onPress={() => setTab(t.id)}
-              >
-                <Text style={[styles.tabLabel, tab === t.id && styles.tabLabelOn]} numberOfLines={1}>
-                  {t.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          {tab === 'mascotas' && (
-            <View style={styles.filters}>
-              <ScrollChips
-                items={STATUS_FILTERS}
-                value={statusFilter}
-                onChange={setStatusFilter}
-              />
-              <ScrollChips
-                items={SPECIES_FILTERS}
-                value={speciesFilter}
-                onChange={setSpeciesFilter}
-              />
-            </View>
-          )}
-        </>
+      <View style={styles.tabRow}>
+        {(isProtector ? PROTECTOR_TABS : PAGE_TABS).map((t) => (
+          <Pressable
+            key={t.id}
+            style={[styles.tabBtn, tab === t.id && styles.tabActive]}
+            onPress={() => setTab(t.id)}
+            accessibilityLabel={t.label}
+          >
+            <Text style={[styles.tabLabel, tab === t.id && styles.tabLabelOn]} numberOfLines={1}>
+              {t.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      {isProtector && tab === 'mascotas' && (
+        <View style={styles.filters}>
+          <FilterRow items={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
+          <FilterRow items={SPECIES_FILTERS} value={speciesFilter} onChange={setSpeciesFilter} />
+        </View>
       )}
     </View>
+  );
+
+  const renderReelItem = ({ item, index }: { item: ApiReel; index: number }) => (
+    <ReelGridTile
+      reel={item}
+      size={postTile}
+      isOwner={isOwnerViewer}
+      onPress={() =>
+        reelScope &&
+        openReelFromGrid(navigation, {
+          reel: item,
+          items: reelsGrid.items,
+          index,
+          scope: reelScope,
+        })
+      }
+    />
   );
 
   if (!isProtector) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <FlatList
-          data={posts}
-          keyExtractor={(p) => p.id}
+          data={tab === 'reels' ? reelsGrid.items : posts}
+          key={tab === 'reels' ? 'reels' : 'posts'}
+          keyExtractor={(item) => item.id}
           ListHeaderComponent={header}
           numColumns={3}
           columnWrapperStyle={{ gap: 2, paddingHorizontal: spacing.lg }}
           contentContainerStyle={{ paddingBottom: guest ? 260 : 40 }}
-          renderItem={({ item }) => (
-            <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item))}>
-              <PostGridMedia post={item} size={postTile} />
-            </Pressable>
-          )}
+          onEndReached={tab === 'reels' ? reelsGrid.loadMore : undefined}
+          onEndReachedThreshold={0.4}
+          renderItem={({ item, index }) =>
+            tab === 'reels'
+              ? renderReelItem({ item: item as ApiReel, index })
+              : (
+                <Pressable onPress={() => navigation.navigate('PostDetail', postNavParams(item as Post))}>
+                  <PostGridMedia post={item as Post} size={postTile} />
+                </Pressable>
+              )
+          }
           ListEmptyComponent={
-            <Text style={styles.empty}>Todavía no hay publicaciones de este perfil.</Text>
+            <Text style={styles.empty}>
+              {tab === 'reels'
+                ? (isManagedPageType(profile.type)
+                  ? 'Todavía no hay Reels de esta página.'
+                  : 'Todavía no hay Reels de este perfil.')
+                : (isManagedPageType(profile.type)
+                  ? 'Todavía no hay publicaciones de esta página.'
+                  : 'Todavía no hay publicaciones de este perfil.')}
+            </Text>
           }
         />
         {inviteBar}
@@ -323,7 +359,7 @@ export default function PublicProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safeWhite} edges={['top']}>
       {tab === 'posts' ? (
         <FlatList
           data={posts}
@@ -338,38 +374,54 @@ export default function PublicProfileScreen() {
               <PostGridMedia post={item} size={postTile} />
             </Pressable>
           )}
-          ListEmptyComponent={<Text style={styles.empty}>Este perfil todavía no publicó.</Text>}
+          ListEmptyComponent={
+            <Text style={styles.empty}>Esta página todavía no publicó.</Text>
+          }
+        />
+      ) : tab === 'reels' ? (
+        <FlatList
+          data={reelsGrid.items}
+          key="reels"
+          keyExtractor={(r) => r.id}
+          ListHeaderComponent={header}
+          numColumns={3}
+          columnWrapperStyle={reelsGrid.items.length ? { gap: 2, paddingHorizontal: spacing.lg } : undefined}
+          contentContainerStyle={{ paddingBottom: guest ? 260 : 40 }}
+          onEndReached={reelsGrid.loadMore}
+          onEndReachedThreshold={0.4}
+          renderItem={renderReelItem}
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {isManagedPageType(profile.type)
+                ? 'Esta página todavía no tiene Reels.'
+                : 'Este perfil todavía no tiene Reels.'}
+            </Text>
+          }
         />
       ) : (
         <FlatList
-          data={filteredPets}
+          data={gridPets}
           key="mascotas"
-          keyExtractor={(p) => p.id}
+          keyExtractor={(p, i) => p?.id ?? `spacer-${i}`}
           ListHeaderComponent={header}
           numColumns={2}
-          columnWrapperStyle={filteredPets.length ? { gap: 12, paddingHorizontal: spacing.lg } : undefined}
-          contentContainerStyle={{ paddingBottom: guest ? 260 : 40, gap: 12 }}
-          renderItem={({ item }) => {
-            const age = ageLabelFromBirthDate(item.birthDate) || item.age;
-            const wait =
-              item.careStatus === 'en_adopcion' ? waitingLabel(item.adoptionStartedAt) : '';
-            return (
-              <Pressable
-                style={[styles.petTile, { width: tile }]}
+          columnWrapperStyle={gridPets.length ? { gap: PROTECTOR_GRID_GAP } : undefined}
+          contentContainerStyle={{ paddingBottom: guest ? 260 : 40, gap: PROTECTOR_GRID_GAP }}
+          renderItem={({ item }) =>
+            item ? (
+              <ProtectorPetGridItem
+                petId={item.id}
+                photo={item.avatarUrl}
+                name={item.name}
+                careStatus={item.careStatus}
+                adoptionStartedAt={item.adoptionStartedAt}
+                birthDate={item.birthDate}
                 onPress={() => navigation.navigate('PetProfile', { petId: item.username || item.id })}
-              >
-                <Image
-                  source={{ uri: thumb(item.avatarUrl || petFallbackAvatar(item.id), 400) }}
-                  style={[styles.petImg, { width: tile - 16, height: tile - 16 }]}
-                />
-                <Text style={styles.petName}>{item.name}</Text>
-                <Text style={styles.petMeta}>
-                  {[careStatusLabel(item.careStatus), age].filter(Boolean).join(' · ')}
-                </Text>
-                {!!wait && <Text style={styles.petWait}>{wait}</Text>}
-              </Pressable>
-            );
-          }}
+              />
+            ) : (
+              <View style={{ flex: 1 }} />
+            )
+          }
           ListEmptyComponent={
             <Text style={styles.empty}>
               {pets.length === 0
@@ -384,7 +436,7 @@ export default function PublicProfileScreen() {
   );
 }
 
-function ScrollChips<T extends string>({
+function FilterRow<T extends string>({
   items,
   value,
   onChange,
@@ -394,7 +446,11 @@ function ScrollChips<T extends string>({
   onChange: (id: T) => void;
 }) {
   return (
-    <View style={styles.chipRow}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chipRow}
+    >
       {items.map((item) => (
         <Pressable
           key={item.id}
@@ -404,12 +460,13 @@ function ScrollChips<T extends string>({
           <Text style={[styles.filterText, value === item.id && styles.filterTextOn]}>{item.label}</Text>
         </Pressable>
       ))}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  safeWhite: { flex: 1, backgroundColor: '#FFFFFF' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -455,20 +512,20 @@ const styles = StyleSheet.create({
   editText: { fontWeight: '700', fontSize: 13, color: colors.text },
   tabRow: {
     flexDirection: 'row',
-    marginTop: spacing.xl,
+    marginTop: spacing.sm,
     marginHorizontal: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, paddingHorizontal: 2 },
+  tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 2 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
   tabLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, textAlign: 'center' },
   tabLabelOn: { color: colors.primary },
-  filters: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filters: { paddingHorizontal: spacing.sm, paddingTop: spacing.sm, paddingBottom: spacing.xs, gap: 6 },
+  chipRow: { flexDirection: 'row', gap: 6, paddingRight: spacing.sm },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radius.full,
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -477,14 +534,5 @@ const styles = StyleSheet.create({
   filterChipOn: { backgroundColor: colors.primarysoft, borderColor: colors.primary },
   filterText: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
   filterTextOn: { color: colors.primary },
-  petTile: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: 8,
-  },
-  petImg: { borderRadius: radius.sm, backgroundColor: colors.border, marginBottom: 8 },
-  petName: { fontWeight: '800', color: colors.text, fontSize: 14 },
-  petMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  petWait: { color: colors.primary, fontSize: 11, fontWeight: '700', marginTop: 4 },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 24, paddingHorizontal: 28 },
 });

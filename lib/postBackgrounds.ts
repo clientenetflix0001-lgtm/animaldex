@@ -167,17 +167,23 @@ const SEE_MORE_RESERVE = 36;
 const LINE_HEIGHT_RATIO = 1.32;
 const TEXT_AREA_WIDTH = 300;
 
-export function backgroundCardMaxLines(textLength: number, reserveSeeMore: boolean): number {
+export function backgroundCardMaxLines(
+  textLength: number,
+  reserveSeeMore: boolean,
+  cardHeight: number = POST_BACKGROUND_CARD_HEIGHT
+): number {
   const fontSize = backgroundCardFontSize(textLength);
-  const available =
-    POST_BACKGROUND_CARD_HEIGHT - CARD_PAD * 2 - (reserveSeeMore ? SEE_MORE_RESERVE : 0);
+  const available = cardHeight - CARD_PAD * 2 - (reserveSeeMore ? SEE_MORE_RESERVE : 0);
   return Math.max(2, Math.floor(available / (fontSize * LINE_HEIGHT_RATIO)));
 }
 
-export function backgroundTextNeedsSeeMore(text: string): boolean {
+export function backgroundTextNeedsSeeMore(
+  text: string,
+  cardHeight: number = POST_BACKGROUND_CARD_HEIGHT
+): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
-  const maxLines = backgroundCardMaxLines(trimmed.length, true);
+  const maxLines = backgroundCardMaxLines(trimmed.length, true, cardHeight);
   const fontSize = backgroundCardFontSize(trimmed.length);
   const charsPerLine = Math.max(10, Math.floor(TEXT_AREA_WIDTH / (fontSize * 0.52)));
   let lines = 0;

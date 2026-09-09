@@ -13,17 +13,23 @@ import { colors, spacing, radius } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { openHumanProfile } from '../lib/publicHandles';
+import { useStore } from '../lib/store';
+import PushPermissionBanner from '../components/PushPermissionBanner';
+import { locationActivityCopy } from '../lib/pushPolicy';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const ICONS: Record<string, { name: keyof typeof Ionicons.glyphMap; bg: string }> = {
   like: { name: 'heart', bg: colors.heart },
+  reel_like: { name: 'heart', bg: colors.heart },
+  reel_comment: { name: 'chatbubble', bg: colors.primary },
   follow: { name: 'person-add', bg: colors.secondary },
   follow_user: { name: 'person-add', bg: colors.secondary },
   follow_pet: { name: 'paw', bg: colors.secondary },
   comment: { name: 'chatbubble', bg: colors.primary },
   mention: { name: 'at', bg: colors.gold },
   location: { name: 'location', bg: colors.secondary },
+  birthday: { name: 'gift', bg: colors.gold },
 };
 
 type Row =
@@ -35,6 +41,7 @@ export default function ActivityScreen() {
   const navigation = useNavigation<Nav>();
   const { desktopWeb } = useBreakpoint();
   const { notifications: realNotifs, unread, markSeen, refresh } = useNotifications();
+  const { myPets } = useStore();
   const demoNotifications = useMemo(generateNotifications, []);
   const [refreshing, setRefreshing] = useState(false);
   const [seenAtOpen, setSeenAtOpen] = useState(0);
@@ -68,14 +75,22 @@ export default function ActivityScreen() {
     switch (n.type) {
       case 'like':
         return 'le dio me gusta a tu publicación';
+      case 'reel_like':
+        return 'le dio me gusta a tu Reel';
       case 'comment':
         return `comentó: "${n.text ?? ''}"`;
+      case 'reel_comment':
+        return n.text ? `comentó tu Reel: "${n.text}"` : 'comentó tu Reel';
       case 'follow_user':
         return 'empezó a seguirte';
       case 'follow_pet':
         return `empezó a seguir a ${n.petName ?? 'tu mascota'}`;
-      case 'location':
-        return `compartió su ubicación en el perfil de ${n.petName ?? 'tu mascota'} ${n.petEmoji ?? '🐾'}`;
+      case 'location': {
+        const copy = locationActivityCopy(n.petName ?? 'tu mascota', n.actorId ? n.actorName : null);
+        return copy.title;
+      }
+      case 'birthday':
+        return n.title || `¡Hoy ${n.petName ?? 'tu mascota'} cumple ${n.years === 1 ? '1 año' : `${n.years ?? ''} años`}!`;
       default:
         return 'interactuó contigo';
     }
@@ -97,14 +112,19 @@ export default function ActivityScreen() {
       const icon = ICONS[n.type] ?? ICONS.like;
       const isNew = n.createdAt > seenAtOpen - 1 && seenAtOpen > 0 && n.createdAt > seenAtOpen;
       const isLocation = n.type === 'location';
+      const isBirthday = n.type === 'birthday';
       return (
         <Pressable
           style={[styles.row, isNew && styles.rowNew]}
           onPress={() => {
             if (isLocation) {
               openLocation(n);
+            } else if (isBirthday && (n.petUsername || n.petId)) {
+              navigation.navigate('PetProfile', { petId: n.petUsername || n.petId });
             } else if (n.type === 'follow_pet' && n.petId) {
               navigation.navigate('PetProfile', { petId: n.petId });
+            } else if (n.reelId) {
+              navigation.navigate('ReelViewer', { reelId: n.reelId });
             } else if (n.postId) {
               navigation.navigate('PostDetail', { postId: n.postId });
             } else if (n.actorUsername) {
@@ -115,7 +135,11 @@ export default function ActivityScreen() {
           }}
         >
           <View>
-            {isLocation ? (
+            {isBirthday ? (
+              <View style={[styles.avatar, styles.birthdayAvatar]}>
+                <Text style={styles.birthdayEmoji}>🎂</Text>
+              </View>
+            ) : isLocation ? (
               <View style={[styles.avatar, styles.locationAvatar]}>
                 <Ionicons name="paw" size={20} color={colors.secondary} />
               </View>
@@ -132,7 +156,7 @@ export default function ActivityScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.text}>
-              {isLocation ? (
+              {isBirthday || isLocation ? (
                 realText(n)
               ) : (
                 <>
@@ -141,9 +165,10 @@ export default function ActivityScreen() {
               )}
             </Text>
             <Text style={styles.time}>{formatTime(timeAgoMinutes(n.createdAt))}</Text>
+            {isBirthday && !!n.text && <Text style={styles.birthdayHint}>{n.text}</Text>}
             {isLocation && (
               <Text style={styles.locationLink}>
-                📍 Ver en el mapa {n.accuracy ? `· precisión ±${Math.round(n.accuracy)}m` : ''}
+                {locationActivityCopy(n.petName ?? 'tu mascota', n.actorId ? n.actorName : null).subtitle}
               </Text>
             )}
           </View>
@@ -193,6 +218,7 @@ export default function ActivityScreen() {
             </View>
           )}
         </View>
+        <PushPermissionBanner hasPets={myPets.length > 0} />
         <FlatList
           data={rows}
           keyExtractor={(r) => (r.kind === 'header' ? r.id : r.kind === 'real' ? `r-${r.item.id}` : `d-${r.item.id}`)}
@@ -257,6 +283,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  birthdayAvatar: {
+    backgroundColor: '#FFF4CC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  birthdayEmoji: { fontSize: 22 },
+  birthdayHint: { fontSize: 12, color: colors.textMuted, marginTop: 3 },
   badge: {
     position: 'absolute',
     bottom: -2,

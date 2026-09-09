@@ -209,7 +209,8 @@ export async function sharePost(post: Post): Promise<void> {
 // NO crea una publicación/republicación interna: solo abre el share sheet
 // del sistema (WhatsApp, Estado de WhatsApp, Facebook, Instagram, copiar
 // enlace, etc.) con un link directo a la alerta dentro de Animaldex.
-import type { ApiAlert, ApiListing } from './db';
+import type { ApiAlert, ApiListing, ApiReel } from './db';
+import { REEL_SHARE_MESSAGE, reelSharePayload, reelShareUrl } from './reels';
 
 export function alertShareUrl(alertId: string): string {
   return `${siteOrigin()}/a/${alertId}`;
@@ -227,6 +228,23 @@ export async function shareAlert(alert: ApiAlert): Promise<void> {
 // ---------- Mercado: compartir una publicación (producto/servicio) ----------
 export function listingShareUrl(listingId: string): string {
   return `${siteOrigin()}/m/${listingId}`;
+}
+
+export function reelPublicUrl(reelId: string): string {
+  return reelShareUrl(reelId);
+}
+
+export async function shareReel(reel: Pick<ApiReel, 'id' | 'caption' | 'petName' | 'userName'>): Promise<void> {
+  const url = reelShareUrl(reel.id);
+  const title = 'Reel en Animaldex';
+  const payload = reelSharePayload(url, Platform.OS === 'ios' ? 'ios' : Platform.OS === 'web' ? 'web' : 'android');
+  if (Platform.OS === 'web') {
+    await shareLink(title, REEL_SHARE_MESSAGE, url);
+    return;
+  }
+  try {
+    await Share.share({ message: payload.message, url: payload.url, title });
+  } catch {}
 }
 
 export async function shareListing(listing: ApiListing): Promise<void> {

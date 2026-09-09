@@ -22,9 +22,26 @@ import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
-import { openHumanProfile } from '../lib/publicHandles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+function openPetInTabs(navigation: Nav, petId: string) {
+  navigation.navigate('Tabs', { screen: 'Inicio', params: { screen: 'PetProfile', params: { petId } } });
+}
+
+function openProfileInTabs(navigation: Nav, username?: string | null, userId?: string | null) {
+  const handle = String(username || '').replace(/^@/, '').toLowerCase();
+  if (handle) {
+    navigation.navigate('Tabs', {
+      screen: 'Inicio',
+      params: { screen: 'PublicProfile', params: { username: handle } },
+    });
+    return;
+  }
+  if (userId) {
+    navigation.navigate('Tabs', { screen: 'Inicio', params: { screen: 'UserProfile', params: { userId } } });
+  }
+}
 
 const FILTERS: Array<'todos' | Species> = ['todos', 'perro', 'gato', 'conejo', 'loro', 'hámster'];
 const FILTER_EMOJI: Record<string, string> = {
@@ -162,7 +179,7 @@ export default function ExploreScreen() {
               return (
                 <Pressable
                   style={styles.petRow}
-                  onPress={() => openHumanProfile(navigation, { username: item.user.username, userId: item.user.id })}
+                  onPress={() => openProfileInTabs(navigation, item.user.username, item.user.id)}
                 >
                   <Image
                     source={{ uri: thumb(item.user.avatarUrl ?? userFallbackAvatar(item.user.username), 120) }}
@@ -181,7 +198,7 @@ export default function ExploreScreen() {
               return (
                 <Pressable
                   style={styles.petRow}
-                  onPress={() => navigation.navigate('PetProfile', { petId: item.pet.username || item.pet.id })}
+                  onPress={() => openPetInTabs(navigation, item.pet.username || item.pet.id)}
                 >
                   <Image
                     source={{ uri: thumb(item.pet.avatarUrl ?? petFallbackAvatar(item.pet.id), 120) }}
@@ -202,7 +219,7 @@ export default function ExploreScreen() {
             return (
               <Pressable
                 style={styles.petRow}
-                onPress={() => navigation.navigate('PetProfile', { petId: p.id })}
+                onPress={() => openPetInTabs(navigation, p.id)}
               >
                 <Image source={{ uri: thumb(petAvatar(p), 120) }} style={styles.petRowImg} transition={200} />
                 <View style={{ flex: 1 }}>

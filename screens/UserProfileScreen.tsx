@@ -15,11 +15,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { USERS, getPet as getDemoPet, petAvatar, generateUserPosts, formatCount, Post } from '../lib/data';
-import { db, ApiUser, ApiPet } from '../lib/db';
+import { db, ApiUser, ApiPet, ApiReel } from '../lib/db';
 import { useStore, apiPostToPost } from '../lib/store';
 import { postNavParams, sharePublicProfile } from '../lib/share';
 import { thumb, petFallbackAvatar, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
+import WantToAdoptButton from '../components/WantToAdoptButton';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { colors, spacing, radius, shadow } from '../lib/theme';
@@ -27,7 +28,9 @@ import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { useProfiles, CreateProfileSheet } from '../features/profiles';
 import { PROFILE_TYPE_LABEL, type PublicProfile } from '../features/profiles/profileTypes';
+import { filterPersonalPets } from '../lib/petOwnership';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
+import { ReelGridTile, openReelFromGrid, useReelGrid } from '../components/ReelGrid';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -78,7 +81,8 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [savedList, setSavedList] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'posts' | 'saved'>('posts');
+  const [tab, setTab] = useState<'posts' | 'reels' | 'saved'>('posts');
+  const [personalProfileId, setPersonalProfileId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     // Usuario demo: datos generados
@@ -99,6 +103,8 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
       ]);
       setProfile(prof.user);
       setProfilePets(prof.pets);
+      const personal = (prof.profiles || []).find((x) => x.type === 'personal');
+      setPersonalProfileId(personal?.id ?? null);
       setAccountProfiles((prof.profiles || []).filter((x) => x.type !== 'personal'));
       setStats(prof.stats);
       setPosts(userPosts.posts.map(apiPostToPost));
@@ -144,12 +150,14 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
     userFallbackAvatar(displayUsername || 'yo');
   const isVerified = isMe ? !!verifiedPhone : !!profile?.verifiedPhone;
 
+  const ownedPets = isMe ? myPets : profilePets;
+  const personalPets = filterPersonalPets(ownedPets, isMe ? myProfiles : accountProfiles);
   const displayPets: DisplayPet[] = demoUser
     ? demoUser.petIds.map((pid) => {
         const p = getDemoPet(pid);
         return { id: p.id, name: p.name, emoji: p.emoji, breed: p.breed, avatarUri: petAvatar(p) };
       })
-    : (isMe ? myPets : profilePets).map((p) => ({
+    : personalPets.map((p) => ({
         id: p.id,
         name: p.name,
         emoji: p.emoji,
@@ -166,6 +174,12 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
   const shown = patchPosts(tab === 'saved' && isMe ? savedList : posts);
   const availW = desktopWeb ? Math.min(width - (showBack ? 0 : sidebarWidth), CONTENT.page) : width;
   const tile = (availW - spacing.lg * 2 - 4) / 3;
+  const reelScope = personalProfileId
+    ? ({ type: 'profile' as const, id: personalProfileId })
+    : targetId
+      ? ({ type: 'user' as const, id: targetId })
+      : null;
+  const reelsGrid = useReelGrid(reelScope, tab === 'reels' && !demoUser);
 
   const followerCount = demoUser
     ? 3200 + demoUser.petIds.length * 1800
@@ -241,13 +255,21 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
 
       {/* Acciones */}
       {isMe ? (
-        <View style={styles.actionRow}>
-          <Pressable style={styles.editBtn} onPress={() => navigation.navigate('EditProfile')}>
-            <Text style={styles.editText}>Editar perfil</Text>
-          </Pressable>
-          <Pressable style={styles.editBtn} onPress={() => navigation.navigate('AddPet')}>
-            <Text style={styles.editText}>+ Mascota</Text>
-          </Pressable>
+        <View>
+          <View style={styles.actionRow}>
+            <Pressable style={styles.editBtn} onPress={() => navigation.navigate('EditProfile')}>
+              <Text style={styles.editText}>Editar perfil</Text>
+            </Pressable>
+            <Pressable style={styles.editBtn} onPress={() => navigation.navigate('AddPet')}>
+              <Text style={styles.editText}>+ Mascota</Text>
+            </Pressable>
+          </View>
+          <View style={styles.adoptRow}>
+            <WantToAdoptButton
+              size="block"
+              onPress={() => navigation.navigate('AdoptionDiscovery')}
+            />
+          </View>
         </View>
       ) : (
         <View style={styles.actionRow}>
@@ -313,7 +335,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
       )}
 
       <Text style={styles.sectionTitle}>
-        {isMe ? 'Mis perfiles' : 'Perfiles'}
+        {isMe ? 'Mis páginas' : 'Páginas'}
       </Text>
       <FlatList
         horizontal
@@ -327,7 +349,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
               <View style={styles.addCircle}>
                 <Ionicons name="add" size={28} color={colors.primary} />
               </View>
-              <Text style={styles.petName}>Crear perfil</Text>
+              <Text style={styles.petName}>Crear página</Text>
               <Text style={styles.petBreed}>Tienda o refugio</Text>
             </Pressable>
           ) : null
@@ -358,8 +380,16 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         <Pressable
           style={[styles.tabBtn, tab === 'posts' && styles.tabActive]}
           onPress={() => setTab('posts')}
+          accessibilityLabel="Publicaciones"
         >
           <Ionicons name="grid-outline" size={20} color={tab === 'posts' ? colors.primary : colors.textMuted} />
+        </Pressable>
+        <Pressable
+          style={[styles.tabBtn, tab === 'reels' && styles.tabActive]}
+          onPress={() => setTab('reels')}
+          accessibilityLabel="Reels"
+        >
+          <Ionicons name="film-outline" size={20} color={tab === 'reels' ? colors.primary : colors.textMuted} />
         </Pressable>
         {isMe && (
           <Pressable
@@ -370,8 +400,9 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
           </Pressable>
         )}
       </View>
-      {loading && <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />}
-      {!loading && shown.length === 0 && (
+      {loading && tab !== 'reels' && <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />}
+      {tab === 'reels' && reelsGrid.loading && <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />}
+      {!loading && tab !== 'reels' && shown.length === 0 && (
         <View style={styles.empty}>
           <Text style={styles.emptyEmoji}>{tab === 'saved' ? '🔖' : '📷'}</Text>
           <Text style={styles.emptyTitle}>
@@ -386,6 +417,15 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
           </Text>
         </View>
       )}
+      {tab === 'reels' && !reelsGrid.loading && reelsGrid.items.length === 0 && (
+        <View style={styles.empty}>
+          <Text style={styles.emptyEmoji}>🎬</Text>
+          <Text style={styles.emptyTitle}>Sin Reels</Text>
+          <Text style={styles.emptyText}>
+            {isMe ? 'Publicá un Reel desde Crear.' : 'Este perfil todavía no tiene Reels.'}
+          </Text>
+        </View>
+      )}
     </View>
   );
 
@@ -393,18 +433,38 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FlatList
         style={desktopWeb ? styles.desktopList : undefined}
-        data={shown}
-        key="user-grid"
+        data={tab === 'reels' ? reelsGrid.items : shown}
+        key={tab === 'reels' ? 'user-reels' : 'user-grid'}
         numColumns={3}
-        keyExtractor={(p) => p.id}
+        keyExtractor={(item) => item.id}
         ListHeaderComponent={header}
         columnWrapperStyle={{ gap: 2, paddingHorizontal: spacing.lg }}
         contentContainerStyle={{ gap: 2, paddingBottom: guest ? 260 : spacing.xxl }}
-        renderItem={({ item }) => (
-          <Pressable onPress={() => openPost(item)}>
-            <PostGridMedia post={item} size={tile} />
-          </Pressable>
-        )}
+        onEndReached={tab === 'reels' ? reelsGrid.loadMore : undefined}
+        onEndReachedThreshold={0.4}
+        renderItem={({ item, index }) =>
+          tab === 'reels' ? (
+            <ReelGridTile
+              reel={item as ApiReel}
+              size={tile}
+              isOwner={isMe}
+              onPress={() =>
+                reelScope &&
+                reelScope.type !== 'feed' &&
+                openReelFromGrid(navigation, {
+                  reel: item as ApiReel,
+                  items: reelsGrid.items,
+                  index,
+                  scope: reelScope,
+                })
+              }
+            />
+          ) : (
+            <Pressable onPress={() => openPost(item as Post)}>
+              <PostGridMedia post={item as Post} size={tile} />
+            </Pressable>
+          )
+        }
         showsVerticalScrollIndicator={false}
       />
       {inviteBar}
@@ -448,6 +508,10 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.lg,
+  },
+  adoptRow: {
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.sm,
   },
   editBtn: {
     flex: 1,

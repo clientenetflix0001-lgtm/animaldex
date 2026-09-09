@@ -28,11 +28,12 @@
 // ---------- Android App Links: Digital Asset Links ----------
 // Se sirve en /.well-known/assetlinks.json para verificar la asociación
 // entre este dominio y la app Android (package com.lucasap123.animaldex).
-// El SHA-256 corresponde al keystore de firma gestionado por EAS
-// (obtenido desde las credenciales reales de EAS, no inventado). Si en el
-// futuro se publica en Google Play con "Play App Signing", hay que AÑADIR
-// además el SHA-256 de la clave de firma de Google (Play Console) a este
-// array; admite múltiples huellas.
+// El SHA-256 de EAS/Preview (upload keystore) DEBE conservarse para que
+// la APK Preview siga verificando. Play App Signing usa OTRO certificado:
+// hay que AÑADIR su huella, no reemplazar la de EAS. Conviven:
+// 1) EAS/Preview (upload)
+// 2) SHA copiado de Play Console
+// 3) SHA del APK instalado desde Play Internal Testing (pm get-app-links)
 const ASSETLINKS_JSON = JSON.stringify([
   {
     relation: ['delegate_permission/common.handle_all_urls'],
@@ -41,6 +42,8 @@ const ASSETLINKS_JSON = JSON.stringify([
       package_name: 'com.lucasap123.animaldex',
       sha256_cert_fingerprints: [
         'AF:CE:8E:B1:04:D3:4C:6F:DF:61:C3:5F:15:73:3D:58:D9:F3:AE:90:41:2F:BA:BE:0C:FC:FB:C9:C0:C5:17:E6',
+        '9D:2A:54:C2:2D:DA:99:C0:39:BB:A2:73:B5:B3:8A:80:2D:22:05:D8:E2:7B:1D:6C:20:30:F9:58:51:8B:44:46',
+        '6B:C8:C8:C8:84:F6:8A:46:8E:F6:BA:A2:AB:5D:D1:FF:FB:DC:90:EF:A6:BE:12:20:C4:F1:C2:69:94:45:74:F3',
       ],
     },
   },
@@ -266,12 +269,13 @@ async function buildOgMeta(request, env, url) {
   const petMatch = pathname.match(/^\/pet\/([^/]+)\/?$/);
   const alertMatch = pathname.match(/^\/a\/([^/]+)\/?$/);
   const listingMatch = pathname.match(/^\/m\/([^/]+)\/?$/);
+  const reelMatch = pathname.match(/^\/r\/([^/]+)\/?$/);
   const postMatch = pathname.match(/^\/p\/([^/]+)\/?$/);
   const handleMatch = pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i);
   // Keep in sync with lib/publicHandles.ts and worker/index.js
   const reserved = new Set([
-    'p', 'pet', 'a', 'm', 'login', 'register', 'auth', 'feed', 'reels', 'alerts', 'alertas',
-    'marketplace', 'mercado', 'admin', 'api', 'crear', 'actividad', 'perfil', 'explorar',
+    'p', 'pet', 'a', 'm', 'r', 'login', 'register', 'auth', 'feed', 'reels', 'alerts', 'alertas',
+    'marketplace', 'mercado', 'admin', 'api', 'crear', 'mascotas', 'actividad', 'perfil', 'explorar',
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
     'editar-perfil-publico', 'crear-alerta', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
@@ -330,6 +334,30 @@ async function buildOgMeta(request, env, url) {
         description: `${kindLabel} · 🐾 ${Number(l.price_patitas || 0).toLocaleString('es-AR')} Patitas · 📍 ${l.locality}`,
         image: images[0] || petImage('perro', 11, 600),
         url: `${origin}/m/${l.id}`,
+      };
+    }
+  } else if (reelMatch) {
+    const id = decodeURIComponent(reelMatch[1]);
+    const rows = await d1Query(
+      env,
+      `SELECT r.caption, r.mux_playback_id, u.name AS user_name, pet.name AS pet_name
+       FROM reels r
+       LEFT JOIN users u ON u.id = r.user_id
+       LEFT JOIN pets pet ON pet.id = r.pet_id
+       WHERE r.id = ? AND r.status = 'ready' AND r.deleted_at IS NULL AND r.moderation = 'none'`,
+      [id]
+    );
+    if (rows[0]) {
+      const r = rows[0];
+      const who = r.pet_name || r.user_name || 'Animaldex';
+      const thumb = r.mux_playback_id
+        ? `https://image.mux.com/${encodeURIComponent(r.mux_playback_id)}/thumbnail.webp?time=0.1&width=720&height=1280&fit_mode=smartcrop`
+        : ANIMALDEX_OG_IMAGE;
+      meta = {
+        title: `${who} · Reel en Animaldex`,
+        description: r.caption || `Un Reel de ${who} en Animaldex 🐾`,
+        image: thumb,
+        url: `${origin}/r/${id}`,
       };
     }
   } else if (postMatch) {
@@ -418,7 +446,7 @@ async function buildOgMeta(request, env, url) {
   return meta;
 }
 
-const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/)|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
+const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/|\/r\/)|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
 
 export default {
   async fetch(request, env, ctx) {
@@ -474,7 +502,7 @@ export default {
 
     const spaHandle = (url.pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i) || [])[1];
     const spaReserved = new Set([
-      'p','pet','a','m','reels','alertas','mercado','crear','actividad','perfil',
+      'p','pet','a','m','r','reels','alertas','mercado','crear','mascotas','actividad','perfil',
       'explorar','verificar','escanear','entrar','tienda','admin','vender',
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
     ]);

@@ -3,7 +3,7 @@
     "name": "Animaldex",
     "slug": "animaldex",
     "scheme": "animaldex",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -17,6 +17,8 @@
     },
     "android": {
       "package": "com.lucasap123.animaldex",
+      "versionCode": 2,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#FFE8E1",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -27,7 +29,8 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "CAMERA"
+        "CAMERA",
+        "POST_NOTIFICATIONS"
       ],
       "intentFilters": [
         {
@@ -37,7 +40,8 @@
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/p/" },
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/pet/" },
             { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/a/" },
-            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/m/" }
+            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/m/" },
+            { "scheme": "https", "host": "animaldex-web.pages.dev", "pathPrefix": "/r/" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         },
@@ -81,6 +85,21 @@
         "expo-camera",
         {
           "cameraPermission": "Animaldex usa la cámara para escanear códigos QR de mascotas y perfiles."
+        }
+      ],
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#FF6B4A",
+          "defaultChannel": "mascotas"
         }
       ]
     ],

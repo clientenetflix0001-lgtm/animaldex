@@ -11,26 +11,10 @@ import { useNotifications } from '../lib/realtime';
 import { userFallbackAvatar, thumb } from '../lib/images';
 import { colors, radius, spacing } from '../lib/theme';
 import { SIDEBAR_FULL, SIDEBAR_RAIL } from '../lib/responsive';
-
-export const TAB_ICONS: Record<string, { on: keyof typeof Ionicons.glyphMap; off: keyof typeof Ionicons.glyphMap }> = {
-  Inicio: { on: 'home', off: 'home-outline' },
-  Reels: { on: 'film', off: 'film-outline' },
-  Alertas: { on: 'warning', off: 'warning-outline' },
-  Mercado: { on: 'storefront', off: 'storefront-outline' },
-  Crear: { on: 'add-circle', off: 'add-circle-outline' },
-  Actividad: { on: 'heart', off: 'heart-outline' },
-  Perfil: { on: 'person', off: 'person-outline' },
-};
-
-const LABELS: Record<string, string> = {
-  Inicio: 'Inicio',
-  Reels: 'Reels',
-  Alertas: 'Alertas',
-  Mercado: 'Mercado',
-  Crear: 'Crear',
-  Actividad: 'Actividad',
-  Perfil: 'Perfil',
-};
+import { navigateMainTab } from '../lib/tabProfileStack';
+import { TAB_ICONS, TAB_LABELS } from '../lib/mainTabs';
+import { planMainTabPress, shouldHighlightTab } from '../lib/feedReelsNav';
+import { useFeedReelsNav } from '../lib/feedReelsNavContext';
 
 interface Props {
   state: any;
@@ -41,7 +25,20 @@ interface Props {
 export function Sidebar({ state, navigation, mode }: Props) {
   const { user, logout } = useStore();
   const { unread } = useNotifications();
+  const { page, setPage } = useFeedReelsNav();
+  const focusedName = state.routes[state.index]?.name as string;
   const full = mode === 'full';
+
+  const pressMainTab = (name: string) => {
+    const plan = planMainTabPress({ pressed: name, navFocused: focusedName, feedPage: page });
+    if (plan.kind === 'noop') return;
+    if (plan.kind === 'setPage') {
+      setPage(plan.page);
+      return;
+    }
+    if (plan.page != null) setPage(plan.page);
+    navigateMainTab(navigation, plan.tab);
+  };
 
   const confirmLogout = () => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -56,7 +53,7 @@ export function Sidebar({ state, navigation, mode }: Props) {
       {/* Logo */}
       <Pressable
         style={[styles.logoRow, !full && styles.logoRail]}
-        onPress={() => navigation.navigate('Inicio')}
+        onPress={() => pressMainTab('Inicio')}
       >
         <Text style={styles.logoEmoji}>🐾</Text>
         {full && <Text style={styles.logoText}>Animaldex</Text>}
@@ -78,14 +75,14 @@ export function Sidebar({ state, navigation, mode }: Props) {
 
       {/* Navegación */}
       <View style={styles.nav}>
-        {state.routes.map((route: any, idx: number) => {
-          const active = state.index === idx;
+        {state.routes.map((route: any) => {
+          const active = shouldHighlightTab(route.name, focusedName, page);
           const icons = TAB_ICONS[route.name];
           if (!icons) return null;
           return (
             <Pressable
               key={route.key}
-              onPress={() => navigation.navigate(route.name)}
+              onPress={() => pressMainTab(route.name)}
               style={(st: any) => [
                 styles.item,
                 !full && styles.itemRail,
@@ -106,7 +103,7 @@ export function Sidebar({ state, navigation, mode }: Props) {
               </View>
               {full && (
                 <Text style={[styles.itemLabel, active && styles.itemLabelActive]}>
-                  {LABELS[route.name] ?? route.name}
+                  {TAB_LABELS[route.name as keyof typeof TAB_LABELS] ?? route.name}
                 </Text>
               )}
             </Pressable>

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Post, Comment, CURRENT_USER_ID } from './data';
 import { auth, db, setToken, loadToken, ApiUser, ApiPet, ApiPost, timeAgoMinutes } from './db';
+import { unregisterThen } from './push';
 
 // Convierte un post de la API al formato interno de la app
 export function apiPostToPost(p: ApiPost): Post {
@@ -184,9 +185,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [applyNewSession]);
 
   const logout = useCallback(async () => {
-    try {
-      await auth.logout();
-    } catch {}
+    await unregisterThen(async () => {
+      try {
+        await auth.logout();
+      } catch {}
+    });
     await setToken(null);
     setUser(null);
     setMyPets([]);

@@ -58,7 +58,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
     if (!type) return;
     const handle = normalizePublicUsername(username);
     if (name.trim().length < 2) {
-      Alert.alert('Falta el nombre', 'Escribe el nombre del perfil.');
+      Alert.alert('Falta el nombre', 'Escribe el nombre de la página.');
       return;
     }
     if (!isValidPublicUsername(handle)) {
@@ -87,7 +87,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
           <View style={styles.handle} />
           {step === 'pick' ? (
             <>
-              <Text style={styles.title}>¿Qué perfil quieres crear?</Text>
+              <Text style={styles.title}>¿Qué página quieres crear?</Text>
               <Pressable style={styles.option} onPress={() => pick('business')}>
                 <Text style={styles.optionEmoji}>🏪</Text>
                 <View style={{ flex: 1 }}>
@@ -112,7 +112,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
                 <Text style={styles.backText}>Volver</Text>
               </Pressable>
               <Text style={styles.title}>
-                {type === 'business' ? 'Nueva tienda' : 'Nuevo perfil proteccionista'}
+                {type === 'business' ? 'Nueva página empresarial' : 'Nueva página de proteccionista/refugio'}
               </Text>
               <TextInput
                 value={name}
@@ -139,7 +139,7 @@ export default function CreateProfileSheet({ visible, onClose }: Props) {
                 multiline
               />
               <Pressable style={styles.save} onPress={submit} disabled={saving}>
-                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Crear perfil</Text>}
+                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Crear página</Text>}
               </Pressable>
             </>
           )}

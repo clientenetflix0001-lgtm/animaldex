@@ -27,6 +27,7 @@ import BirthDatePicker from '../components/BirthDatePicker';
 import { formatBirthDate, isValidBirthDateParts, parseBirthDate } from '../lib/birthDate';
 import {
   FORM_SPECIES,
+  PET_SEXES,
   PET_SIZES,
   PERSONAL_STATUSES,
   PROTECTOR_STATUSES,
@@ -74,6 +75,7 @@ export default function AddPetScreen() {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [size, setSize] = useState<string | null>(null);
+  const [sex, setSex] = useState<string | null>(null);
   const [neutered, setNeutered] = useState<boolean | null>(null);
   const [careStatus, setCareStatus] = useState(defaultCareStatus(isProtector));
   const [birthYear, setBirthYear] = useState<number | null>(null);
@@ -119,6 +121,7 @@ export default function AddPetScreen() {
         setBio(pet.bio || '');
         setAvatarUrl(pet.avatarUrl);
         setSize(pet.size || null);
+        setSex(pet.sex === 'macho' || pet.sex === 'hembra' ? pet.sex : null);
         setNeutered(pet.neutered ?? null);
         const protector = !!pet.profileId;
         setIsProtectorPet(protector);
@@ -226,6 +229,7 @@ export default function AddPetScreen() {
         careStatus,
         birthDate,
         size: (size as 'pequeno' | 'mediano' | 'grande' | null) || null,
+        sex: sex === 'macho' || sex === 'hembra' ? sex : null,
         neutered,
         profileId: isProtectorPet ? profileId : null,
       };
@@ -280,6 +284,7 @@ export default function AddPetScreen() {
     birthTouched,
     birthOk,
     size,
+    sex,
     neutered,
     isProtectorPet,
     profileId,
@@ -404,6 +409,19 @@ export default function AddPetScreen() {
                 onPress={() => setSize(s.id)}
               >
                 <Text style={[styles.speciesText, size === s.id && { color: '#fff' }]}>{s.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles.label}>Sexo</Text>
+          <View style={styles.speciesGrid}>
+            {PET_SEXES.map((s) => (
+              <Pressable
+                key={s.id}
+                style={[styles.speciesChip, sex === s.id && styles.speciesChipActive]}
+                onPress={() => setSex(s.id)}
+              >
+                <Text style={[styles.speciesText, sex === s.id && { color: '#fff' }]}>{s.label}</Text>
               </Pressable>
             ))}
           </View>
