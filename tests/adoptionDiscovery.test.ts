@@ -318,8 +318,8 @@ describe('no rompe Feed A2, App Links, runtime ni Push', () => {
     const postCard = readFileSync(join(root, 'components/PostCard.tsx'), 'utf8');
     assert.match(postCard, /onOpenPet/);
     const appJson = JSON.parse(linking);
-    assert.equal(appJson.expo.version, '1.1.0');
-    assert.equal(appJson.expo.android.versionCode, 2);
+    assert.equal(appJson.expo.version, '1.1.1');
+    assert.equal(appJson.expo.android.versionCode, 3);
     assert.equal(appJson.expo.runtimeVersion.policy, 'appVersion');
   });
 });
