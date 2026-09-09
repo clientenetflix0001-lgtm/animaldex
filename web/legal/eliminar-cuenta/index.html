@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Eliminar cuenta de Animaldex</title>
+  <meta name="description" content="Solicitá la eliminación permanente de tu cuenta de Animaldex y de los datos asociados." />
+  <link rel="canonical" href="https://animaldex.com/eliminar-cuenta" />
+  <meta name="robots" content="index,follow" />
+  <meta name="theme-color" content="#FF6B4A" />
+  <meta property="og:site_name" content="Animaldex" />
+  <meta property="og:title" content="Eliminar cuenta de Animaldex" />
+  <meta property="og:description" content="Cómo solicitar la eliminación permanente de tu cuenta y datos asociados." />
+  <meta property="og:url" content="https://animaldex.com/eliminar-cuenta" />
+  <meta property="og:type" content="website" />
+  <link rel="stylesheet" href="/legal/legal.css" />
+  <link rel="icon" href="/legal/animaldex-logo-mark.png" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="https://animaldex.com/">
+        <img src="/legal/animaldex-logo-mark.png" alt="Logo Animaldex" width="40" height="40" />
+        Animaldex
+      </a>
+      <nav class="nav" aria-label="Páginas legales">
+        <a href="/privacidad">Política de Privacidad</a>
+        <a href="/eliminar-cuenta">Eliminar cuenta</a>
+      </nav>
+    </header>
+
+    <main class="card">
+      <span class="kicker">Solicitud de eliminación</span>
+      <h1>Eliminar cuenta de Animaldex</h1>
+      <p class="lead">Podés solicitar la eliminación permanente de tu cuenta de Animaldex y de los datos asociados.</p>
+
+      <h2>Cómo funciona</h2>
+      <ol class="steps">
+        <li>
+          <strong>Identificá la cuenta.</strong>
+          Indicá el nombre de usuario y, si lo tenés, el correo o teléfono con el que te registraste.
+        </li>
+        <li>
+          <strong>Solicitá la eliminación.</strong>
+          Completá el formulario de esta página y copiá o enviá la solicitud al canal oficial de Animaldex.
+        </li>
+        <li>
+          <strong>Animaldex procesará la solicitud.</strong>
+          Revisaremos que se trate de una solicitud válida y correspondiente a esa cuenta.
+        </li>
+        <li>
+          <strong>Se eliminarán la cuenta y los datos asociados</strong>, salvo información que deba conservarse legítimamente según la <a href="/privacidad">Política de Privacidad</a>.
+        </li>
+      </ol>
+
+      <p class="note">Esta página no elimina la cuenta al instante ni simula que ya fue borrada. No hay un endpoint web de eliminación en Animaldex todavía. La solicitud se hace por el canal oficial de contacto.</p>
+
+      <form class="form" id="delete-form" novalidate>
+        <div>
+          <label for="account">Cuenta a identificar *</label>
+          <input id="account" name="account" type="text" required maxlength="120" autocomplete="username" placeholder="Usuario, correo o teléfono" />
+        </div>
+        <div>
+          <label for="details">Información adicional (opcional)</label>
+          <textarea id="details" name="details" maxlength="1000" placeholder="Por ejemplo: nombre de una mascota asociada o el motivo de la solicitud"></textarea>
+        </div>
+        <div class="actions">
+          <button type="submit">Copiar solicitud</button>
+        </div>
+        <p class="status" id="status" role="status"></p>
+      </form>
+
+      <h2>Qué se elimina</h2>
+      <p>Cuando corresponda una solicitud válida, Animaldex eliminará la cuenta y los datos personales asociados, excepto aquella información que deba conservarse temporalmente por motivos legítimos de seguridad, prevención de fraude, resolución de controversias o cumplimiento de obligaciones legales, según la Política de Privacidad.</p>
+
+      <h2>Contacto</h2>
+      <p>
+        Animaldex<br />
+        Argentina
+      </p>
+      <p class="note">El correo oficial de privacidad y soporte todavía no está publicado en el repositorio. Hasta definirlo, usá el texto copiado de esta página para enviar la solicitud por el canal oficial que Animaldex indique. No se inventó un email ni un endpoint.</p>
+    </main>
+
+    <footer class="footer">
+      <a href="/privacidad">Política de Privacidad</a>
+      <span>© Animaldex</span>
+    </footer>
+  </div>
+  <script>
+    (function () {
+      var form = document.getElementById('delete-form');
+      var status = document.getElementById('status');
+      function buildRequest() {
+        var account = (document.getElementById('account').value || '').trim();
+        var details = (document.getElementById('details').value || '').trim();
+        var lines = [
+          'Solicitud de eliminación de cuenta — Animaldex',
+          '',
+          'Pido la eliminación permanente de mi cuenta de Animaldex y de los datos asociados.',
+          'Cuenta: ' + (account || '(completar)'),
+        ];
+        if (details) lines.push('Información adicional: ' + details);
+        lines.push('', 'Enviado desde https://animaldex.com/eliminar-cuenta');
+        return lines.join('\n');
+      }
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var account = (document.getElementById('account').value || '').trim();
+        if (!account) {
+          status.textContent = 'Identificá la cuenta para armar la solicitud.';
+          return;
+        }
+        var text = buildRequest();
+        function ok() {
+          status.textContent = 'Solicitud copiada. Todavía no se eliminó ninguna cuenta: enviala por el canal oficial de Animaldex.';
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(ok).catch(function () {
+            window.prompt('Copiá esta solicitud:', text);
+            ok();
+          });
+        } else {
+          window.prompt('Copiá esta solicitud:', text);
+          ok();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

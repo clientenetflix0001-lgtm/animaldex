@@ -23,6 +23,9 @@ rm -rf dist 2>/dev/null || true
 echo "==> Exportando proyecto Expo (web + ios + android)..."
 npx expo export --platform all
 
+echo "==> Copiando páginas legales públicas (/privacidad, /eliminar-cuenta)..."
+bash scripts/copy-legal-pages.sh
+
 echo "==> Copiando Worker de Pages (OG previews + SPA fallback)..."
 cp cf-pages-worker.src.js dist/_worker.js
 

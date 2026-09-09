@@ -67,7 +67,8 @@
     "test:integrated": "node --experimental-strip-types --test tests/integratedPetsReels.test.ts",
     "test:reel-pet-auth": "node --experimental-strip-types --test tests/reelPetAuth.test.ts",
     "test:pet-handles": "node --experimental-strip-types --test tests/petDotHandles.test.ts",
-    "test:flyer": "node --experimental-strip-types --test tests/alertFlyer.test.ts"
+    "test:flyer": "node --experimental-strip-types --test tests/alertFlyer.test.ts",
+    "test:legal": "node --experimental-strip-types --test tests/legalPages.test.ts"
   },
   "private": true
 }

@@ -87,6 +87,8 @@ const RESERVED_SEGMENTS = new Set([
   'favicon.ico',
   'robots.txt',
   'well-known',
+  'privacidad',
+  'eliminar-cuenta',
 ]);
 
 const SCHEME_PLACEHOLDER_HOST = 'animaldex.local';
