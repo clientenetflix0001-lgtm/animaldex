@@ -44,8 +44,15 @@ import {
   resolveFlyerPreviewOrigin,
   setFlyerDraft,
 } from '../lib/alertFlyerSession.ts';
-import { createChooserDestination, createChooserOpen, createChooserParams } from '../lib/createChooser.ts';
+import { createChooserDestination, createChooserOpen, createChooserOpensInCrearStack, createChooserParams } from '../lib/createChooser.ts';
 import { navigateRoot } from '../lib/rootNavigate.ts';
+import {
+  CREAR_FLYER_DRAFT_ROUTE,
+  CREAR_FLYER_PREVIEW_ROUTE,
+  nestedCrearRouteName,
+  shouldHideCrearTabBar,
+} from '../lib/crearFlyerRoutes.ts';
+import { flyerPreviewFooterPadding, flyerPreviewFrameSize } from '../lib/flyerPreviewLayout.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
@@ -153,7 +160,12 @@ describe('alert flyer data', () => {
       'lib/pushRootScreen.ts',
       'lib/share.ts',
       'lib/createChooser.ts',
+      'lib/crearFlyerRoutes.ts',
+      'lib/flyerPreviewLayout.ts',
+      'lib/flyerDebug.ts',
       'components/AlertFlyerCanvas.tsx',
+      'components/FlyerFlowBoundary.tsx',
+      'screens/CreateFlyerScreens.tsx',
       'screens/AlertFlyerPreviewScreen.tsx',
       'screens/MyAlertsScreen.tsx',
       'screens/CreateChooserScreen.tsx',
@@ -172,19 +184,24 @@ describe('flyer UI wiring', () => {
     assert.match(mine, /Crear flyer/);
     assert.match(mine, /navigate\('AlertFlyerPreview', \{ alertId: item\.id \}\)/);
     assert.match(mine, /!resolved \? \(/);
-    assert.equal(createChooserDestination('flyer'), 'CreateAlert');
+    assert.equal(createChooserDestination('flyer'), 'CreateFlyerDraft');
+    assert.equal(createChooserOpensInCrearStack('flyer'), true);
+    assert.equal(createChooserOpensInCrearStack('post'), false);
     assert.deepEqual(createChooserParams('flyer'), { purpose: 'flyer' });
-    assert.deepEqual(createChooserOpen('flyer'), { screen: 'CreateAlert', params: { purpose: 'flyer' } });
+    assert.deepEqual(createChooserOpen('flyer'), { screen: 'CreateFlyerDraft', params: { purpose: 'flyer' } });
     assert.equal(createChooserDestination('post'), 'CreatePost');
     const chooser = read('screens/CreateChooserScreen.tsx');
     assert.match(chooser, /accessibilityLabel="Crear flyer"/);
     assert.match(chooser, /accessibilityLabel="Crear historia"/);
     assert.match(chooser, /createChooserOpen/);
-    assert.match(chooser, /pushRootScreen\(screen, params/);
-    assert.doesNotMatch(chooser, /navigation\.navigate\(screen, params\)/);
+    assert.match(chooser, /createChooserOpensInCrearStack/);
+    assert.match(chooser, /navigation\.navigate\(screen, params\)/);
     assert.doesNotMatch(chooser, /getParent/);
     const tabStack = read('lib/tabProfileStack.tsx');
-    assert.doesNotMatch(tabStack, /CreateAlert|AlertFlyerPreview/);
+    assert.match(tabStack, /name="CreateFlyerDraft"/);
+    assert.match(tabStack, /name="CreateFlyerPreview"/);
+    assert.doesNotMatch(tabStack, /name="CreateAlert"/);
+    assert.doesNotMatch(tabStack, /name="AlertFlyerPreview"/);
     const rootNav = read('lib/pushRootScreen.ts');
     assert.match(rootNav, /export function pushRootScreen/);
     assert.match(rootNav, /navigationRef\.isReady/);
@@ -199,7 +216,11 @@ describe('flyer UI wiring', () => {
     assert.match(create, /buildAlertFlyerData/);
     assert.match(create, /setFlyerDraft/);
     assert.match(create, /isFlyerDraftReady/);
-    assert.match(create, /pushRootScreen\('AlertFlyerPreview', \{ from: 'draft' \}\)/);
+    assert.match(create, /CREAR_FLYER_PREVIEW_ROUTE/);
+    assert.match(create, /navigation\.navigate\(CREAR_FLYER_PREVIEW_ROUTE, \{ from: 'draft' \}\)/);
+    assert.doesNotMatch(create, /pushRootScreen\('AlertFlyerPreview'/);
+    assert.doesNotMatch(create, /navigateRoot/);
+    assert.doesNotMatch(create, /getParent/);
     assert.doesNotMatch(create, /createPet/);
     assert.doesNotMatch(create, /AlertFlyerPreview',\s*\{\s*source/);
     assert.match(create, /Usar una de mis mascotas/);
@@ -214,8 +235,10 @@ describe('flyer UI wiring', () => {
     assert.match(preview, /resolveFlyerPreviewOrigin/);
     assert.match(preview, /getFlyerDraft/);
     assert.match(preview, /FlyerRenderGuard/);
-    assert.match(preview, /useWindowDimensions/);
-    assert.match(preview, /screenWidth - 32/);
+    assert.match(preview, /flyerPreviewFooterPadding/);
+    assert.match(preview, /flyerPreviewFrameSize/);
+    assert.match(preview, /paddingBottom: footerPad/);
+    assert.match(preview, /styles\.footer/);
     assert.doesNotMatch(preview, /maxWidth: 520/);
     assert.doesNotMatch(preview, /Editar en Canva/);
     assert.match(preview, /aspectRatio: FLYER_ASPECT/);
@@ -334,7 +357,7 @@ describe('flyer + draft preview', () => {
     assert.match(read('screens/MyAlertsScreen.tsx'), /alertId: item\.id/);
     const create = read('screens/CreateAlertScreen.tsx');
     assert.match(create, /isFlyerDraftReady\(\)/);
-    assert.match(create, /pushRootScreen\('AlertFlyerPreview', \{ from: 'draft' \}\)/);
+    assert.match(create, /navigation\.navigate\(CREAR_FLYER_PREVIEW_ROUTE, \{ from: 'draft' \}\)/);
     assert.doesNotMatch(create, /navigate[\s\S]*from: 'draft'[\s\S]*setFlyerDraft/);
     assert.doesNotMatch(create, /createPet/);
     assert.match(create, /if \(flyerMode\) \{\s*setImage\(dataUrl\);\s*return;/);
@@ -377,22 +400,53 @@ describe('flyer + draft preview', () => {
 });
 
 describe('flyer + crear flyer root navigation', () => {
-  it('+ no pushea CreateAlert en el stack del tab Crear', () => {
+  it('+ abre CreateFlyerDraft en el stack del tab Crear', () => {
     const chooser = read('screens/CreateChooserScreen.tsx');
-    assert.match(chooser, /pushRootScreen\(screen, params/);
-    assert.doesNotMatch(chooser, /navigation\.navigate\(screen, params\)/);
+    assert.match(chooser, /createChooserOpensInCrearStack/);
+    assert.match(chooser, /navigation\.navigate\(screen, params\)/);
     assert.doesNotMatch(chooser, /getParent\(\)/);
-    assert.equal(createChooserDestination('flyer'), 'CreateAlert');
-    assert.deepEqual(createChooserOpen('flyer'), { screen: 'CreateAlert', params: { purpose: 'flyer' } });
+    assert.equal(createChooserDestination('flyer'), CREAR_FLYER_DRAFT_ROUTE);
+    assert.deepEqual(createChooserOpen('flyer'), { screen: 'CreateFlyerDraft', params: { purpose: 'flyer' } });
     const tabStack = read('lib/tabProfileStack.tsx');
     assert.match(tabStack, /name="TabRoot"/);
+    assert.match(tabStack, /name="CreateFlyerDraft"/);
+    assert.match(tabStack, /name="CreateFlyerPreview"/);
     assert.doesNotMatch(tabStack, /name="CreateAlert"/);
     assert.doesNotMatch(tabStack, /name="AlertFlyerPreview"/);
     const app = read('App.tsx');
     assert.match(app, /name="CreateAlert"/);
     assert.match(app, /name="AlertFlyerPreview"/);
     assert.match(app, /const CrearStack = createTabProfileStack\(CreateChooserScreen\)/);
-    assert.match(read('lib/pushRootScreen.ts'), /export function pushRootScreen/);
+    assert.match(app, /shouldHideCrearTabBar/);
+    assert.match(read('screens/MyAlertsScreen.tsx'), /navigate\('AlertFlyerPreview', \{ alertId: item\.id \}\)/);
+    assert.match(read('lib/flyerDebug.ts'), /lastFlyerDebugStage/);
+    assert.match(read('lib/flyerDebug.ts'), /FLYER_DEBUG_01_PRESS/);
+    assert.doesNotMatch(read('lib/flyerDebug.ts'), /petName|photo|telefono|email|descripcion/i);
+  });
+});
+
+describe('flyer preview footer and crear local routes', () => {
+  it('footer usa inset real y + no cruza al Root Stack', () => {
+    assert.equal(flyerPreviewFooterPadding(0), 12);
+    assert.equal(flyerPreviewFooterPadding(24), 32);
+    assert.equal(flyerPreviewFooterPadding(8), 16);
+    const size = flyerPreviewFrameSize(390, 500);
+    assert.ok(size.width <= 390 - 32);
+    assert.ok(size.height <= 500);
+    assert.equal(Math.round((size.width / size.height) * 100) / 100, 0.8);
+    assert.equal(nestedCrearRouteName({ state: { index: 1, routes: [{ name: 'TabRoot' }, { name: CREAR_FLYER_DRAFT_ROUTE }] } }), CREAR_FLYER_DRAFT_ROUTE);
+    assert.equal(shouldHideCrearTabBar('Crear', CREAR_FLYER_DRAFT_ROUTE), true);
+    assert.equal(shouldHideCrearTabBar('Crear', CREAR_FLYER_PREVIEW_ROUTE), true);
+    assert.equal(shouldHideCrearTabBar('Crear', 'TabRoot'), false);
+    assert.equal(shouldHideCrearTabBar('Alertas', CREAR_FLYER_DRAFT_ROUTE), false);
+    const preview = read('screens/AlertFlyerPreviewScreen.tsx');
+    assert.match(preview, /useSafeAreaInsets/);
+    assert.match(preview, /paddingBottom: footerPad/);
+    assert.match(preview, /styles\.footer/);
+    assert.match(preview, /styles\.previewArea/);
+    const create = read('screens/CreateAlertScreen.tsx');
+    assert.doesNotMatch(create, /pushRootScreen/);
+    assert.doesNotMatch(create, /navigateRoot/);
   });
 });
 

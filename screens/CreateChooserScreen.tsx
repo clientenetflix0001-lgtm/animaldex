@@ -5,9 +5,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
-import { createChooserOpen, type CreateChooserKind } from '../lib/createChooser';
+import { createChooserOpen, createChooserOpensInCrearStack, type CreateChooserKind } from '../lib/createChooser';
 import { pushRootScreen } from '../lib/pushRootScreen';
 import { navigateRoot } from '../lib/rootNavigate';
+import { flyerDebug } from '../lib/flyerDebug';
+import { CREAR_FLYER_DRAFT_ROUTE } from '../lib/crearFlyerRoutes';
 
 export default function CreateChooserScreen() {
   const navigation = useNavigation<any>();
@@ -16,7 +18,21 @@ export default function CreateChooserScreen() {
   const open = useCallback(
     (kind: CreateChooserKind) => {
       const { screen, params } = createChooserOpen(kind);
-      if (!pushRootScreen(screen, params as never)) {
+      if (createChooserOpensInCrearStack(kind)) {
+        void flyerDebug('FLYER_DEBUG_01_PRESS', {
+          route: 'TabRoot',
+          navigator: 'CrearStack',
+          dest: CREAR_FLYER_DRAFT_ROUTE,
+        });
+        void flyerDebug('FLYER_DEBUG_02_NAVIGATION', {
+          route: 'TabRoot',
+          navigator: 'CrearStack',
+          dest: screen,
+        });
+        navigation.navigate(screen, params);
+        return;
+      }
+      if (!pushRootScreen(screen as 'CreatePost' | 'CreateStory' | 'CreateReel', params as never)) {
         navigateRoot(navigation, screen, params);
       }
     },

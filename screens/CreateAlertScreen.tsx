@@ -16,8 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { RouteProp, useLayoutEffect, useNavigation, useRoute } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useLayoutEffect, useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { db, type ApiPet } from '../lib/db';
 import { uploadImage } from '../lib/api';
@@ -38,14 +37,13 @@ import {
 } from '../lib/alerts';
 import { buildAlertFlyerData, finiteCoord } from '../lib/alertFlyer';
 import { isFlyerDraftReady, setFlyerDraft } from '../lib/alertFlyerSession';
-import { pushRootScreen } from '../lib/pushRootScreen';
-import { navigateRoot } from '../lib/rootNavigate';
+import { flyerDebug } from '../lib/flyerDebug';
+import { CREAR_FLYER_DRAFT_ROUTE, CREAR_FLYER_PREVIEW_ROUTE } from '../lib/crearFlyerRoutes';
 import { PET_SEXES, parsePetSex, speciesGroup } from '../lib/petFields';
 import { petPhotoUri } from '../lib/petAvatar';
 import { petsForPublishingIdentity, reconcileSelectedPetId } from '../lib/petOwnership';
 import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
-import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
 import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib/adoptionContact';
 import { SelectedImagePreview } from '../components/SelectedImagePreview';
@@ -57,18 +55,31 @@ function alertSpeciesFromPet(species: string | null | undefined): string {
   return speciesGroup(id);
 }
 
-type Nav = NativeStackNavigationProp<RootStackParamList>;
-
 export default function CreateAlertScreen() {
-  const navigation = useNavigation<Nav>();
-  const route = useRoute<RouteProp<RootStackParamList, 'CreateAlert'>>();
-  const flyerMode = route.params?.purpose === 'flyer';
+  const navigation = useNavigation<any>();
+  const route = useRoute();
+  const routeName = String(route.name || '');
+  const flyerMode = (route.params as { purpose?: string } | undefined)?.purpose === 'flyer' || routeName === CREAR_FLYER_DRAFT_ROUTE;
   const { activeProfile, activeProfileId, profiles } = useProfiles();
   const { myPets } = useStore();
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: flyerMode ? 'Crear flyer' : 'Crear alerta' });
   }, [flyerMode, navigation]);
+
+  useEffect(() => {
+    if (!flyerMode) return;
+    void flyerDebug('FLYER_DEBUG_03_SCREEN_MOUNT', {
+      route: routeName,
+      navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
+      dest: routeName,
+    });
+    void flyerDebug('FLYER_DEBUG_04_DRAFT_INIT', {
+      route: routeName,
+      draftReady: isFlyerDraftReady(),
+    });
+    void flyerDebug('FLYER_DEBUG_05_FORM_RENDER', { route: routeName });
+  }, [flyerMode, routeName]);
 
   const [primary, setPrimary] = useState<AlertCreatePrimaryId>('lost');
   const [seenKind, setSeenKind] = useState<'sighting' | 'found' | null>(null);
@@ -281,8 +292,16 @@ export default function CreateAlertScreen() {
         Alert.alert('No pudimos preparar el flyer', 'Revisá foto, tipo y ubicación e intentá nuevamente.');
         return;
       }
-      if (!pushRootScreen('AlertFlyerPreview', { from: 'draft' })) {
-        navigateRoot(navigation, 'AlertFlyerPreview', { from: 'draft' });
+      void flyerDebug('FLYER_DEBUG_06_PREVIEW_NAV', {
+        route: routeName,
+        navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
+        dest: routeName === CREAR_FLYER_DRAFT_ROUTE ? CREAR_FLYER_PREVIEW_ROUTE : 'AlertFlyerPreview',
+        draftReady: true,
+      });
+      if (routeName === CREAR_FLYER_DRAFT_ROUTE) {
+        navigation.navigate(CREAR_FLYER_PREVIEW_ROUTE, { from: 'draft' });
+      } else {
+        navigation.navigate('AlertFlyerPreview', { from: 'draft' });
       }
       return;
     }
@@ -296,7 +315,7 @@ export default function CreateAlertScreen() {
     } finally {
       setSaving(false);
     }
-  }, [image, description, locality, province, lat, lon, primary, seenKind, species, petName, sex, breed, color, ageLabel, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode, activePetId, flyerPetUsername]);
+  }, [image, description, locality, province, lat, lon, primary, seenKind, species, petName, sex, breed, color, ageLabel, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode, activePetId, flyerPetUsername, routeName]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>

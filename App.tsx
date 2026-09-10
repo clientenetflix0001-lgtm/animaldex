@@ -64,6 +64,7 @@ import { extractTagCode } from './lib/tags';
 import { createTabProfileStack, navigateMainTab } from './lib/tabProfileStack';
 import { MOBILE_TAB_ORDER, TAB_ICONS, TAB_LABELS } from './lib/mainTabs';
 import { planMainTabPress, shouldHighlightTab } from './lib/feedReelsNav';
+import { nestedCrearRouteName, shouldHideCrearTabBar } from './lib/crearFlyerRoutes';
 import { FeedReelsNavProvider, useFeedReelsNav } from './lib/feedReelsNavContext';
 import { navigationRef } from './lib/navigationRef';
 import { attachPushResponseListeners, ensurePushHandler, registerPushTokenIfGranted, setPushNavGate } from './lib/push';
@@ -116,7 +117,10 @@ function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
   const insets = useSafeAreaInsets();
   const bottomInset = Platform.OS === 'web' ? 0 : insets.bottom;
   const focusedName = state.routes[state.index]?.name as keyof TabParamList;
+  const nestedName = nestedCrearRouteName(state.routes[state.index]);
   const { page, setPage } = useFeedReelsNav();
+
+  if (shouldHideCrearTabBar(focusedName, nestedName)) return null;
 
   return (
     <View
