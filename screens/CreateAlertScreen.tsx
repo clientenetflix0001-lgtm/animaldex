@@ -38,6 +38,8 @@ import {
 } from '../lib/alerts';
 import { buildAlertFlyerData, finiteCoord } from '../lib/alertFlyer';
 import { isFlyerDraftReady, setFlyerDraft } from '../lib/alertFlyerSession';
+import { pushRootScreen } from '../lib/pushRootScreen';
+import { navigateRoot } from '../lib/rootNavigate';
 import { PET_SEXES, parsePetSex, speciesGroup } from '../lib/petFields';
 import { petPhotoUri } from '../lib/petAvatar';
 import { petsForPublishingIdentity, reconcileSelectedPetId } from '../lib/petOwnership';
@@ -279,7 +281,9 @@ export default function CreateAlertScreen() {
         Alert.alert('No pudimos preparar el flyer', 'Revisá foto, tipo y ubicación e intentá nuevamente.');
         return;
       }
-      navigation.navigate('AlertFlyerPreview', { from: 'draft' });
+      if (!pushRootScreen('AlertFlyerPreview', { from: 'draft' })) {
+        navigateRoot(navigation, 'AlertFlyerPreview', { from: 'draft' });
+      }
       return;
     }
 

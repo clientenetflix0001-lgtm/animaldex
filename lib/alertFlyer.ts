@@ -242,7 +242,26 @@ export function flyerFactRows(flyer: AlertFlyer): AlertFlyerFactRow[] {
 }
 
 /** Hechos existentes unidos: `Perro · Hembra · …`. Omite vacíos. */
+/** Hechos existentes unidos: `Perro · Hembra · …`. Omite vacíos. */
 export function flyerMetaLine(flyer: AlertFlyer): string | undefined {
   const parts = flyerFactRows(flyer).map((row) => row.value);
   return parts.length ? parts.join(' · ') : undefined;
+}
+
+export type FlyerContentDensity = 'normal' | 'compact';
+
+export const FLYER_PHOTO_HEIGHT_NORMAL = '42%';
+export const FLYER_PHOTO_HEIGHT_COMPACT = '38%';
+export const FLYER_PHOTO_WIDTH = '92%';
+
+export function flyerContentDensity(flyer: AlertFlyer): FlyerContentDensity {
+  const facts = flyerFactRows(flyer).length;
+  const description = flyer.description || '';
+  const extraBlocks = [flyer.location, flyer.dateLabel, flyer.contact, flyer.petPublicUrl].filter(Boolean).length;
+  if (description.length > 90 || facts >= 4 || extraBlocks >= 4) return 'compact';
+  return 'normal';
+}
+
+export function flyerDescriptionLines(density: FlyerContentDensity): number {
+  return density === 'compact' ? 2 : 3;
 }

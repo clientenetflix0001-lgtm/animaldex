@@ -8,9 +8,14 @@ import {
   FLYER_ASPECT,
   FLYER_EXPORT_HEIGHT,
   FLYER_EXPORT_WIDTH,
+  FLYER_PHOTO_HEIGHT_COMPACT,
+  FLYER_PHOTO_HEIGHT_NORMAL,
+  FLYER_PHOTO_WIDTH,
   buildAlertFlyerData,
   finiteCoord,
   flyerAccentForType,
+  flyerContentDensity,
+  flyerDescriptionLines,
   flyerFactRows,
   flyerFromApiAlert,
   flyerHeadlineForType,
@@ -141,7 +146,14 @@ describe('alert flyer data', () => {
     const files = [
       'lib/alertFlyer.ts',
       'lib/alertFlyerShare.ts',
+      'lib/alertFlyerSession.ts',
+      'lib/alertFlyerOptimize.ts',
+      'lib/alertPhotoUpload.ts',
+      'lib/rootNavigate.ts',
+      'lib/pushRootScreen.ts',
       'lib/share.ts',
+      'lib/createChooser.ts',
+      'components/AlertFlyerCanvas.tsx',
       'screens/AlertFlyerPreviewScreen.tsx',
       'screens/MyAlertsScreen.tsx',
       'screens/CreateChooserScreen.tsx',
@@ -168,9 +180,15 @@ describe('flyer UI wiring', () => {
     assert.match(chooser, /accessibilityLabel="Crear flyer"/);
     assert.match(chooser, /accessibilityLabel="Crear historia"/);
     assert.match(chooser, /createChooserOpen/);
-    assert.match(chooser, /navigation\.navigate\(screen, params\)/);
-    assert.doesNotMatch(chooser, /navigateRoot/);
+    assert.match(chooser, /pushRootScreen\(screen, params/);
+    assert.doesNotMatch(chooser, /navigation\.navigate\(screen, params\)/);
     assert.doesNotMatch(chooser, /getParent/);
+    const tabStack = read('lib/tabProfileStack.tsx');
+    assert.doesNotMatch(tabStack, /CreateAlert|AlertFlyerPreview/);
+    const rootNav = read('lib/pushRootScreen.ts');
+    assert.match(rootNav, /export function pushRootScreen/);
+    assert.match(rootNav, /navigationRef\.isReady/);
+    assert.match(rootNav, /navigationRef\.navigate/);
     const app = read('App.tsx');
     assert.match(app, /const CrearStack = createTabProfileStack\(CreateChooserScreen\)/);
     assert.match(app, /name="Crear" component=\{CrearStack\}/);
@@ -181,9 +199,8 @@ describe('flyer UI wiring', () => {
     assert.match(create, /buildAlertFlyerData/);
     assert.match(create, /setFlyerDraft/);
     assert.match(create, /isFlyerDraftReady/);
-    assert.match(create, /navigate\('AlertFlyerPreview', \{ from: 'draft' \}\)/);
+    assert.match(create, /pushRootScreen\('AlertFlyerPreview', \{ from: 'draft' \}\)/);
     assert.doesNotMatch(create, /createPet/);
-    assert.doesNotMatch(create, /navigateRoot/);
     assert.doesNotMatch(create, /AlertFlyerPreview',\s*\{\s*source/);
     assert.match(create, /Usar una de mis mascotas/);
     assert.match(create, /petsForPublishingIdentity/);
@@ -219,18 +236,20 @@ describe('flyer UI wiring', () => {
     assert.match(canvas, /animaldex-logo-mark\.png/);
     assert.match(canvas, /heroBand/);
     assert.match(canvas, /photoStage/);
-    assert.match(canvas, /SI TENÉS INFORMACIÓN/);
+    assert.match(canvas, /flyer\.contact/);
     assert.match(canvas, /flyer\.petPublicUrl/);
     assert.match(canvas, /backgroundColor: '#FFFFFF'/);
-    assert.match(canvas, /width: '90%'/);
+    assert.match(canvas, /FLYER_PHOTO_WIDTH/);
     assert.match(canvas, /alignSelf: 'center'/);
-    assert.match(canvas, /flexShrink: 0/);
-    assert.match(canvas, /styles\.photo\} resizeMode="cover"/);
-    assert.doesNotMatch(canvas, /styles\.photo\} resizeMode="contain"/);
-    assert.doesNotMatch(canvas, /sidePanel/);
-    assert.doesNotMatch(canvas, /heroRow/);
-    assert.match(canvas, /numberOfLines=\{4\}/);
-    assert.match(canvas, /paw: \{ position: 'absolute'/);
+    assert.match(canvas, /flyerContentDensity/);
+    assert.match(canvas, /FLYER_PHOTO_HEIGHT_COMPACT/);
+    assert.match(canvas, /FLYER_PHOTO_HEIGHT_NORMAL/);
+    assert.match(canvas, /numberOfLines=\{1\}/);
+    assert.match(canvas, /numberOfLines=\{2\}/);
+    assert.match(canvas, /ellipsizeMode="tail"/);
+    assert.doesNotMatch(canvas, /minHeight: 168/);
+    assert.doesNotMatch(canvas, /photoStage: \{[^}]*flex: 1/);
+    assert.doesNotMatch(canvas, /position: 'absolute'/);
     assert.doesNotMatch(canvas, /name: \{[^}]*position: 'absolute'/);
     assert.doesNotMatch(canvas, /block: \{[^}]*position: 'absolute'/);
     assert.doesNotMatch(canvas, /ctaBand: \{[^}]*position: 'absolute'/);
@@ -315,6 +334,7 @@ describe('flyer + draft preview', () => {
     assert.match(read('screens/MyAlertsScreen.tsx'), /alertId: item\.id/);
     const create = read('screens/CreateAlertScreen.tsx');
     assert.match(create, /isFlyerDraftReady\(\)/);
+    assert.match(create, /pushRootScreen\('AlertFlyerPreview', \{ from: 'draft' \}\)/);
     assert.doesNotMatch(create, /navigate[\s\S]*from: 'draft'[\s\S]*setFlyerDraft/);
     assert.doesNotMatch(create, /createPet/);
     assert.match(create, /if \(flyerMode\) \{\s*setImage\(dataUrl\);\s*return;/);
@@ -353,6 +373,70 @@ describe('flyer + draft preview', () => {
     ]);
     clearFlyerDraft();
     assert.equal(isFlyerDraftReady(), false);
+  });
+});
+
+describe('flyer + crear flyer root navigation', () => {
+  it('+ no pushea CreateAlert en el stack del tab Crear', () => {
+    const chooser = read('screens/CreateChooserScreen.tsx');
+    assert.match(chooser, /pushRootScreen\(screen, params/);
+    assert.doesNotMatch(chooser, /navigation\.navigate\(screen, params\)/);
+    assert.doesNotMatch(chooser, /getParent\(\)/);
+    assert.equal(createChooserDestination('flyer'), 'CreateAlert');
+    assert.deepEqual(createChooserOpen('flyer'), { screen: 'CreateAlert', params: { purpose: 'flyer' } });
+    const tabStack = read('lib/tabProfileStack.tsx');
+    assert.match(tabStack, /name="TabRoot"/);
+    assert.doesNotMatch(tabStack, /name="CreateAlert"/);
+    assert.doesNotMatch(tabStack, /name="AlertFlyerPreview"/);
+    const app = read('App.tsx');
+    assert.match(app, /name="CreateAlert"/);
+    assert.match(app, /name="AlertFlyerPreview"/);
+    assert.match(app, /const CrearStack = createTabProfileStack\(CreateChooserScreen\)/);
+    assert.match(read('lib/pushRootScreen.ts'), /export function pushRootScreen/);
+  });
+});
+
+describe('flyer canvas long content fits 4:5', () => {
+  it('compacta foto y textos cuando hay muchos datos', () => {
+    assert.equal(FLYER_PHOTO_HEIGHT_NORMAL, '42%');
+    assert.equal(FLYER_PHOTO_HEIGHT_COMPACT, '38%');
+    assert.equal(FLYER_PHOTO_WIDTH, '92%');
+    const short = buildAlertFlyerData({
+      type: 'lost',
+      petName: 'Nina',
+      species: 'perro',
+      locality: 'Cerrillos',
+      image: 'https://example.com/nina.jpg',
+    });
+    assert.equal(flyerContentDensity(short), 'normal');
+    assert.equal(flyerDescriptionLines('normal'), 3);
+    const long = buildAlertFlyerData({
+      type: 'lost',
+      petName: 'Nina María de los Ángeles González',
+      species: 'perro',
+      sex: 'hembra',
+      breed: 'Labrador mestizo de pelo largo',
+      color: 'Negro con manchas blancas en el pecho',
+      age: '3 años',
+      locality: 'Barrio El Progreso, Cerrillos',
+      province: 'Salta',
+      description:
+        'Se perdió cerca de la plaza. Lleva collar rojo, es muy mansa y responde al nombre. Tiene una mancha blanca en el pecho y una cicatriz pequeña en la pata trasera izquierda. Por favor contactar si la ven.',
+      image: 'https://example.com/nina.jpg',
+      petUsername: 'nina.pet',
+      contactPhone: '3875551234',
+    });
+    assert.equal(flyerContentDensity(long), 'compact');
+    assert.equal(flyerDescriptionLines('compact'), 2);
+    assert.equal(long.petPublicUrl, 'https://animaldex.com/nina.pet');
+    const canvas = read('components/AlertFlyerCanvas.tsx');
+    assert.match(canvas, /numberOfLines=\{1\}/);
+    assert.match(canvas, /numberOfLines=\{descLines\}/);
+    assert.match(canvas, /flexGrow: 0/);
+    assert.match(canvas, /flexShrink: 0/);
+    assert.doesNotMatch(canvas, /minHeight: 168/);
+    assert.doesNotMatch(canvas, /photoStage: \{[^}]*flex: 1/);
+    assert.doesNotMatch(canvas, /position: 'absolute'/);
   });
 });
 

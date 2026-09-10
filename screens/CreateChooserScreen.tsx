@@ -6,6 +6,8 @@ import { useNavigation } from '@react-navigation/native';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { createChooserOpen, type CreateChooserKind } from '../lib/createChooser';
+import { pushRootScreen } from '../lib/pushRootScreen';
+import { navigateRoot } from '../lib/rootNavigate';
 
 export default function CreateChooserScreen() {
   const navigation = useNavigation<any>();
@@ -14,7 +16,9 @@ export default function CreateChooserScreen() {
   const open = useCallback(
     (kind: CreateChooserKind) => {
       const { screen, params } = createChooserOpen(kind);
-      navigation.navigate(screen, params);
+      if (!pushRootScreen(screen, params as never)) {
+        navigateRoot(navigation, screen, params);
+      }
     },
     [navigation]
   );
