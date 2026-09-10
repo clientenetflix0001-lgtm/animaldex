@@ -1,12 +1,23 @@
-/** Sube al navigator raíz (Root Stack). El Tab "Crear" no contiene CreateAlert. */
+type NavNode = {
+  getParent?: () => unknown;
+  getState?: () => { routeNames?: string[] } | undefined;
+  navigate: (name: string, params?: object) => void;
+};
+
+/** Navega en el navigator que declara `name`. No subir más: el padre extra no es el native-stack. */
 export function navigateRoot(
-  navigation: { getParent?: () => unknown; navigate: (name: string, params?: object) => void },
+  navigation: NavNode,
   name: string,
   params?: object
 ): void {
-  let nav: { getParent?: () => unknown; navigate: (name: string, params?: object) => void } = navigation;
+  let nav: NavNode = navigation;
   for (let i = 0; i < 8; i++) {
-    const parent = nav.getParent?.() as typeof nav | undefined;
+    const names = nav.getState?.()?.routeNames;
+    if (Array.isArray(names) && names.includes(name)) {
+      nav.navigate(name, params);
+      return;
+    }
+    const parent = nav.getParent?.() as NavNode | undefined;
     if (!parent?.navigate) break;
     nav = parent;
   }

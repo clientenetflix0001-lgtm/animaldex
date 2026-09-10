@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#F0E6DA',
-    backgroundColor: '#FFF9F2',
+    backgroundColor: '#FFFFFF',
   },
   preparing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.bg },
   preparingText: { fontWeight: '800', fontSize: 15, color: colors.text },

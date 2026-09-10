@@ -117,8 +117,12 @@ describe('flyer UI wiring', () => {
     assert.match(chooser, /accessibilityLabel="Crear flyer"/);
     assert.match(chooser, /accessibilityLabel="Crear historia"/);
     assert.match(chooser, /createChooserOpen/);
-    assert.match(chooser, /navigateRoot\(navigation, screen, params\)/);
+    assert.match(chooser, /navigation\.navigate\(screen, params\)/);
+    assert.doesNotMatch(chooser, /navigateRoot/);
     assert.doesNotMatch(chooser, /getParent/);
+    const app = read('App.tsx');
+    assert.match(app, /const CrearStack = createTabProfileStack\(CreateChooserScreen\)/);
+    assert.match(app, /name="Crear" component=\{CrearStack\}/);
     const create = read('screens/CreateAlertScreen.tsx');
     assert.match(create, /Publicar alerta/);
     assert.match(create, /Generar flyer/);
@@ -126,7 +130,8 @@ describe('flyer UI wiring', () => {
     assert.match(create, /buildAlertFlyerData/);
     assert.match(create, /setFlyerDraft/);
     assert.match(create, /isFlyerDraftReady/);
-    assert.match(create, /navigateRoot\(navigation, 'AlertFlyerPreview', \{ from: 'draft' \}\)/);
+    assert.match(create, /navigate\('AlertFlyerPreview', \{ from: 'draft' \}\)/);
+    assert.doesNotMatch(create, /navigateRoot/);
     assert.doesNotMatch(create, /AlertFlyerPreview',\s*\{\s*source/);
     const preview = read('screens/AlertFlyerPreviewScreen.tsx');
     assert.match(preview, /db\.createAlert/);
@@ -152,8 +157,11 @@ describe('flyer UI wiring', () => {
     assert.match(canvas, /sidePanel/);
     assert.match(canvas, /SI TENÉS INFORMACIÓN/);
     assert.match(canvas, /Juntos los encontramos/);
-    assert.match(canvas, /resizeMode="contain"/);
-    assert.doesNotMatch(canvas, /resizeMode="cover"/);
+    assert.match(canvas, /backgroundColor: '#FFFFFF'/);
+    assert.match(canvas, /width: '100%'/);
+    assert.match(canvas, /alignSelf: 'center'/);
+    assert.match(canvas, /styles\.photo\} resizeMode="cover"/);
+    assert.doesNotMatch(canvas, /styles\.photo\} resizeMode="contain"/);
     assert.match(canvas, /fontSize: 20/);
     assert.match(canvas, /paddingVertical: 7/);
   });
@@ -212,13 +220,35 @@ describe('flyer + draft preview', () => {
     assert.match(read('screens/MyAlertsScreen.tsx'), /alertId: item\.id/);
     const create = read('screens/CreateAlertScreen.tsx');
     assert.match(create, /isFlyerDraftReady\(\)/);
-    assert.doesNotMatch(create, /navigateRoot[\s\S]*from: 'draft'[\s\S]*setFlyerDraft/);
+    assert.doesNotMatch(create, /navigate[\s\S]*from: 'draft'[\s\S]*setFlyerDraft/);
     const calls: Array<[string, object?]> = [];
-    const root = { navigate: (n: string, p?: object) => calls.push([n, p]) };
-    const tabs = { getParent: () => root, navigate: () => { throw new Error('tab'); } };
-    const screen = { getParent: () => tabs, navigate: () => { throw new Error('screen'); } };
+    const tooHigh = {
+      navigate: () => {
+        throw new Error('overshoot');
+      },
+      getState: () => ({ routeNames: [] as string[] }),
+    };
+    const root = {
+      navigate: (n: string, p?: object) => calls.push([n, p]),
+      getState: () => ({ routeNames: ['CreateAlert', 'AlertFlyerPreview', 'Tabs'] }),
+      getParent: () => tooHigh,
+    };
+    const tabs = {
+      getParent: () => root,
+      navigate: () => {
+        throw new Error('tab');
+      },
+      getState: () => ({ routeNames: ['Inicio', 'Crear'] }),
+    };
+    const screen = {
+      getParent: () => tabs,
+      navigate: () => {
+        throw new Error('screen');
+      },
+      getState: () => ({ routeNames: ['Inicio', 'Crear'] }),
+    };
     navigateRoot(screen, 'CreateAlert', { purpose: 'flyer' });
-    navigateRoot(screen, 'AlertFlyerPreview', { from: 'draft' });
+    navigateRoot(root, 'AlertFlyerPreview', { from: 'draft' });
     assert.deepEqual(calls, [
       ['CreateAlert', { purpose: 'flyer' }],
       ['AlertFlyerPreview', { from: 'draft' }],

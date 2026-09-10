@@ -101,6 +101,7 @@ function ReelsTabBridge() {
 const InicioStack = createTabProfileStack(InicioRoot);
 const ReelsStack = createTabProfileStack(ReelsTabBridge);
 const AlertasStack = createTabProfileStack(AlertsScreen);
+const CrearStack = createTabProfileStack(CreateChooserScreen);
 const MercadoStack = createTabProfileStack(MarketScreen);
 const ActividadStack = createTabProfileStack(ActivityScreen);
 const PerfilStack = createTabProfileStack(MyProfileTab);
@@ -201,7 +202,7 @@ function Tabs() {
           <Tab.Screen name="Reels" component={ReelsStack} />
           <Tab.Screen name="Alertas" component={AlertasStack} />
           <Tab.Screen name="Mercado" component={MercadoStack} />
-          <Tab.Screen name="Crear" component={CreateChooserScreen} />
+          <Tab.Screen name="Crear" component={CrearStack} />
           <Tab.Screen name="Mascotas" component={MascotasStack} />
           <Tab.Screen name="Actividad" component={ActividadStack} />
           <Tab.Screen name="Perfil" component={PerfilStack} />
@@ -225,7 +226,7 @@ function Tabs() {
         <Tab.Screen name="Inicio" component={InicioStack} />
         <Tab.Screen name="Reels" component={ReelsStack} />
         <Tab.Screen name="Alertas" component={AlertasStack} />
-        <Tab.Screen name="Crear" component={CreateChooserScreen} />
+        <Tab.Screen name="Crear" component={CrearStack} />
         <Tab.Screen name="Mascotas" component={MascotasStack} />
         <Tab.Screen name="Mercado" component={MercadoStack} />
         <Tab.Screen name="Perfil" component={PerfilStack} />

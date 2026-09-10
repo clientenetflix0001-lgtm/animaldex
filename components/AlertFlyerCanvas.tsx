@@ -24,7 +24,7 @@ export function AlertFlyerCanvas({ flyer }: { flyer: AlertFlyer }) {
       <View style={styles.heroRow}>
         {flyer.image ? (
           <View style={styles.photoWrap}>
-            <Image source={{ uri: flyer.image }} style={styles.photo} resizeMode="contain" />
+            <Image source={{ uri: flyer.image }} style={styles.photo} resizeMode="cover" />
           </View>
         ) : (
           <View style={[styles.photoWrap, styles.photoEmpty]} />
@@ -112,7 +112,7 @@ export class FlyerRenderGuard extends Component<{ children: ReactNode }, { faile
 const styles = StyleSheet.create({
   sheet: {
     flex: 1,
-    backgroundColor: '#FFF9F2',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 18,
     paddingTop: 14,
     paddingBottom: 12,
@@ -146,16 +146,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.95,
   },
-  heroRow: { flexDirection: 'row', gap: 12, flex: 1, minHeight: 0 },
+  heroRow: { flex: 1, minHeight: 0, gap: 10 },
   photoWrap: {
-    width: '56%',
+    width: '100%',
+    flex: 1,
+    minHeight: 168,
+    alignSelf: 'center',
     borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#F3EBE0',
+    backgroundColor: '#F0F0F0',
   },
   photo: { width: '100%', height: '100%' },
-  photoEmpty: { backgroundColor: '#F3EBE0' },
-  sidePanel: { flex: 1, justifyContent: 'center', gap: 6, paddingTop: 2 },
+  photoEmpty: { backgroundColor: '#F0F0F0' },
+  sidePanel: { gap: 6, paddingTop: 2 },
   name: { fontSize: 22, fontWeight: '900', color: '#2D2016', letterSpacing: 0.2, marginBottom: 4 },
   fact: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   factIcon: { fontSize: 12, width: 16, marginTop: 1 },
@@ -182,7 +185,7 @@ const styles = StyleSheet.create({
   domain: { marginTop: 2, fontSize: 11, fontWeight: '800', color: '#9A8C7E' },
   fallback: {
     flex: 1,
-    backgroundColor: '#FFF9F2',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
