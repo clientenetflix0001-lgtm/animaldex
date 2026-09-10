@@ -1,7 +1,7 @@
 // ============================================================
 // Animaldex — Crear alerta (animal perdido / encontrado)
 // ============================================================
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -19,10 +19,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { RouteProp, useLayoutEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
-import { db } from '../lib/db';
+import { db, type ApiPet } from '../lib/db';
 import { uploadImage } from '../lib/api';
 import { detectCurrentLocality, withProvinceFallback } from '../lib/geo';
 import { LocalityPicker } from '../components/LocalityPicker';
+import PetAvatar from '../components/PetAvatar';
 import {
   ALERT_CREATE_PRIMARY,
   ALERT_SIGHTING_SUBCHOICES,
@@ -37,7 +38,10 @@ import {
 } from '../lib/alerts';
 import { buildAlertFlyerData, finiteCoord } from '../lib/alertFlyer';
 import { isFlyerDraftReady, setFlyerDraft } from '../lib/alertFlyerSession';
-import { PET_SEXES } from '../lib/petFields';
+import { PET_SEXES, parsePetSex, speciesGroup } from '../lib/petFields';
+import { petPhotoUri } from '../lib/petAvatar';
+import { petsForPublishingIdentity, reconcileSelectedPetId } from '../lib/petOwnership';
+import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
@@ -45,13 +49,20 @@ import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib
 import { SelectedImagePreview } from '../components/SelectedImagePreview';
 import { GALLERY_IMAGE_PICKER_OPTIONS } from '../lib/galleryImagePicker';
 
+function alertSpeciesFromPet(species: string | null | undefined): string {
+  const id = String(species || '').trim().toLowerCase();
+  if (ALERT_SPECIES.some((s) => s.id === id)) return id;
+  return speciesGroup(id);
+}
+
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function CreateAlertScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'CreateAlert'>>();
   const flyerMode = route.params?.purpose === 'flyer';
-  const { activeProfile } = useProfiles();
+  const { activeProfile, activeProfileId, profiles } = useProfiles();
+  const { myPets } = useStore();
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: flyerMode ? 'Crear flyer' : 'Crear alerta' });
@@ -62,6 +73,11 @@ export default function CreateAlertScreen() {
   const [species, setSpecies] = useState('perro');
   const [petName, setPetName] = useState('');
   const [sex, setSex] = useState<'macho' | 'hembra' | null>(null);
+  const [breed, setBreed] = useState('');
+  const [color, setColor] = useState('');
+  const [ageLabel, setAgeLabel] = useState('');
+  const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
+  const [flyerPetUsername, setFlyerPetUsername] = useState<string | undefined>();
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
@@ -82,6 +98,22 @@ export default function CreateAlertScreen() {
   const type: AlertType | null = alertTypeFromCreatePrimary(primary, seenKind);
   const isProtectorAdoption = type === 'adoption' && activeProfile?.type === 'protector';
   const needsPersonalContact = type === 'adoption' && !isProtectorAdoption;
+  const showSex = type === 'adoption' || flyerMode;
+
+  const pickerPets = useMemo(
+    () =>
+      petsForPublishingIdentity(
+        myPets,
+        { profileId: activeProfileId, type: activeProfile?.type },
+        profiles
+      ),
+    [myPets, activeProfileId, activeProfile?.type, profiles]
+  );
+  const activePetId = reconcileSelectedPetId(selectedPetId, pickerPets);
+
+  useEffect(() => {
+    setSelectedPetId((current) => reconcileSelectedPetId(current, pickerPets));
+  }, [pickerPets]);
 
   // Ubicación por defecto = ubicación actual del usuario (representa
   // dónde se perdió/encontró el animal, no necesariamente su domicilio).
@@ -111,6 +143,10 @@ export default function CreateAlertScreen() {
     setPreviewUri(asset.uri);
     const mime = asset.mimeType || 'image/jpeg';
     const dataUrl = asset.base64 ? `data:${mime};base64,${asset.base64}` : asset.uri;
+    if (flyerMode) {
+      setImage(dataUrl);
+      return;
+    }
     if (!dataUrl.startsWith('data:')) return;
     setUploading(true);
     try {
@@ -126,7 +162,7 @@ export default function CreateAlertScreen() {
     } finally {
       setUploading(false);
     }
-  }, []);
+  }, [flyerMode]);
 
   const applyLocality = useCallback(
     (entry: { locality: string; province: string | null; lat?: number | null; lon?: number | null }) => {
@@ -138,6 +174,27 @@ export default function CreateAlertScreen() {
     []
   );
 
+  const applyExistingPet = useCallback((pet: ApiPet | null) => {
+    if (!pet) {
+      setSelectedPetId(null);
+      setFlyerPetUsername(undefined);
+      return;
+    }
+    setSelectedPetId(pet.id);
+    setPetName(pet.name || '');
+    setSpecies(alertSpeciesFromPet(pet.species));
+    setBreed(pet.breed || '');
+    const parsed = parsePetSex(pet.sex);
+    setSex(parsed.ok ? parsed.value : null);
+    setAgeLabel(pet.age || '');
+    const photo = petPhotoUri(pet.avatarUrl);
+    if (photo) {
+      setPreviewUri(photo);
+      setImage(photo);
+    }
+    setFlyerPetUsername(pet.username || undefined);
+  }, []);
+
   const publish = useCallback(async () => {
     const resolvedType = alertTypeFromCreatePrimary(primary, seenKind);
     if (!resolvedType) {
@@ -148,7 +205,7 @@ export default function CreateAlertScreen() {
       Alert.alert('Falta la foto', 'Agrega una foto del animal.');
       return;
     }
-    if (description.trim().length < 3) {
+    if (!flyerMode && description.trim().length < 3) {
       Alert.alert('Falta la descripción', 'Cuenta brevemente qué pasó.');
       return;
     }
@@ -179,7 +236,8 @@ export default function CreateAlertScreen() {
       type: resolvedType,
       species,
       petName: petName.trim() || undefined,
-      sex: resolvedType === 'adoption' ? sex : undefined,
+      sex: resolvedType === 'adoption' || flyerMode ? sex : undefined,
+      breed: breed.trim() || undefined,
       description: description.trim(),
       image,
       locality,
@@ -195,24 +253,30 @@ export default function CreateAlertScreen() {
     if (flyerMode) {
       setFlyerDraft({
         source: 'draft',
+        petId: activePetId || undefined,
+        petUsername: flyerPetUsername,
         flyer: buildAlertFlyerData({
           type: resolvedType,
           image,
           petName: payload.petName,
           species,
           sex: payload.sex,
+          age: ageLabel.trim() || undefined,
+          breed: payload.breed,
+          color: color.trim() || undefined,
           locality,
           province,
           eventDate,
-          description: payload.description,
+          description: payload.description || undefined,
           contactWhatsapp: contactWhatsappNorm,
           contactPhone: contactPhoneNorm,
           userName: activeProfile?.name,
+          petUsername: flyerPetUsername,
         }),
         publish: payload,
       });
       if (!isFlyerDraftReady()) {
-        Alert.alert('No pudimos preparar el flyer', 'Revisá los datos e intentá nuevamente.');
+        Alert.alert('No pudimos preparar el flyer', 'Revisá foto, tipo y ubicación e intentá nuevamente.');
         return;
       }
       navigation.navigate('AlertFlyerPreview', { from: 'draft' });
@@ -228,7 +292,7 @@ export default function CreateAlertScreen() {
     } finally {
       setSaving(false);
     }
-  }, [image, description, locality, province, lat, lon, primary, seenKind, species, petName, sex, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode]);
+  }, [image, description, locality, province, lat, lon, primary, seenKind, species, petName, sex, breed, color, ageLabel, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode, activePetId, flyerPetUsername]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -255,6 +319,39 @@ export default function CreateAlertScreen() {
               );
             })}
           </View>
+
+          {flyerMode && pickerPets.length > 0 ? (
+            <>
+              <Text style={styles.label}>Usar una de mis mascotas</Text>
+              <Text style={styles.help}>Opcional. Precarga nombre, foto y usuario .pet. No crea otra mascota.</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.petPicker}>
+                <Pressable
+                  style={[styles.petOption, !activePetId && styles.petOptionActive]}
+                  onPress={() => applyExistingPet(null)}
+                >
+                  <View style={[styles.petOptionImg, styles.noneAvatar]}>
+                    <Ionicons name="close" size={16} color={colors.textMuted} />
+                  </View>
+                  <Text style={[styles.petOptionName, !activePetId && { color: colors.primary }]}>Ninguna</Text>
+                </Pressable>
+                {pickerPets.map((p) => {
+                  const active = p.id === activePetId;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      style={[styles.petOption, active && styles.petOptionActive]}
+                      onPress={() => applyExistingPet(p)}
+                    >
+                      <PetAvatar uri={p.avatarUrl} size={34} style={styles.petOptionImg} />
+                      <Text style={[styles.petOptionName, active && { color: colors.primary }]} numberOfLines={1}>
+                        {p.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </>
+          ) : null}
 
           {primary === 'seen-or-found' ? (
             <>
@@ -321,7 +418,39 @@ export default function CreateAlertScreen() {
             maxLength={40}
           />
 
-          {type === 'adoption' ? (
+          {flyerMode ? (
+            <>
+              <Text style={styles.label}>Raza (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Labrador, mestizo..."
+                placeholderTextColor={colors.textMuted}
+                value={breed}
+                onChangeText={setBreed}
+                maxLength={40}
+              />
+              <Text style={styles.label}>Color (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Negro con blanco..."
+                placeholderTextColor={colors.textMuted}
+                value={color}
+                onChangeText={setColor}
+                maxLength={40}
+              />
+              <Text style={styles.label}>Edad (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="2 años, cachorro..."
+                placeholderTextColor={colors.textMuted}
+                value={ageLabel}
+                onChangeText={setAgeLabel}
+                maxLength={30}
+              />
+            </>
+          ) : null}
+
+          {showSex ? (
             <>
               <Text style={styles.label}>Sexo (opcional)</Text>
               <View style={styles.typeRow}>
@@ -369,7 +498,7 @@ export default function CreateAlertScreen() {
           ) : null}
 
           {/* Descripción */}
-          <Text style={styles.label}>Descripción *</Text>
+          <Text style={styles.label}>{flyerMode ? 'Descripción (opcional)' : 'Descripción *'}</Text>
           <TextInput
             style={[styles.input, styles.descInput]}
             placeholder="Color, tamaño, características, collar, actitud, dónde exactamente..."
@@ -533,6 +662,27 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   dateChipText: { fontSize: 12, fontWeight: '700', color: colors.text },
+  petPicker: { gap: spacing.sm, paddingVertical: 4 },
+  petOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxWidth: 180,
+  },
+  petOptionActive: { borderColor: colors.primary, backgroundColor: colors.primarysoft },
+  petOptionImg: { width: 34, height: 34, borderRadius: 17 },
+  noneAvatar: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+  },
+  petOptionName: { fontWeight: '700', fontSize: 13, color: colors.text, maxWidth: 110 },
   saveBtn: {
     flexDirection: 'row',
     alignItems: 'center',

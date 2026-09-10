@@ -12,8 +12,11 @@ import {
   finiteCoord,
   flyerAccentForType,
   flyerFactRows,
+  flyerFromApiAlert,
   flyerHeadlineForType,
   flyerLocationLabelForType,
+  flyerMetaLine,
+  flyerPetPublicUrl,
   visibleFlyerFacts,
 } from '../lib/alertFlyer.ts';
 import {
@@ -84,6 +87,54 @@ describe('alert flyer data', () => {
     assert.equal(FLYER_ASPECT, 4 / 5);
     assert.equal(FLYER_EXPORT_WIDTH, 1080);
     assert.equal(FLYER_EXPORT_HEIGHT, 1350);
+    assert.equal(flyerPetPublicUrl('nina.pet'), 'https://animaldex.com/nina.pet');
+    assert.equal(flyerPetPublicUrl('@Nina.pet'), 'https://animaldex.com/nina.pet');
+    assert.equal(flyerPetPublicUrl(''), undefined);
+    assert.equal(flyerPetPublicUrl('pet_abc123'), undefined);
+    assert.equal(flyerPetPublicUrl('nina'), undefined);
+    assert.ok(!String(flyerPetPublicUrl('nina.pet')).includes('/pet/'));
+    const withHandle = buildAlertFlyerData({
+      type: 'lost',
+      petName: 'Nina',
+      species: 'perro',
+      locality: 'Cerrillos',
+      image: 'https://example.com/nina.jpg',
+      petUsername: 'nina.pet',
+    });
+    assert.equal(withHandle.petPublicUrl, 'https://animaldex.com/nina.pet');
+    assert.equal(flyerMetaLine(withHandle), 'Perro');
+    const noHandle = buildAlertFlyerData({
+      type: 'lost',
+      petName: 'Nina',
+      locality: 'Cerrillos',
+      image: 'https://example.com/nina.jpg',
+    });
+    assert.equal(noHandle.petPublicUrl, undefined);
+    const fromApi = flyerFromApiAlert({
+      id: 'a1',
+      userId: 'u1',
+      type: 'lost',
+      status: 'active',
+      petName: 'Nina',
+      species: 'perro',
+      breed: '',
+      description: 'ok',
+      image: 'https://example.com/nina.jpg',
+      locality: 'Cerrillos',
+      province: 'Salta',
+      country: 'AR',
+      lat: null,
+      lon: null,
+      eventDate: null,
+      createdAt: 1,
+      likeCount: 0,
+      commentCount: 0,
+      isLiked: false,
+      username: null,
+      userName: null,
+      userAvatar: null,
+    });
+    assert.equal(fromApi.petPublicUrl, undefined);
   });
 
   it('sin Canva ni APIs externas', () => {
@@ -131,14 +182,24 @@ describe('flyer UI wiring', () => {
     assert.match(create, /setFlyerDraft/);
     assert.match(create, /isFlyerDraftReady/);
     assert.match(create, /navigate\('AlertFlyerPreview', \{ from: 'draft' \}\)/);
+    assert.doesNotMatch(create, /createPet/);
     assert.doesNotMatch(create, /navigateRoot/);
     assert.doesNotMatch(create, /AlertFlyerPreview',\s*\{\s*source/);
+    assert.match(create, /Usar una de mis mascotas/);
+    assert.match(create, /petsForPublishingIdentity/);
+    assert.match(create, /if \(flyerMode\) \{\s*setImage\(dataUrl\);\s*return;/);
+    assert.match(create, /petUsername: flyerPetUsername/);
+    assert.match(create, /petId: activePetId/);
     const preview = read('screens/AlertFlyerPreviewScreen.tsx');
     assert.match(preview, /db\.createAlert/);
+    assert.match(preview, /ensureAlertImageUploaded/);
     assert.match(preview, /shareFlyerCanvas/);
     assert.match(preview, /resolveFlyerPreviewOrigin/);
     assert.match(preview, /getFlyerDraft/);
     assert.match(preview, /FlyerRenderGuard/);
+    assert.match(preview, /useWindowDimensions/);
+    assert.match(preview, /screenWidth - 32/);
+    assert.doesNotMatch(preview, /maxWidth: 520/);
     assert.doesNotMatch(preview, /Editar en Canva/);
     assert.match(preview, /aspectRatio: FLYER_ASPECT/);
     const share = read('lib/alertFlyerShare.ts');
@@ -150,20 +211,29 @@ describe('flyer UI wiring', () => {
     assert.doesNotMatch(share, /import \{ captureRef \} from 'react-native-view-shot'/);
     assert.match(share, /deleteFlyerTemp/);
     assert.doesNotMatch(share, /cloudflare|workers\.dev|animaldex-db/i);
+    const upload = read('lib/alertPhotoUpload.ts');
+    assert.match(upload, /export async function ensureAlertImageUploaded/);
+    assert.match(upload, /registerImage/);
     const canvas = read('components/AlertFlyerCanvas.tsx');
     assert.match(canvas, /animaldex\.com/);
     assert.match(canvas, /animaldex-logo-mark\.png/);
     assert.match(canvas, /heroBand/);
-    assert.match(canvas, /sidePanel/);
+    assert.match(canvas, /photoStage/);
     assert.match(canvas, /SI TENÉS INFORMACIÓN/);
-    assert.match(canvas, /Juntos los encontramos/);
+    assert.match(canvas, /flyer\.petPublicUrl/);
     assert.match(canvas, /backgroundColor: '#FFFFFF'/);
-    assert.match(canvas, /width: '100%'/);
+    assert.match(canvas, /width: '90%'/);
     assert.match(canvas, /alignSelf: 'center'/);
+    assert.match(canvas, /flexShrink: 0/);
     assert.match(canvas, /styles\.photo\} resizeMode="cover"/);
     assert.doesNotMatch(canvas, /styles\.photo\} resizeMode="contain"/);
-    assert.match(canvas, /fontSize: 20/);
-    assert.match(canvas, /paddingVertical: 7/);
+    assert.doesNotMatch(canvas, /sidePanel/);
+    assert.doesNotMatch(canvas, /heroRow/);
+    assert.match(canvas, /numberOfLines=\{4\}/);
+    assert.match(canvas, /paw: \{ position: 'absolute'/);
+    assert.doesNotMatch(canvas, /name: \{[^}]*position: 'absolute'/);
+    assert.doesNotMatch(canvas, /block: \{[^}]*position: 'absolute'/);
+    assert.doesNotMatch(canvas, /ctaBand: \{[^}]*position: 'absolute'/);
   });
 });
 
@@ -210,6 +280,31 @@ describe('flyer + draft preview', () => {
     assert.equal(isFlyerDraftReady(), true);
     assert.deepEqual(resolveFlyerPreviewOrigin({ from: 'draft' }), { mode: 'draft' });
     assert.deepEqual(resolveFlyerPreviewOrigin({ alertId: 'alert_1' }), { mode: 'existing', alertId: 'alert_1' });
+    const withPet = buildAlertFlyerData({
+      type: 'lost',
+      petName: 'Nina',
+      species: 'perro',
+      sex: 'hembra',
+      locality: 'Cerrillos',
+      image: 'https://example.com/nina.jpg',
+      petUsername: 'nina.pet',
+    });
+    setFlyerDraft({
+      source: 'draft',
+      petId: 'pet_1',
+      petUsername: 'nina.pet',
+      flyer: withPet,
+      publish: {
+        type: 'lost',
+        species: 'perro',
+        description: 'Collar rojo',
+        image: 'https://example.com/nina.jpg',
+        locality: 'Cerrillos',
+      },
+    });
+    assert.equal(getFlyerDraft()?.petId, 'pet_1');
+    assert.equal(getFlyerDraft()?.petUsername, 'nina.pet');
+    assert.equal(getFlyerDraft()?.flyer.petPublicUrl, 'https://animaldex.com/nina.pet');
     assert.equal(finiteCoord(Number.NaN), null);
     assert.equal(finiteCoord(24.1), 24.1);
     const preview = read('screens/AlertFlyerPreviewScreen.tsx');
@@ -221,6 +316,9 @@ describe('flyer + draft preview', () => {
     const create = read('screens/CreateAlertScreen.tsx');
     assert.match(create, /isFlyerDraftReady\(\)/);
     assert.doesNotMatch(create, /navigate[\s\S]*from: 'draft'[\s\S]*setFlyerDraft/);
+    assert.doesNotMatch(create, /createPet/);
+    assert.match(create, /if \(flyerMode\) \{\s*setImage\(dataUrl\);\s*return;/);
+    assert.doesNotMatch(create, /flyerMode[\s\S]{0,80}db\.createAlert/);
     const calls: Array<[string, object?]> = [];
     const tooHigh = {
       navigate: () => {

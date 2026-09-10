@@ -1,27 +1,26 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
-import { flyerFactRows, type AlertFlyer } from '../lib/alertFlyer';
+import { flyerMetaLine, type AlertFlyer } from '../lib/alertFlyer';
 
 const LOGO = require('../assets/images/animaldex-logo-mark.png');
 
 export function AlertFlyerCanvas({ flyer }: { flyer: AlertFlyer }) {
-  const facts = flyerFactRows(flyer);
+  const meta = flyerMetaLine(flyer);
   return (
     <View style={styles.sheet} collapsable={false}>
-      <Text style={[styles.paw, styles.pawTR]}>🐾</Text>
       <Text style={[styles.paw, styles.pawBR]}>🐾</Text>
 
       <View style={styles.brandRow}>
         <Image source={LOGO} style={styles.logo} resizeMode="contain" />
         <Text style={styles.brand}>Animaldex</Text>
+        <Text style={styles.brandPaw}>🐾</Text>
       </View>
 
       <View style={[styles.heroBand, { backgroundColor: flyer.accent }]}>
         <Text style={styles.hero}>{flyer.headline}</Text>
-        <Text style={styles.heroCta}>{flyer.cta}</Text>
       </View>
 
-      <View style={styles.heroRow}>
+      <View style={styles.photoStage}>
         {flyer.image ? (
           <View style={styles.photoWrap}>
             <Image source={{ uri: flyer.image }} style={styles.photo} resizeMode="cover" />
@@ -29,24 +28,26 @@ export function AlertFlyerCanvas({ flyer }: { flyer: AlertFlyer }) {
         ) : (
           <View style={[styles.photoWrap, styles.photoEmpty]} />
         )}
-        <View style={styles.sidePanel}>
-          {flyer.petName ? <Text style={styles.name}>{flyer.petName}</Text> : null}
-          {facts.map((row) => (
-            <View key={`${row.label}-${row.value}`} style={styles.fact}>
-              <Text style={styles.factIcon}>{row.icon}</Text>
-              <View style={styles.factCopy}>
-                <Text style={styles.factLabel}>{row.label}</Text>
-                <Text style={styles.factValue}>{row.value}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
       </View>
+
+      {flyer.petName ? (
+        <Text style={styles.name} numberOfLines={2}>
+          {flyer.petName}
+        </Text>
+      ) : null}
+
+      {meta ? (
+        <Text style={styles.meta} numberOfLines={2}>
+          🐾 {meta}
+        </Text>
+      ) : null}
 
       {flyer.location ? (
         <View style={styles.block}>
           <Text style={styles.blockLabel}>📍 {flyer.locationLabel}</Text>
-          <Text style={styles.blockValue}>{flyer.location}</Text>
+          <Text style={styles.blockValue} numberOfLines={2}>
+            {flyer.location}
+          </Text>
         </View>
       ) : null}
 
@@ -60,24 +61,32 @@ export function AlertFlyerCanvas({ flyer }: { flyer: AlertFlyer }) {
       {flyer.description ? (
         <View style={styles.block}>
           <Text style={styles.blockLabel}>📝 Descripción</Text>
-          <Text style={styles.blockValue} numberOfLines={3} ellipsizeMode="tail">
+          <Text style={styles.blockValue} numberOfLines={4} ellipsizeMode="tail">
             {flyer.description}
           </Text>
         </View>
       ) : null}
 
+      <View style={[styles.ctaBand, { backgroundColor: flyer.accent }]}>
+        <Text style={styles.cta}>{flyer.cta}</Text>
+      </View>
+
       {flyer.contact ? (
         <View style={styles.contactCard}>
           <Text style={styles.contactKicker}>☎ SI TENÉS INFORMACIÓN</Text>
-          <Text style={styles.contactValue}>{flyer.contact}</Text>
+          <Text style={styles.contactValue} numberOfLines={2}>
+            {flyer.contact}
+          </Text>
         </View>
       ) : null}
 
-      <View style={styles.footer}>
-        <Text style={styles.shareLine}>Comparte esta alerta</Text>
-        <Text style={styles.tagline}>Juntos los encontramos</Text>
-        <Text style={styles.domain}>animaldex.com</Text>
-      </View>
+      {flyer.petPublicUrl ? (
+        <Text style={styles.petUrl} numberOfLines={1}>
+          {flyer.petPublicUrl}
+        </Text>
+      ) : null}
+
+      <Text style={styles.domain}>animaldex.com</Text>
     </View>
   );
 }
@@ -113,63 +122,93 @@ const styles = StyleSheet.create({
   sheet: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
   },
-  paw: { position: 'absolute', fontSize: 16, color: '#C4B6A8', opacity: 0.45 },
-  pawTR: { top: 12, right: 14 },
-  pawBR: { bottom: 10, right: 14 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  logo: { width: 22, height: 22 },
-  brand: { fontWeight: '900', fontSize: 15, color: '#2D2016', letterSpacing: 0.3 },
+  paw: { position: 'absolute', fontSize: 16, color: '#C4B6A8', opacity: 0.4 },
+  pawBR: { bottom: 8, right: 12 },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+    flexShrink: 0,
+  },
+  logo: { width: 20, height: 20 },
+  brand: { flex: 1, fontWeight: '900', fontSize: 15, color: '#2D2016', letterSpacing: 0.3 },
+  brandPaw: { fontSize: 16, color: '#C4B6A8' },
   heroBand: {
     borderRadius: 12,
-    paddingVertical: 7,
+    paddingVertical: 8,
     paddingHorizontal: 12,
     alignItems: 'center',
     marginBottom: 8,
+    flexShrink: 0,
   },
   hero: {
     color: '#fff',
     fontWeight: '900',
-    fontSize: 20,
+    fontSize: 18,
     letterSpacing: 0.4,
     textAlign: 'center',
   },
-  heroCta: {
-    marginTop: 2,
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 10,
-    letterSpacing: 0.6,
-    textAlign: 'center',
-    opacity: 0.95,
-  },
-  heroRow: { flex: 1, minHeight: 0, gap: 10 },
-  photoWrap: {
-    width: '100%',
+  photoStage: {
     flex: 1,
     minHeight: 168,
+    width: '100%',
+    marginBottom: 8,
+    justifyContent: 'center',
+  },
+  photoWrap: {
+    width: '90%',
+    flex: 1,
     alignSelf: 'center',
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: '#F0F0F0',
   },
   photo: { width: '100%', height: '100%' },
   photoEmpty: { backgroundColor: '#F0F0F0' },
-  sidePanel: { gap: 6, paddingTop: 2 },
-  name: { fontSize: 22, fontWeight: '900', color: '#2D2016', letterSpacing: 0.2, marginBottom: 4 },
-  fact: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
-  factIcon: { fontSize: 12, width: 16, marginTop: 1 },
-  factCopy: { flex: 1 },
-  factLabel: { fontSize: 9, fontWeight: '700', color: '#9A8C7E', letterSpacing: 0.3 },
-  factValue: { fontSize: 13, fontWeight: '800', color: '#2D2016' },
-  block: { marginTop: 8 },
+  name: {
+    flexShrink: 0,
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#2D2016',
+    letterSpacing: 0.2,
+    marginBottom: 4,
+  },
+  meta: {
+    flexShrink: 0,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2D2016',
+    lineHeight: 18,
+    marginBottom: 6,
+    flexWrap: 'wrap',
+  },
+  block: { flexShrink: 0, marginBottom: 6 },
   blockLabel: { fontSize: 10, fontWeight: '800', color: '#9A8C7E', letterSpacing: 0.2 },
   blockValue: { marginTop: 2, fontSize: 13, fontWeight: '700', color: '#2D2016', lineHeight: 18 },
+  ctaBand: {
+    flexShrink: 0,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  cta: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
   contactCard: {
-    marginTop: 10,
+    flexShrink: 0,
+    marginBottom: 6,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     borderWidth: 1,
@@ -178,11 +217,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   contactKicker: { fontSize: 10, fontWeight: '800', color: '#9A8C7E', letterSpacing: 0.4 },
-  contactValue: { marginTop: 3, fontSize: 16, fontWeight: '900', color: '#2D2016' },
-  footer: { marginTop: 10, alignItems: 'flex-start' },
-  shareLine: { fontSize: 12, fontWeight: '800', color: '#2D2016' },
-  tagline: { marginTop: 2, fontSize: 10, fontWeight: '600', color: '#C4B6A8' },
-  domain: { marginTop: 2, fontSize: 11, fontWeight: '800', color: '#9A8C7E' },
+  contactValue: { marginTop: 3, fontSize: 15, fontWeight: '900', color: '#2D2016' },
+  petUrl: {
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2D2016',
+    marginBottom: 2,
+  },
+  domain: { flexShrink: 0, fontSize: 11, fontWeight: '800', color: '#9A8C7E' },
   fallback: {
     flex: 1,
     backgroundColor: '#FFFFFF',

@@ -5,6 +5,8 @@ import {
   timestampToDateString,
 } from './alerts.ts';
 import type { ApiAlert } from './db.ts';
+import { isValidPetUsername } from './petHandles.ts';
+import { publicWebUrl } from './publicWeb.ts';
 
 export const FLYER_ASPECT = 4 / 5;
 export const FLYER_EXPORT_WIDTH = 1080;
@@ -31,6 +33,7 @@ export interface AlertFlyer {
   description?: string;
   contact?: string;
   authorName?: string;
+  petPublicUrl?: string;
 }
 
 export interface AlertFlyerFactRow {
@@ -51,6 +54,7 @@ export interface AlertFlyerPublishPayload {
   lon?: number | null;
   eventDate?: number;
   sex?: 'macho' | 'hembra' | null;
+  breed?: string;
   authorProfileId?: string | null;
   contactWhatsapp?: string | null;
   contactPhone?: string | null;
@@ -59,6 +63,8 @@ export interface AlertFlyerPublishPayload {
 export interface AlertFlyerSession {
   source: AlertFlyerSource;
   alertId?: string;
+  petId?: string;
+  petUsername?: string;
   flyer: AlertFlyer;
   publish?: AlertFlyerPublishPayload;
 }
@@ -143,6 +149,16 @@ export function finiteCoord(value?: number | null): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+/** URL canónica `https://animaldex.com/nina.pet`. No inventa `/pet/:id`. */
+export function flyerPetPublicUrl(username?: string | null): string | undefined {
+  const handle = String(username ?? '')
+    .trim()
+    .replace(/^@+/, '')
+    .toLowerCase();
+  if (!isValidPetUsername(handle)) return undefined;
+  return publicWebUrl(`/${handle}`);
+}
+
 export function buildAlertFlyerData(input: {
   type?: string | null;
   image?: string | null;
@@ -161,6 +177,7 @@ export function buildAlertFlyerData(input: {
   contactWhatsapp?: string | null;
   contactPhone?: string | null;
   userName?: string | null;
+  petUsername?: string | null;
 }): AlertFlyer {
   const type = parseAlertType(input.type) || 'lost';
   return {
@@ -182,6 +199,7 @@ export function buildAlertFlyerData(input: {
     description: present(input.description),
     contact: contactLine(input.contactWhatsapp, input.contactPhone),
     authorName: present(input.userName),
+    petPublicUrl: flyerPetPublicUrl(input.petUsername),
   };
 }
 
@@ -221,4 +239,10 @@ export function flyerFactRows(flyer: AlertFlyer): AlertFlyerFactRow[] {
   if (flyer.ageLabel) rows.push({ icon: '⏳', label: 'Edad', value: flyer.ageLabel });
   if (flyer.sizeLabel) rows.push({ icon: '📏', label: 'Tamaño', value: flyer.sizeLabel });
   return rows;
+}
+
+/** Hechos existentes unidos: `Perro · Hembra · …`. Omite vacíos. */
+export function flyerMetaLine(flyer: AlertFlyer): string | undefined {
+  const parts = flyerFactRows(flyer).map((row) => row.value);
+  return parts.length ? parts.join(' · ') : undefined;
 }

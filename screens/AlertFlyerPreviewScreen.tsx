@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   Text,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -14,6 +15,7 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AlertFlyerCanvas, FlyerCanvasFallback, FlyerRenderGuard } from '../components/AlertFlyerCanvas';
 import { FLYER_ASPECT, flyerFromApiAlert, type AlertFlyerSession } from '../lib/alertFlyer';
+import { ensureAlertImageUploaded } from '../lib/alertPhotoUpload';
 import { clearFlyerDraft, getFlyerDraft, isFlyerDraftReady, resolveFlyerPreviewOrigin } from '../lib/alertFlyerSession';
 import { shareFlyerCanvas } from '../lib/alertFlyerShare';
 import { db } from '../lib/db';
@@ -26,6 +28,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function AlertFlyerPreviewScreen() {
   const navigation = useNavigation<Nav>();
   const params = useRoute<Rt>().params || {};
+  const { width: screenWidth } = useWindowDimensions();
+  const flyerWidth = Math.max(0, screenWidth - 32);
   const flyerRef = useRef<View>(null);
   const [session, setSession] = useState<AlertFlyerSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,9 +90,17 @@ export default function AlertFlyerPreviewScreen() {
 
   const publishAlert = useCallback(async () => {
     if (!session?.publish) return;
+    if (session.publish.description.trim().length < 3) {
+      Alert.alert(
+        'Falta la descripción',
+        'Para publicar en Alertas agregá una descripción breve. El flyer ya se puede compartir.'
+      );
+      return;
+    }
     setBusy(true);
     try {
-      const { alert } = await db.createAlert(session.publish);
+      const image = await ensureAlertImageUploaded(session.publish.image);
+      const { alert } = await db.createAlert({ ...session.publish, image });
       clearFlyerDraft();
       setSession({ ...session, source: 'existing', alertId: alert.id, publish: undefined });
       Alert.alert('Alerta publicada', 'El flyer no reemplaza la alerta: ya está en Alertas.', [
@@ -128,12 +140,12 @@ export default function AlertFlyerPreviewScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <View ref={flyerRef} collapsable={false} style={styles.flyerFrame}>
+        <View ref={flyerRef} collapsable={false} style={[styles.flyerFrame, { width: flyerWidth }]}>
           <FlyerRenderGuard>
             <AlertFlyerCanvas flyer={session.flyer} />
           </FlyerRenderGuard>
         </View>
-        <Pressable style={styles.primary} onPress={share} disabled={busy}>
+        <Pressable style={[styles.primary, { width: flyerWidth }]} onPress={share} disabled={busy}>
           {busy ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -144,7 +156,7 @@ export default function AlertFlyerPreviewScreen() {
           )}
         </Pressable>
         {canPublish ? (
-          <Pressable style={styles.secondary} onPress={publishAlert} disabled={busy}>
+          <Pressable style={[styles.secondary, { width: flyerWidth }]} onPress={publishAlert} disabled={busy}>
             <Text style={styles.secondaryText}>Publicar en Alertas</Text>
           </Pressable>
         ) : null}
@@ -155,10 +167,16 @@ export default function AlertFlyerPreviewScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: spacing.lg, paddingBottom: 48, gap: spacing.md, maxWidth: 520, width: '100%', alignSelf: 'center' },
+  scroll: {
+    paddingVertical: spacing.lg,
+    paddingHorizontal: 16,
+    paddingBottom: 48,
+    gap: spacing.md,
+    alignItems: 'center',
+  },
   flyerFrame: {
-    width: '100%',
     aspectRatio: FLYER_ASPECT,
+    alignSelf: 'center',
     borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
