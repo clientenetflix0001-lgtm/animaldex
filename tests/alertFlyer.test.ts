@@ -488,7 +488,6 @@ describe('flyer preview footer and crear local routes', () => {
     assert.equal(shouldHideCrearTabBar('Crear', CREAR_FLYER_PREVIEW_ROUTE), true);
     assert.equal(shouldHideCrearTabBar('Crear', 'TabRoot'), false);
     assert.equal(shouldHideCrearTabBar('Alertas', CREAR_FLYER_DRAFT_ROUTE), false);
-    const preview = read('screens/AlertFlyerPreviewScreen.tsx');
     assert.match(preview, /useSafeAreaInsets/);
     assert.match(preview, /paddingBottom: footerPad/);
     assert.match(preview, /styles\.footer/);
