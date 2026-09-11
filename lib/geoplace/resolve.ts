@@ -162,6 +162,20 @@ export function nearestPlaces(lat: number, lng: number, limit = GEO_MAX_CANDIDAT
   return scored.slice(0, limit);
 }
 
+/** El lugar más cercano del catálogo. Un solo barrido, sin ordenar 4022 filas. */
+function nearestPlace(lat: number, lng: number): GeoPlace | null {
+  let best: GeoPlace | null = null;
+  let bestKm = Infinity;
+  for (const place of allPlaces()) {
+    const km = geoDistanceKm(lat, lng, place.centroidLat, place.centroidLng);
+    if (km < bestKm) {
+      bestKm = km;
+      best = place;
+    }
+  }
+  return best;
+}
+
 export type PlaceFromCoordsInput = {
   lat: number;
   lng: number;
@@ -194,10 +208,18 @@ export function placeFromCoords(input: PlaceFromCoordsInput): PlaceResolution {
   const area = input.administrativeArea || null;
   const cell = input.cell || geoCell(lat, lng);
 
+  // PRIVACIDAD: las distancias se miden desde el CENTRO DE LA CELDA, no desde
+  // el punto real. Devolver distancias exactas a centroides públicos permitiría
+  // trilaterar la posición del usuario con metro de precisión a partir de tres
+  // candidatos, lo que anularía el redondeo a celda. El costo es menos de 1 km
+  // de error, muy por debajo del umbral con el que se pide confirmación.
+  const anchorLat = cell ? cell.centerLat : lat;
+  const anchorLng = cell ? cell.centerLng : lng;
+
   // Sin área oficial no hay contención de polígono: solo se puede sugerir por
   // cercanía de centroide, y eso nunca se da por confirmado.
   if (!area) {
-    const candidates = nearestPlaces(lat, lng);
+    const candidates = nearestPlaces(anchorLat, anchorLng);
     return {
       administrativeArea: null,
       candidates,
@@ -211,14 +233,14 @@ export function placeFromCoords(input: PlaceFromCoordsInput): PlaceResolution {
   }
 
   // Conjunto de candidatos = departamento oficial. Nunca acotado por gobierno local.
-  const inArea = placesInAdmin2(area.admin2Code).map((p) => toCandidate(p, lat, lng, area));
+  const inArea = placesInAdmin2(area.admin2Code).map((p) => toCandidate(p, anchorLat, anchorLng, area));
   inArea.sort(sortCandidates);
 
   // Riesgo de borde: el lugar más cercano de TODO el catálogo pertenece a otra
   // área, o la celda de redondeo es lo bastante grande como para cruzar el
   // límite frente a la distancia que separa al mejor candidato del siguiente.
-  const globalNearest = nearestPlaces(lat, lng, 1)[0] || null;
-  const nearestOutside = globalNearest && globalNearest.place.admin2Code !== area.admin2Code
+  const globalNearest = nearestPlace(anchorLat, anchorLng);
+  const nearestOutside = globalNearest && globalNearest.admin2Code !== area.admin2Code
     ? globalNearest
     : null;
   const cellRadius = cell?.radiusKm ?? 0;
@@ -233,8 +255,8 @@ export function placeFromCoords(input: PlaceFromCoordsInput): PlaceResolution {
   // ofrecerlo cuando el punto está pegado a un límite. Nunca primero, pero
   // tampoco recortado: en un borde es justo el que importa, así que se le
   // reserva el último lugar en vez de dejar que lo desplace el área entera.
-  const outside = nearestOutside && !inArea.some((c) => c.place.placeId === nearestOutside.place.placeId)
-    ? toCandidate(nearestOutside.place, lat, lng, area)
+  const outside = nearestOutside && !inArea.some((c) => c.place.placeId === nearestOutside.placeId)
+    ? toCandidate(nearestOutside, anchorLat, anchorLng, area)
     : null;
   const trimmed = outside
     ? [...inArea.slice(0, GEO_MAX_CANDIDATES - 1), outside]

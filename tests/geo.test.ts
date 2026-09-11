@@ -1314,6 +1314,37 @@ describe('privacidad', () => {
     }
   });
 
+  it('las distancias devueltas no permiten trilaterar la posición del usuario', async () => {
+    // Tres distancias exactas a centroides públicos reconstruyen el punto de
+    // origen. Si se midieran desde la coordenada real, el redondeo a celda no
+    // serviría para nada: se miden desde el centro de la celda.
+    const cell = geoCell(LAT, LON)!;
+    const { body } = await callGeo({ action: 'resolveCoords', lat: LAT, lon: LON });
+    assert.ok(body.candidates.length >= 3);
+    for (const c of body.candidates) {
+      const desdeCelda = geoDistanceKm(cell.centerLat, cell.centerLng, c.centroidLat, c.centroidLng);
+      const desdeUsuario = geoDistanceKm(LAT, LON, c.centroidLat, c.centroidLng);
+      assert.ok(
+        Math.abs(c.distanceKm - desdeCelda) < 0.01,
+        `${c.localityName}: ${c.distanceKm} debería medirse desde la celda (${desdeCelda})`
+      );
+      // Y no coincide con la distancia real, salvo que la celda no haya movido nada.
+      if (Math.abs(desdeUsuario - desdeCelda) > 0.01) {
+        assert.notEqual(c.distanceKm, Number(desdeUsuario.toFixed(3)));
+      }
+    }
+  });
+
+  it('dos usuarios de la misma celda reciben respuestas idénticas', async () => {
+    // Indistinguibilidad dentro de la celda: si las respuestas difirieran, la
+    // diferencia sería información sobre la posición dentro de la celda.
+    const a = await callGeo({ action: 'resolveCoords', lat: LAT, lon: LON });
+    const b = await callGeo({ action: 'resolveCoords', lat: LAT + 0.00002, lon: LON - 0.00003 });
+    assert.equal(geoCell(LAT, LON)!.key, geoCell(LAT + 0.00002, LON - 0.00003)!.key);
+    assert.deepEqual(a.body.candidates, b.body.candidates);
+    assert.deepEqual(a.body.cell, b.body.cell);
+  });
+
   it('la respuesta pública no contiene la coordenada recibida', async () => {
     const { body } = await callGeo({ action: 'resolveCoords', lat: LAT, lon: LON });
     const raw = JSON.stringify(body);
