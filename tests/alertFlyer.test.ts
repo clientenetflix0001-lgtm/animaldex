@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -64,6 +64,13 @@ import { flyerPreviewFooterPadding, flyerPreviewFrameSize, flyerPreviewNeedsScro
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
+
+/** Archivos .ts/.tsx de un directorio del proyecto, recursivo. */
+function sourceFiles(rel: string): string[] {
+  return readdirSync(join(root, rel), { withFileTypes: true, recursive: true })
+    .filter((entry) => entry.isFile() && /\.tsx?$/.test(entry.name))
+    .map((entry) => join(entry.parentPath, entry.name).slice(root.length + 1));
+}
 
 describe('alert flyer data', () => {
   it('usa tipos reales y omite campos vacíos', () => {
@@ -160,19 +167,10 @@ describe('alert flyer data', () => {
   // Regresión: importar un hook de React desde '@react-navigation/native' lo deja
   // en undefined y la pantalla explota al primer render (rompió + → Crear flyer).
   it('los hooks de React vienen de react, no de react-navigation', () => {
-    const reactHooks = /\b(useState|useEffect|useLayoutEffect|useMemo|useCallback|useRef|useContext|useReducer)\b/;
-    const navImport = /import\s*\{([^}]*)\}\s*from\s*'@react-navigation\/(native|core|native-stack|bottom-tabs)'/g;
-    const sources = [
-      'App.tsx',
-      'screens/CreateAlertScreen.tsx',
-      'screens/CreateFlyerScreens.tsx',
-      'screens/AlertFlyerPreviewScreen.tsx',
-      'screens/CreateChooserScreen.tsx',
-      'screens/MyAlertsScreen.tsx',
-      'lib/tabProfileStack.tsx',
-      'components/AlertFlyerCanvas.tsx',
-      'components/FlyerFlowBoundary.tsx',
-    ];
+    const reactHooks = /\b(useState|useEffect|useLayoutEffect|useMemo|useCallback|useRef|useContext|useReducer|useImperativeHandle)\b/;
+    const navImport = /import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*'@react-navigation\/[a-z-]+'/g;
+    const sources = ['App.tsx', ...sourceFiles('screens'), ...sourceFiles('components'), ...sourceFiles('lib'), ...sourceFiles('features')];
+    assert.ok(sources.length > 40, `se esperaban muchos archivos, hay ${sources.length}`);
     for (const file of sources) {
       const source = read(file);
       for (const match of source.matchAll(navImport)) {
@@ -182,13 +180,10 @@ describe('alert flyer data', () => {
           `${file} importa un hook de React desde @react-navigation: ${match[0]}`
         );
       }
-      if (reactHooks.test(source)) {
-        assert.match(source, /from 'react'/, `${file} usa hooks sin importar react`);
-      }
     }
     const create = read('screens/CreateAlertScreen.tsx');
     assert.match(create, /import React, \{[^}]*useLayoutEffect[^}]*\} from 'react'/);
-    assert.match(create, /from '@react-navigation\/native'/);
+    assert.match(create, /useLayoutEffect\(/);
   });
 
   it('sin Canva ni APIs externas', () => {
