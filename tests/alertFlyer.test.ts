@@ -157,6 +157,40 @@ describe('alert flyer data', () => {
     assert.equal(fromApi.petPublicUrl, undefined);
   });
 
+  // Regresión: importar un hook de React desde '@react-navigation/native' lo deja
+  // en undefined y la pantalla explota al primer render (rompió + → Crear flyer).
+  it('los hooks de React vienen de react, no de react-navigation', () => {
+    const reactHooks = /\b(useState|useEffect|useLayoutEffect|useMemo|useCallback|useRef|useContext|useReducer)\b/;
+    const navImport = /import\s*\{([^}]*)\}\s*from\s*'@react-navigation\/(native|core|native-stack|bottom-tabs)'/g;
+    const sources = [
+      'App.tsx',
+      'screens/CreateAlertScreen.tsx',
+      'screens/CreateFlyerScreens.tsx',
+      'screens/AlertFlyerPreviewScreen.tsx',
+      'screens/CreateChooserScreen.tsx',
+      'screens/MyAlertsScreen.tsx',
+      'lib/tabProfileStack.tsx',
+      'components/AlertFlyerCanvas.tsx',
+      'components/FlyerFlowBoundary.tsx',
+    ];
+    for (const file of sources) {
+      const source = read(file);
+      for (const match of source.matchAll(navImport)) {
+        assert.doesNotMatch(
+          match[1],
+          reactHooks,
+          `${file} importa un hook de React desde @react-navigation: ${match[0]}`
+        );
+      }
+      if (reactHooks.test(source)) {
+        assert.match(source, /from 'react'/, `${file} usa hooks sin importar react`);
+      }
+    }
+    const create = read('screens/CreateAlertScreen.tsx');
+    assert.match(create, /import React, \{[^}]*useLayoutEffect[^}]*\} from 'react'/);
+    assert.match(create, /from '@react-navigation\/native'/);
+  });
+
   it('sin Canva ni APIs externas', () => {
     const files = [
       'lib/alertFlyer.ts',
@@ -312,8 +346,7 @@ describe('flyer + draft preview', () => {
     assert.match(screens, /<CreateAlertScreen \/>/);
     assert.doesNotMatch(screens, /FlyerFlowBoundary route=\{CREAR_FLYER_DRAFT_ROUTE\}/);
     const create = read('screens/CreateAlertScreen.tsx');
-    assert.match(create, /startEmptyFlyerDraft/);
-    assert.match(create, /CREATE_FLYER_DRAFT_INIT/);
+    assert.match(create, /if \(!getFlyerDraft\(\)\) startEmptyFlyerDraft\(\)/);
     assert.match(create, /Usar una de mis mascotas/);
     assert.match(create, /applyExistingPet/);
     assert.match(create, /setFlyerPetUsername\(pet\.username/);

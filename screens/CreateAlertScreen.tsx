@@ -1,7 +1,7 @@
 // ============================================================
 // Animaldex — Crear alerta (animal perdido / encontrado)
 // ============================================================
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useLayoutEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { db, type ApiPet } from '../lib/db';
 import { uploadImage } from '../lib/api';
@@ -70,32 +70,9 @@ export default function CreateAlertScreen() {
 
   useEffect(() => {
     if (!flyerMode) return;
-    try {
-      void flyerDebug('CREATE_FLYER_DRAFT_INIT', {
-        route: routeName,
-        navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
-      });
-      if (!getFlyerDraft()) startEmptyFlyerDraft();
-      void flyerDebug('CREATE_FLYER_DRAFT_READY', {
-        route: routeName,
-        navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
-        draftReady: false,
-      });
-    } catch {
-      void flyerDebug('CREATE_FLYER_DRAFT_ERROR', {
-        route: routeName,
-        navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
-      });
-    }
-    void flyerDebug('FLYER_DEBUG_03_SCREEN_MOUNT', {
-      route: routeName,
-      navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
-      dest: routeName,
-    });
-    void flyerDebug('FLYER_DEBUG_04_DRAFT_INIT', {
-      route: routeName,
-      draftReady: false,
-    });
+    // El flyer siempre trabaja sobre un draft en memoria. CreateFlyerDraft ya lo
+    // inicializa; esto cubre el modo flyer abierto desde otra ruta.
+    if (!getFlyerDraft()) startEmptyFlyerDraft();
     void flyerDebug('FLYER_DEBUG_05_FORM_RENDER', { route: routeName });
   }, [flyerMode, routeName]);
 
