@@ -68,7 +68,10 @@
     "test:reel-pet-auth": "node --experimental-strip-types --test tests/reelPetAuth.test.ts",
     "test:pet-handles": "node --experimental-strip-types --test tests/petDotHandles.test.ts",
     "test:flyer": "node --experimental-strip-types --test tests/alertFlyer.test.ts",
-    "test:legal": "node --experimental-strip-types --test tests/legalPages.test.ts"
+    "test:legal": "node --experimental-strip-types --test tests/legalPages.test.ts",
+    "test:geo": "node --experimental-strip-types --test tests/geo.test.ts",
+    "geo:catalog": "node scripts/geo/build-catalog.mjs",
+    "geo:catalog:check": "node scripts/geo/build-catalog.mjs --check"
   },
   "private": true
 }

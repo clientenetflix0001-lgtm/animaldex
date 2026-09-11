@@ -118,6 +118,7 @@ import {
   transferRejectedCopy,
   transferRequestedCopy,
 } from '../lib/petTransfer.ts';
+import { handleGeo } from './geo.js';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -4079,6 +4080,7 @@ export default {
     try {
       if (url.pathname === '/auth') return await handleAuth(request, env);
       if (url.pathname === '/db') return await handleDb(request, env);
+      if (url.pathname === '/geo') return await handleGeo(request, env, json, authUser);
       if (url.pathname === '/upload') return await handleUpload(request, env);
       if (url.pathname === '/mux/webhook') return await handleMuxWebhook(request, env, json);
       if (url.pathname === '/sms') return await handleSms(request, env);
