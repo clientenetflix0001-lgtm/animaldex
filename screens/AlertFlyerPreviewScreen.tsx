@@ -15,7 +15,7 @@ import { AlertFlyerCanvas, FlyerCanvasFallback, FlyerRenderGuard } from '../comp
 import { FLYER_ASPECT, flyerFromApiAlert, type AlertFlyerSession } from '../lib/alertFlyer';
 import { ensureAlertImageUploaded } from '../lib/alertPhotoUpload';
 import { clearFlyerDraft, getFlyerDraft, isFlyerDraftReady, resolveFlyerPreviewOrigin } from '../lib/alertFlyerSession';
-import { flyerPreviewFooterPadding, flyerPreviewFrameSize } from '../lib/flyerPreviewLayout';
+import { flyerPreviewFooterPadding, flyerPreviewFrameSize, flyerPreviewNeedsScroll } from '../lib/flyerPreviewLayout';
 import { shareFlyerCanvas } from '../lib/alertFlyerShare';
 import { pushRootScreen } from '../lib/pushRootScreen';
 import { CREAR_FLYER_PREVIEW_ROUTE } from '../lib/crearFlyerRoutes';
@@ -147,6 +147,7 @@ export default function AlertFlyerPreviewScreen() {
 
   const canPublish = session.source === 'draft' && !!session.publish && !session.alertId;
   const frame = flyerPreviewFrameSize(area.width, area.height);
+  const needsScroll = flyerPreviewNeedsScroll(frame.height, area.height);
 
   return (
     <View style={styles.safe}>
@@ -157,7 +158,10 @@ export default function AlertFlyerPreviewScreen() {
           setArea((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
         }}
       >
-        <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, needsScroll && styles.scrollOverflow]}
+          bounces={false}
+        >
           <View
             ref={flyerRef}
             collapsable={false}
@@ -203,6 +207,10 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  scrollOverflow: {
+    flexGrow: 0,
+    justifyContent: 'flex-start',
   },
   flyerFrame: {
     aspectRatio: FLYER_ASPECT,

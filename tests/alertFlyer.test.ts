@@ -8,6 +8,8 @@ import {
   FLYER_ASPECT,
   FLYER_EXPORT_HEIGHT,
   FLYER_EXPORT_WIDTH,
+  FLYER_FALLBACK_HEIGHT,
+  FLYER_FALLBACK_WIDTH,
   FLYER_PHOTO_HEIGHT_COMPACT,
   FLYER_PHOTO_HEIGHT_NORMAL,
   FLYER_PHOTO_WIDTH,
@@ -27,22 +29,28 @@ import {
 import {
   FLYER_ACCEPTABLE_BYTES,
   FLYER_HARD_MAX_BYTES,
+  FLYER_IDEAL_MAX_BYTES,
+  FLYER_IDEAL_MIN_BYTES,
   FLYER_JPEG_QUALITIES,
   FLYER_MAX_COMPRESS_ATTEMPTS,
   FLYER_SHARE_FORMAT,
   FLYER_SHARE_MIME,
   FLYER_SHARE_UTI,
+  flyerFallbackShareSize,
   flyerJpegQualityForAttempt,
   flyerShareSize,
   pickSmallerFlyer,
+  shouldFallbackFlyerResolution,
   shouldRetryFlyerCompress,
 } from '../lib/alertFlyerOptimize.ts';
 import {
   clearFlyerDraft,
+  emptyFlyerDraft,
   getFlyerDraft,
   isFlyerDraftReady,
   resolveFlyerPreviewOrigin,
   setFlyerDraft,
+  startEmptyFlyerDraft,
 } from '../lib/alertFlyerSession.ts';
 import { createChooserDestination, createChooserOpen, createChooserOpensInCrearStack, createChooserParams } from '../lib/createChooser.ts';
 import { navigateRoot } from '../lib/rootNavigate.ts';
@@ -52,7 +60,7 @@ import {
   nestedCrearRouteName,
   shouldHideCrearTabBar,
 } from '../lib/crearFlyerRoutes.ts';
-import { flyerPreviewFooterPadding, flyerPreviewFrameSize } from '../lib/flyerPreviewLayout.ts';
+import { flyerPreviewFooterPadding, flyerPreviewFrameSize, flyerPreviewNeedsScroll } from '../lib/flyerPreviewLayout.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
@@ -96,9 +104,9 @@ describe('alert flyer data', () => {
     );
     assert.ok(!visibleFlyerFacts(flyer).includes('Edad: no disponible'));
     assert.ok(!JSON.stringify(flyer).includes('no disponible'));
-    assert.equal(FLYER_ASPECT, 4 / 5);
+    assert.equal(FLYER_ASPECT, 9 / 16);
     assert.equal(FLYER_EXPORT_WIDTH, 1080);
-    assert.equal(FLYER_EXPORT_HEIGHT, 1350);
+    assert.equal(FLYER_EXPORT_HEIGHT, 1920);
     assert.equal(flyerPetPublicUrl('nina.pet'), 'https://animaldex.com/nina.pet');
     assert.equal(flyerPetPublicUrl('@Nina.pet'), 'https://animaldex.com/nina.pet');
     assert.equal(flyerPetPublicUrl(''), undefined);
@@ -280,6 +288,38 @@ describe('flyer UI wiring', () => {
 });
 
 describe('flyer + draft preview', () => {
+  it('CreateFlyerDraft nace vacío en memoria y no exige alerta ni mascota', () => {
+    clearFlyerDraft();
+    const draft = startEmptyFlyerDraft();
+    assert.equal(draft.source, 'draft');
+    assert.equal(draft.alertId, undefined);
+    assert.equal(draft.petId, undefined);
+    assert.equal(draft.petUsername, undefined);
+    assert.equal(draft.flyer.type, 'lost');
+    assert.equal(draft.flyer.image, undefined);
+    assert.equal(draft.flyer.petPublicUrl, undefined);
+    assert.equal(draft.publish, undefined);
+    assert.equal(isFlyerDraftReady(draft), false);
+    assert.equal(getFlyerDraft()?.source, 'draft');
+    assert.deepEqual(resolveFlyerPreviewOrigin({ from: 'draft' }), { mode: 'invalid' });
+    const blank = emptyFlyerDraft();
+    assert.equal(blank.flyer.petPublicUrl, undefined);
+    const screens = read('screens/CreateFlyerScreens.tsx');
+    assert.match(screens, /startEmptyFlyerDraft/);
+    assert.match(screens, /CREATE_FLYER_DRAFT_INIT/);
+    assert.match(screens, /CREATE_FLYER_DRAFT_READY/);
+    assert.match(screens, /CREATE_FLYER_DRAFT_ERROR/);
+    assert.match(screens, /<CreateAlertScreen \/>/);
+    assert.doesNotMatch(screens, /FlyerFlowBoundary route=\{CREAR_FLYER_DRAFT_ROUTE\}/);
+    const create = read('screens/CreateAlertScreen.tsx');
+    assert.match(create, /startEmptyFlyerDraft/);
+    assert.match(create, /CREATE_FLYER_DRAFT_INIT/);
+    assert.match(create, /Usar una de mis mascotas/);
+    assert.match(create, /applyExistingPet/);
+    assert.match(create, /setFlyerPetUsername\(pet\.username/);
+    assert.doesNotMatch(create, /createPet/);
+  });
+
   it('CreateChooser → draft válido abre preview; draft faltante no navega', () => {
     clearFlyerDraft();
     assert.equal(isFlyerDraftReady(), false);
@@ -430,10 +470,19 @@ describe('flyer preview footer and crear local routes', () => {
     assert.equal(flyerPreviewFooterPadding(0), 12);
     assert.equal(flyerPreviewFooterPadding(24), 32);
     assert.equal(flyerPreviewFooterPadding(8), 16);
-    const size = flyerPreviewFrameSize(390, 500);
+    const size = flyerPreviewFrameSize(390, 700);
     assert.ok(size.width <= 390 - 32);
-    assert.ok(size.height <= 500);
-    assert.equal(Math.round((size.width / size.height) * 100) / 100, 0.8);
+    assert.equal(size.width, 390 - 32);
+    assert.equal(Math.round((size.width / size.height) * 10000) / 10000, 9 / 16);
+    assert.ok(size.height > 500);
+    const short = flyerPreviewFrameSize(390, 200);
+    assert.equal(short.width, size.width);
+    assert.equal(Math.round((short.width / short.height) * 10000) / 10000, 9 / 16);
+    assert.equal(flyerPreviewNeedsScroll(short.height, 200), true);
+    assert.equal(flyerPreviewNeedsScroll(size.height, 700), false);
+    const preview = read('screens/AlertFlyerPreviewScreen.tsx');
+    assert.match(preview, /flyerPreviewNeedsScroll/);
+    assert.match(preview, /styles\.scrollOverflow/);
     assert.equal(nestedCrearRouteName({ state: { index: 1, routes: [{ name: 'TabRoot' }, { name: CREAR_FLYER_DRAFT_ROUTE }] } }), CREAR_FLYER_DRAFT_ROUTE);
     assert.equal(shouldHideCrearTabBar('Crear', CREAR_FLYER_DRAFT_ROUTE), true);
     assert.equal(shouldHideCrearTabBar('Crear', CREAR_FLYER_PREVIEW_ROUTE), true);
@@ -450,10 +499,10 @@ describe('flyer preview footer and crear local routes', () => {
   });
 });
 
-describe('flyer canvas long content fits 4:5', () => {
+describe('flyer canvas long content fits 9:16', () => {
   it('compacta foto y textos cuando hay muchos datos', () => {
-    assert.equal(FLYER_PHOTO_HEIGHT_NORMAL, '42%');
-    assert.equal(FLYER_PHOTO_HEIGHT_COMPACT, '38%');
+    assert.equal(FLYER_PHOTO_HEIGHT_NORMAL, '44%');
+    assert.equal(FLYER_PHOTO_HEIGHT_COMPACT, '40%');
     assert.equal(FLYER_PHOTO_WIDTH, '92%');
     const short = buildAlertFlyerData({
       type: 'lost',
@@ -495,25 +544,37 @@ describe('flyer canvas long content fits 4:5', () => {
 });
 
 describe('flyer weight', () => {
-  it('exporta JPEG 1080x1350 con calidad adaptativa y tope de peso', () => {
+  it('exporta JPEG 1080x1920 con calidad adaptativa y tope de peso', () => {
     assert.equal(FLYER_SHARE_FORMAT, 'jpeg');
     assert.equal(FLYER_SHARE_MIME, 'image/jpeg');
     assert.equal(FLYER_SHARE_UTI, 'public.jpeg');
     assert.equal(FLYER_EXPORT_WIDTH, 1080);
-    assert.equal(FLYER_EXPORT_HEIGHT, 1350);
-    assert.equal(FLYER_ASPECT, 4 / 5);
-    assert.deepEqual([...FLYER_JPEG_QUALITIES], [0.78, 0.7, 0.68]);
-    assert.equal(FLYER_MAX_COMPRESS_ATTEMPTS, 3);
-    assert.equal(flyerJpegQualityForAttempt(0), 0.78);
-    assert.equal(flyerJpegQualityForAttempt(1), 0.7);
-    assert.equal(flyerJpegQualityForAttempt(2), 0.68);
+    assert.equal(FLYER_EXPORT_HEIGHT, 1920);
+    assert.equal(FLYER_ASPECT, 9 / 16);
+    assert.equal(FLYER_FALLBACK_WIDTH, 900);
+    assert.equal(FLYER_FALLBACK_HEIGHT, 1600);
+    assert.deepEqual(flyerFallbackShareSize(), { width: 900, height: 1600 });
+    assert.deepEqual([...FLYER_JPEG_QUALITIES], [0.7, 0.62, 0.54, 0.46]);
+    assert.equal(FLYER_MAX_COMPRESS_ATTEMPTS, 4);
+    assert.equal(flyerJpegQualityForAttempt(0), 0.7);
+    assert.equal(flyerJpegQualityForAttempt(1), 0.62);
+    assert.equal(flyerJpegQualityForAttempt(3), 0.46);
+    assert.equal(FLYER_IDEAL_MIN_BYTES, 250 * 1024);
+    assert.equal(FLYER_IDEAL_MAX_BYTES, 600 * 1024);
     assert.equal(FLYER_ACCEPTABLE_BYTES, 600 * 1024);
     assert.equal(FLYER_HARD_MAX_BYTES, 800 * 1024);
     assert.equal(shouldRetryFlyerCompress(200 * 1024, 0), false);
     assert.equal(shouldRetryFlyerCompress(601 * 1024, 0), true);
-    assert.deepEqual(flyerShareSize(2160, 2700), { width: 1080, height: 1350 });
-    const first = pickSmallerFlyer(null, { uri: 'a', bytes: 700_000, quality: 0.78 });
-    const second = pickSmallerFlyer(first, { uri: 'b', bytes: 420_000, quality: 0.7 });
+    assert.equal(shouldFallbackFlyerResolution(600 * 1024), false);
+    assert.equal(shouldFallbackFlyerResolution(801 * 1024), true);
+    assert.deepEqual(flyerShareSize(2160, 3840), { width: 1080, height: 1920 });
+    assert.deepEqual(flyerShareSize(1080, 1920, 900, 1600), { width: 900, height: 1600 });
+    const first = pickSmallerFlyer(null, { uri: 'a', bytes: 700_000, quality: 0.7 });
+    const second = pickSmallerFlyer(first, { uri: 'b', bytes: 420_000, quality: 0.62 });
     assert.equal(second.uri, 'b');
+    const share = read('lib/alertFlyerShare.ts');
+    assert.match(share, /FLYER_FALLBACK_WIDTH/);
+    assert.match(share, /shouldFallbackFlyerResolution/);
+    assert.doesNotMatch(share, /SaveFormat\.PNG/);
   });
 });

@@ -8,9 +8,11 @@ import type { ApiAlert } from './db.ts';
 import { isValidPetUsername } from './petHandles.ts';
 import { publicWebUrl } from './publicWeb.ts';
 
-export const FLYER_ASPECT = 4 / 5;
+export const FLYER_ASPECT = 9 / 16;
 export const FLYER_EXPORT_WIDTH = 1080;
-export const FLYER_EXPORT_HEIGHT = 1350;
+export const FLYER_EXPORT_HEIGHT = 1920;
+export const FLYER_FALLBACK_WIDTH = 900;
+export const FLYER_FALLBACK_HEIGHT = 1600;
 
 export type AlertFlyerSource = 'existing' | 'draft';
 
@@ -242,7 +244,6 @@ export function flyerFactRows(flyer: AlertFlyer): AlertFlyerFactRow[] {
 }
 
 /** Hechos existentes unidos: `Perro · Hembra · …`. Omite vacíos. */
-/** Hechos existentes unidos: `Perro · Hembra · …`. Omite vacíos. */
 export function flyerMetaLine(flyer: AlertFlyer): string | undefined {
   const parts = flyerFactRows(flyer).map((row) => row.value);
   return parts.length ? parts.join(' · ') : undefined;
@@ -250,8 +251,8 @@ export function flyerMetaLine(flyer: AlertFlyer): string | undefined {
 
 export type FlyerContentDensity = 'normal' | 'compact';
 
-export const FLYER_PHOTO_HEIGHT_NORMAL = '42%';
-export const FLYER_PHOTO_HEIGHT_COMPACT = '38%';
+export const FLYER_PHOTO_HEIGHT_NORMAL = '44%';
+export const FLYER_PHOTO_HEIGHT_COMPACT = '40%';
 export const FLYER_PHOTO_WIDTH = '92%';
 
 export function flyerContentDensity(flyer: AlertFlyer): FlyerContentDensity {

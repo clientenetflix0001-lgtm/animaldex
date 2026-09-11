@@ -10,7 +10,10 @@ export type FlyerDebugStage =
   | 'FLYER_DEBUG_05_FORM_RENDER'
   | 'FLYER_DEBUG_06_PREVIEW_NAV'
   | 'FLYER_DEBUG_07_PREVIEW_MOUNT'
-  | 'FLYER_DEBUG_ERROR';
+  | 'FLYER_DEBUG_ERROR'
+  | 'CREATE_FLYER_DRAFT_INIT'
+  | 'CREATE_FLYER_DRAFT_READY'
+  | 'CREATE_FLYER_DRAFT_ERROR';
 
 export type FlyerDebugMeta = {
   route?: string;

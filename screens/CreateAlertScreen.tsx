@@ -36,7 +36,7 @@ import {
   dateStringToTimestamp,
 } from '../lib/alerts';
 import { buildAlertFlyerData, finiteCoord } from '../lib/alertFlyer';
-import { isFlyerDraftReady, setFlyerDraft } from '../lib/alertFlyerSession';
+import { getFlyerDraft, isFlyerDraftReady, setFlyerDraft, startEmptyFlyerDraft } from '../lib/alertFlyerSession';
 import { flyerDebug } from '../lib/flyerDebug';
 import { CREAR_FLYER_DRAFT_ROUTE, CREAR_FLYER_PREVIEW_ROUTE } from '../lib/crearFlyerRoutes';
 import { PET_SEXES, parsePetSex, speciesGroup } from '../lib/petFields';
@@ -64,11 +64,29 @@ export default function CreateAlertScreen() {
   const { myPets } = useStore();
 
   useLayoutEffect(() => {
+    if (routeName === CREAR_FLYER_DRAFT_ROUTE) return;
     navigation.setOptions({ title: flyerMode ? 'Crear flyer' : 'Crear alerta' });
-  }, [flyerMode, navigation]);
+  }, [flyerMode, navigation, routeName]);
 
   useEffect(() => {
     if (!flyerMode) return;
+    try {
+      void flyerDebug('CREATE_FLYER_DRAFT_INIT', {
+        route: routeName,
+        navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
+      });
+      if (!getFlyerDraft()) startEmptyFlyerDraft();
+      void flyerDebug('CREATE_FLYER_DRAFT_READY', {
+        route: routeName,
+        navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
+        draftReady: false,
+      });
+    } catch {
+      void flyerDebug('CREATE_FLYER_DRAFT_ERROR', {
+        route: routeName,
+        navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
+      });
+    }
     void flyerDebug('FLYER_DEBUG_03_SCREEN_MOUNT', {
       route: routeName,
       navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
@@ -76,7 +94,7 @@ export default function CreateAlertScreen() {
     });
     void flyerDebug('FLYER_DEBUG_04_DRAFT_INIT', {
       route: routeName,
-      draftReady: isFlyerDraftReady(),
+      draftReady: false,
     });
     void flyerDebug('FLYER_DEBUG_05_FORM_RENDER', { route: routeName });
   }, [flyerMode, routeName]);
