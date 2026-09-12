@@ -2,7 +2,7 @@
 // El OTP vive en el Worker (otp_challenges + ticket). Sin fallback local
 // ni demoCode: no se revelan códigos en el cliente.
 
-import { API_ORIGIN } from './db';
+import { API_ORIGIN, loadToken } from './db';
 import type { OtpPurpose } from './otpPolicy';
 
 export interface SendCodeResult {
@@ -29,10 +29,15 @@ export interface UploadResult {
   error?: string;
 }
 
-async function post(path: string, body: object): Promise<any> {
+async function post(path: string, body: object, opts?: { auth?: boolean }): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (opts?.auth) {
+    const token = await loadToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
   const res = await fetch(`${API_ORIGIN}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
@@ -64,7 +69,8 @@ export async function verifyCode(
 
 export async function uploadImage(dataUrl: string): Promise<UploadResult> {
   try {
-    return await post('/upload', { image: dataUrl });
+    // El Worker exige sesión: subir gasta cuota de Cloudflare Images.
+    return await post('/upload', { image: dataUrl }, { auth: true });
   } catch (e: any) {
     if (e?.message && !/Failed to fetch|Network|JSON/i.test(e.message)) throw e;
     return { ok: true, provider: 'local', url: dataUrl };

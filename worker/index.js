@@ -33,6 +33,7 @@ import {
   runStoryCleanup,
 } from './stories.js';
 import { alertWithinRadiusKm, boundingBox, localitiesMatch, validLatLng } from '../lib/feedGeo.ts';
+import { storageFilename, validateImageUpload } from './imageUpload.js';
 import {
   legacyTextCondition,
   normalizeTerritory,
@@ -1062,6 +1063,31 @@ function shareLocationLimited(ip, petId, now) {
   if (rec.n >= SHARE_LOCATION_MAX) return true;
   rec.n += 1;
   return false;
+}
+
+// Rate limit de /upload: 20 imágenes por minuto (memoria, sin tabla, igual que
+// los otros límites del Worker). Una publicación con varias fotos entra
+// cómoda; un script que quiera quemar la cuota de Cloudflare Images, no.
+// Se cuenta por cuenta Y por IP: así una cuenta no se multiplica cambiando de
+// red, ni una IP creando cuentas.
+export const UPLOAD_WINDOW_MS = 60 * 1000;
+export const UPLOAD_MAX_PER_WINDOW = 20;
+const uploadByKey = new Map();
+function uploadCounterHit(key, now) {
+  const rec = uploadByKey.get(key);
+  if (!rec || now - rec.start >= UPLOAD_WINDOW_MS) {
+    uploadByKey.set(key, { start: now, n: 1 });
+    return false;
+  }
+  if (rec.n >= UPLOAD_MAX_PER_WINDOW) return true;
+  rec.n += 1;
+  return false;
+}
+function uploadLimited(userId, ip, now) {
+  // Se evalúan las dos claves siempre, para que ninguna quede sin contar.
+  const byUser = uploadCounterHit(`u|${userId}`, now);
+  const byIp = uploadCounterHit(`i|${ip || 'unknown'}`, now);
+  return byUser || byIp;
 }
 
 function phoneLookupValues(phoneOrRaw) {
@@ -4003,26 +4029,30 @@ async function handleDb(request, env) {
 
 async function handleUpload(request, env) {
   const body = await request.json().catch(() => ({}));
-  const image = String(body.image || '');
-  const m = image.match(/^data:(image\/[a-z+]+);base64,(.+)$/);
-  if (!m) return json({ error: 'Imagen inválida (se espera data URL base64)' }, 400);
 
-  const mime = m[1];
-  const base64 = m[2];
-  if (base64.length > 4_000_000) return json({ error: 'Imagen demasiado grande (máx ~3MB)' }, 413);
+  // Subir consume cuota de Cloudflare Images de la cuenta de Animaldex, así que
+  // exige sesión. Antes el endpoint era anónimo.
+  const userId = await authUser(request, env, body);
+  if (!userId) return json({ error: 'Iniciá sesión para subir una imagen' }, 401);
+
+  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || '';
+  if (uploadLimited(userId, ip, Date.now())) {
+    return json({ error: 'Demasiadas imágenes seguidas. Esperá un momento.' }, 429);
+  }
+
+  // El formato sale de los magic bytes, no de lo que declare el cliente.
+  const checked = validateImageUpload(body.image);
+  if (!checked.ok) return json({ error: checked.error }, checked.status);
+  const { mime, ext, bytes } = checked;
 
   if (!env.CF_ACCOUNT_ID || !env.CF_IMAGES_TOKEN) {
-    return json({ ok: true, provider: 'demo', url: image, message: 'Cloudflare Images no configurado' });
+    return json({ ok: true, provider: 'demo', url: String(body.image || ''), message: 'Cloudflare Images no configurado' });
   }
 
   try {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const ext = mime.split('/')[1].replace('+', '');
     const blob = new Blob([bytes], { type: mime });
     const form = new FormData();
-    form.append('file', blob, `animaldex-${Date.now()}.${ext}`);
+    form.append('file', blob, storageFilename(ext));
 
     const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/images/v1`, {
       method: 'POST',
