@@ -158,7 +158,13 @@ export function PlacePicker({
           />
           <View style={{ flex: 1 }}>
             <Text style={styles.itemLocality}>{item.place.localityName}</Text>
-            <Text style={styles.itemContext}>{placeContextLabel(item.place)}</Text>
+            <Text style={styles.itemContext}>
+              {/* El candidato de otro departamento va último aunque esté más
+                  cerca, así que conviene decir por qué aparece. */}
+              {item.withinResolvedArea
+                ? placeContextLabel(item.place)
+                : `${placeContextLabel(item.place)} · otro departamento`}
+            </Text>
           </View>
           {distance ? <Text style={styles.itemDistance}>{distance}</Text> : null}
         </Pressable>
