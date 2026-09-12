@@ -266,7 +266,7 @@ describe('locality normalizada del protector', () => {
     assert.match(chunk, /locality = \?/);
     assert.match(chunk, /location = \?, locality = \?, phone/);
     const edit = readFileSync(join(root, 'screens/EditPublicProfileScreen.tsx'), 'utf8');
-    assert.match(edit, /LocalityPicker/);
+    assert.match(edit, /PlacePicker/);
     assert.match(edit, /profileType === 'protector'/);
     assert.match(edit, /location: location\.trim\(\)/);
     assert.match(edit, /locality: profileType === 'protector' \? locality/);
@@ -360,7 +360,7 @@ describe('layout inmersivo Adoptar', () => {
     assert.match(discovery, /setSize/);
     assert.match(discovery, /setSex/);
     assert.match(discovery, /\.\.\.filters,\s*locality: targetLocality/);
-    assert.match(discovery, /LocalityPicker/);
+    assert.match(discovery, /PlacePicker/);
     assert.match(discovery, /saveAdoptionLocality/);
   });
 

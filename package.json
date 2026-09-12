@@ -70,6 +70,7 @@
     "test:flyer": "node --experimental-strip-types --test tests/alertFlyer.test.ts",
     "test:legal": "node --experimental-strip-types --test tests/legalPages.test.ts",
     "test:geo": "node --experimental-strip-types --test tests/geo.test.ts",
+    "test:geo-phase3": "node --experimental-strip-types --test tests/geoPhase3.test.ts",
     "geo:catalog": "node scripts/geo/build-catalog.mjs",
     "geo:catalog:check": "node scripts/geo/build-catalog.mjs --check"
   },

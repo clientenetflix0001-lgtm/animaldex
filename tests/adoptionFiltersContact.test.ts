@@ -140,7 +140,7 @@ describe('filtros compactos Adoptar', () => {
   });
 
   it('12. ubicación intacta', () => {
-    assert.match(discovery, /LocalityPicker/);
+    assert.match(discovery, /PlacePicker/);
     assert.match(discovery, /Salta Capital|locality \|\| 'Elegir localidad'/);
     assert.match(discovery, /saveAdoptionLocality/);
     assert.equal(

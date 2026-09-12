@@ -119,6 +119,7 @@ import {
   transferRequestedCopy,
 } from '../lib/petTransfer.ts';
 import { handleGeo } from './geo.js';
+import { geoInsertFragment, geoUpdateFragment, normalizeIncomingPlace, placeIdRejected } from './geoWrite.js';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -1249,10 +1250,13 @@ async function handleAuth(request, env) {
           );
         }
       }
+      if (placeIdRejected(body)) return json({ error: 'Esa ubicación no está en el catálogo' }, 400);
+      const place = normalizeIncomingPlace(body);
+      const geo = await geoUpdateFragment(env, 'users', place);
       await d1(
         env,
-        "UPDATE users SET name = COALESCE(NULLIF(?, ''), name), bio = ?, location = ?, avatar_url = COALESCE(?, avatar_url) WHERE id = ?",
-        [name, bio, location, avatarUrl, userId]
+        `UPDATE users SET name = COALESCE(NULLIF(?, ''), name), bio = ?, location = ?, avatar_url = COALESCE(?, avatar_url)${geo.sql} WHERE id = ?`,
+        [name, bio, location, avatarUrl, ...geo.values, userId]
       );
       const rows = await d1(env, 'SELECT * FROM users WHERE id = ?', [userId]);
       return json({ ok: true, user: publicUser(rows[0]) });
@@ -2920,12 +2924,18 @@ async function handleDb(request, env) {
         }
       }
 
+      // Identidad territorial normalizada. Se valida contra el catálogo del
+      // servidor: un placeId inventado se rechaza en vez de guardarse.
+      if (placeIdRejected(body)) return json({ error: 'Esa ubicación no está en el catálogo' }, 400);
+      const place = normalizeIncomingPlace(body);
+      const geo = await geoInsertFragment(env, 'alerts', place);
+
       const id = `alert-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(
         env,
-        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at, renewed_at, sex, author_profile_id, contact_whatsapp, contact_phone)
-         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now, now, sex, authorProfileId, contactWhatsapp, contactPhone]
+        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at, renewed_at, sex, author_profile_id, contact_whatsapp, contact_phone${geo.columns})
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${geo.placeholders})`,
+        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now, now, sex, authorProfileId, contactWhatsapp, contactPhone, ...geo.values]
       );
       const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [id]);
       const [alert] = await attachLikedFlags(env, rows, userId);
@@ -3053,12 +3063,16 @@ async function handleDb(request, env) {
       const contactValue = normalizePhone(body.contactValue || '');
       if (!contactMethod || !contactValue) return json({ error: 'Elegí WhatsApp o teléfono e ingresá un número válido.' }, 400);
 
+      if (placeIdRejected(body)) return json({ error: 'Esa ubicación no está en el catálogo' }, 400);
+      const place = normalizeIncomingPlace(body);
+      const geo = await geoInsertFragment(env, 'listings', place);
+
       const id = `listing-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(
         env,
-        `INSERT INTO listings (id, user_id, kind, title, category, description, price_patitas, price_ars, stock, delivery_method, modality, availability, images, locality, province, country, lat, lon, status, created_at, contact_method, contact_value)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
-        [id, userId, kind, title, category, description, pricePatitas, priceArs, stock, deliveryMethod, modality, availability, JSON.stringify(images), locality, province || null, 'AR', lat, lon, now, contactMethod, contactValue]
+        `INSERT INTO listings (id, user_id, kind, title, category, description, price_patitas, price_ars, stock, delivery_method, modality, availability, images, locality, province, country, lat, lon, status, created_at, contact_method, contact_value${geo.columns})
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?${geo.placeholders})`,
+        [id, userId, kind, title, category, description, pricePatitas, priceArs, stock, deliveryMethod, modality, availability, JSON.stringify(images), locality, province || null, 'AR', lat, lon, now, contactMethod, contactValue, ...geo.values]
       );
       const rows = await d1(env, `${LISTING_SELECT} WHERE l.id = ?`, [id]);
       const [listing] = await attachFavoritedFlags(env, rows, userId);
@@ -3304,10 +3318,13 @@ async function handleDb(request, env) {
         body.adoptionPhone !== undefined ? body.adoptionPhone : owned[0].adoption_phone
       );
       if (!contact.ok) return json({ error: contact.error }, 400);
+      if (placeIdRejected(body)) return json({ error: 'Esa ubicación no está en el catálogo' }, 400);
+      const place = normalizeIncomingPlace(body);
+      const geo = await geoUpdateFragment(env, 'profiles', place);
       await d1(
         env,
-        'UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, locality = ?, phone = ?, avatar_url = COALESCE(?, avatar_url), adoption_whatsapp = ?, adoption_phone = ? WHERE id = ?',
-        [name, username, bio, location, locality, phone, avatar, contact.whatsapp, contact.phone, profileId]
+        `UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, locality = ?, phone = ?, avatar_url = COALESCE(?, avatar_url), adoption_whatsapp = ?, adoption_phone = ?${geo.sql} WHERE id = ?`,
+        [name, username, bio, location, locality, phone, avatar, contact.whatsapp, contact.phone, ...geo.values, profileId]
       );
       const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId]);
       return json({ ok: true, profile: profileRow(rows[0], { includeAdoptionContact: true }) });

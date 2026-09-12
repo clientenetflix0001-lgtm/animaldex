@@ -11,7 +11,7 @@
 // Flujo: coordenada -> celda de ~1 km -> caché -> Georef v2.1 /ubicacion ->
 // provincia + departamento oficiales -> catálogo Animaldex -> candidatos.
 //
-// Esta fase NO despliega el Worker y ninguna pantalla llama todavía a /geo.
+// La app entra por `lib/placeLocate.ts`, que llama a `db.geoResolveCoords`.
 // ============================================================
 
 import { geoCell, coarseCoord, GEO_CELL_KM } from '../lib/geoplace/cell.ts';

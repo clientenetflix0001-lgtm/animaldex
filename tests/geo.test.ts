@@ -1,8 +1,8 @@
 // ============================================================
 // Fase 2 — fundación geográfica normalizada.
 // ============================================================
-// Estos tests cubren el sistema GEO nuevo y nada más. No tocan pantallas, ni
-// filtros, ni D1: en esta fase el módulo existe pero todavía no lo usa nadie.
+// Estos tests cubren la fundación: catálogo, identidad, resolución y endpoint.
+// Lo que hace la UI con todo esto vive en geoPhase3.test.ts.
 // ============================================================
 
 import { describe, it } from 'node:test';
@@ -1387,7 +1387,7 @@ describe('privacidad', () => {
   });
 
   it('las protecciones existentes siguen intactas', () => {
-    // Fase 2 no debe degradar lo que ya protegía la ubicación del usuario.
+    // El sistema nuevo no debe degradar lo que ya protegía la ubicación.
     assert.match(read('lib/lastLocation.ts'), /export function publicPayloadHasUserCoords/);
     const push = read('lib/pushPolicy.ts');
     assert.match(push, /keys\.includes\('lat'\) \|\| keys\.includes\('lon'\)/);
@@ -1396,33 +1396,16 @@ describe('privacidad', () => {
 });
 
 // ------------------------------------------------------------
-// 12. Alcance: Fase 2 no cambia comportamiento visible
+// 12. Alcance: la fundación no se pisa con lo legacy
 // ------------------------------------------------------------
 
-describe('alcance de Fase 2', () => {
-  it('ninguna pantalla usa todavía el sistema nuevo', () => {
-    const usados: string[] = [];
-    for (const file of [
-      'screens/CreateAlertScreen.tsx',
-      'screens/AlertsScreen.tsx',
-      'screens/MarketScreen.tsx',
-      'screens/HomeScreen.tsx',
-      'components/LocalityPicker.tsx',
-      'lib/db.ts',
-    ]) {
-      let src = '';
-      try { src = read(file); } catch { continue; }
-      if (/lib\/geoplace/.test(src)) usados.push(file);
-    }
-    assert.deepEqual(usados, [], `Fase 2 no debe engancharse a UI todavía: ${usados.join(', ')}`);
-  });
-
-  it('el módulo nuevo no ensombrece al lib/geo.ts que usan las pantallas', () => {
-    // Tres pantallas importan '../lib/geo'. Un directorio lib/geo/ haría que
+describe('alcance de la fundación', () => {
+  it('el módulo nuevo no ensombrece al lib/geo.ts que todavía se usa', () => {
+    // Varias pantallas importan '../lib/geo'. Un directorio lib/geo/ haría que
     // ese import cambie de destino en cuanto alguien agregue un index, así que
     // el sistema nuevo vive en lib/geoplace/.
     assert.match(read('lib/geo.ts'), /export async function detectCurrentLocality/);
-    for (const file of ['screens/CreateAlertScreen.tsx', 'screens/AlertsScreen.tsx', 'components/LocalityPicker.tsx']) {
+    for (const file of ['screens/AlertsScreen.tsx', 'screens/AdoptionDiscoveryScreen.tsx', 'components/LocalityPicker.tsx']) {
       assert.match(read(file), /from '\.\.\/lib\/geo'/, file);
     }
     assert.throws(() => read('lib/geo/catalog.ts'), 'lib/geo/ no debe existir como directorio');
@@ -1434,7 +1417,7 @@ describe('alcance de Fase 2', () => {
     assert.match(read('lib/localities.ts'), /ARGENTINA_LOCALITIES/);
   });
 
-  it('no se agregaron migraciones ni columnas nuevas en esta fase', () => {
+  it('el endpoint /geo no toca D1', () => {
     const geo = read('worker/geo.js');
     // SQL en mayúsculas, para no confundirse con memoryCache.delete().
     assert.doesNotMatch(geo, /\b(INSERT INTO|UPDATE |DELETE FROM|ALTER TABLE|CREATE TABLE|DROP TABLE)/);
