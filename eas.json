@@ -18,6 +18,7 @@
     "play-internal": {
       "distribution": "store",
       "channel": "play-internal",
+      "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
       }

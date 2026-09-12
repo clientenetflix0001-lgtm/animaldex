@@ -135,12 +135,12 @@ describe('filtros compactos Adoptar', () => {
     const cats = card({ petId: 'c', species: 'gato', sex: 'hembra' });
     assert.equal(matchesAdoptionFilters(dogs, { species: 'gato', size: 'todos', sex: 'todos' }), false);
     assert.equal(matchesAdoptionFilters(cats, { species: 'gato', size: 'todos', sex: 'todos' }), true);
-    assert.match(discovery, /\.\.\.filters,\s*locality: targetLocality/);
+    assert.match(discovery, /\.\.\.filters,\s*locality,\s*territory,/);
     assert.match(action('adoptionFeed'), /p\.species = \?/);
   });
 
   it('12. ubicación intacta', () => {
-    assert.match(discovery, /LocalityPicker/);
+    assert.match(discovery, /PlacePicker/);
     assert.match(discovery, /Salta Capital|locality \|\| 'Elegir localidad'/);
     assert.match(discovery, /saveAdoptionLocality/);
     assert.equal(

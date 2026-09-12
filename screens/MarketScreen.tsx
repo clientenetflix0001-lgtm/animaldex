@@ -21,9 +21,15 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiListing } from '../lib/db';
 import { ListingCard } from '../components/ListingCard';
-import { LocalityPicker } from '../components/LocalityPicker';
+import { PlacePicker, placeSelection, type PlaceSelection } from '../components/PlacePicker';
 import { CategoryPickerSheet } from '../components/CategoryPickerSheet';
-import { detectCurrentLocality, withProvinceFallback } from '../lib/geo';
+import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
+import {
+  territoryFromPlace,
+  territoryFromPlaceId,
+  territoryQuery,
+  type Territory,
+} from '../lib/geoplace/territory.ts';
 import {
   saveMarketLocality,
   loadSavedMarketLocality,
@@ -51,6 +57,8 @@ export default function MarketScreen() {
 
   const [locality, setLocality] = useState<string | null>(null);
   const [province, setProvince] = useState<string | null>(null);
+  /** Identidad del lugar elegido. Es lo que filtra la sección "cerca". */
+  const [territory, setTerritory] = useState<Territory | null>(null);
   const [viewerLat, setViewerLat] = useState<number | null>(null);
   const [viewerLon, setViewerLon] = useState<number | null>(null);
   const [locating, setLocating] = useState(true);
@@ -72,6 +80,24 @@ export default function MarketScreen() {
   const didInitialFocusRef = useRef(false);
 
 
+  const applyLocality = useCallback(
+    (entry: PlaceSelection) => {
+      setLocality(entry.locality);
+      setProvince(entry.province);
+      setTerritory(territoryFromPlace(entry.place));
+      if (entry.lat != null) setViewerLat(entry.lat);
+      if (entry.lon != null) setViewerLon(entry.lon);
+      saveMarketLocality({
+        locality: entry.locality,
+        province: entry.province,
+        lat: entry.lat ?? null,
+        lon: entry.lon ?? null,
+        placeId: entry.place.placeId,
+      });
+    },
+    []
+  );
+
   // ---------- Ubicación inicial (misma lógica que Alertas) ----------
   useEffect(() => {
     (async () => {
@@ -80,34 +106,22 @@ export default function MarketScreen() {
       if (saved) {
         setLocality(saved.locality);
         setProvince(saved.province);
+        setTerritory(territoryFromPlaceId(saved.placeId));
         setViewerLat(saved.lat ?? null);
         setViewerLon(saved.lon ?? null);
         setLocating(false);
         return;
       }
-      const detected = await detectCurrentLocality();
-      if (detected && detected.locality) {
-        const prov = withProvinceFallback(detected.locality, detected.province);
-        setLocality(detected.locality);
-        setProvince(prov);
-        setViewerLat(detected.lat);
-        setViewerLon(detected.lon);
-        saveMarketLocality({ locality: detected.locality, province: prov, lat: detected.lat, lon: detected.lon });
-      }
+      // Solo se aplica el GPS cuando no hay ambigüedad territorial. Las
+      // coordenadas guardadas son el centroide público del lugar, no la
+      // posición del dispositivo.
+      const res = await locateCurrentPlace();
+      const only = res.ok ? unambiguousPlace(res) : null;
+      if (only) applyLocality(placeSelection(only));
       setLocating(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const applyLocality = useCallback(
-    (entry: { locality: string; province: string | null; lat?: number | null; lon?: number | null }) => {
-      setLocality(entry.locality);
-      setProvince(entry.province);
-      if (entry.lat != null) setViewerLat(entry.lat);
-      if (entry.lon != null) setViewerLon(entry.lon);
-      saveMarketLocality({ locality: entry.locality, province: entry.province, lat: entry.lat ?? null, lon: entry.lon ?? null });
-    },
-    []
-  );
 
   // ---------- Grilla paginada (modo búsqueda/categoría) ----------
   const fetchPage = useCallback(
@@ -123,6 +137,8 @@ export default function MarketScreen() {
         const res = await db.listingsFeed({
           kind,
           locality: locality ?? undefined,
+          province,
+          ...territoryQuery(territory),
           category: category ?? undefined,
           q: searchActive.trim() || undefined,
           section,
@@ -153,13 +169,13 @@ export default function MarketScreen() {
         setLoadingMore(false);
       }
     },
-    [kind, category, searchActive, locality]
+    [kind, category, searchActive, locality, province, territory]
   );
 
   useEffect(() => {
     if (!locating) fetchPage(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, category, searchActive, locality, locating]);
+  }, [kind, category, searchActive, locality, territory, locating]);
 
   useFocusEffect(
     useCallback(() => {
@@ -380,7 +396,7 @@ export default function MarketScreen() {
         </SafeAreaView>
       )}
 
-      <LocalityPicker
+      <PlacePicker
         visible={pickerVisible}
         currentProvince={province}
         title="Ubicación del Mercado"

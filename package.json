@@ -67,7 +67,17 @@
     "test:integrated": "node --experimental-strip-types --test tests/integratedPetsReels.test.ts",
     "test:reel-pet-auth": "node --experimental-strip-types --test tests/reelPetAuth.test.ts",
     "test:pet-handles": "node --experimental-strip-types --test tests/petDotHandles.test.ts",
-    "test:flyer": "node --experimental-strip-types --test tests/alertFlyer.test.ts"
+    "test:flyer": "node --experimental-strip-types --test tests/alertFlyer.test.ts",
+    "test:legal": "node --experimental-strip-types --test tests/legalPages.test.ts",
+    "test:geo": "node --experimental-strip-types --test tests/geo.test.ts",
+    "test:geo-phase3": "node --experimental-strip-types --test tests/geoPhase3.test.ts",
+    "test:geo-backfill": "node --experimental-strip-types --test tests/geoBackfill.test.ts",
+    "test:geo-phase5": "node --experimental-strip-types --test tests/geoPhase5.test.ts",
+    "test:hardening": "node --experimental-strip-types --test tests/hardening.test.ts",
+    "geo:backfill": "node --experimental-strip-types scripts/geo/backfill.mjs",
+    "geo:backfill:verify": "node --experimental-strip-types scripts/geo/backfill-verify.mjs",
+    "geo:catalog": "node scripts/geo/build-catalog.mjs",
+    "geo:catalog:check": "node scripts/geo/build-catalog.mjs --check"
   },
   "private": true
 }

@@ -38,6 +38,16 @@
 // aunque la visita llegue por animaldex-web.pages.dev (legacy, sin redirect).
 const PUBLIC_WEB_ORIGIN = 'https://animaldex.com';
 
+/** HTML estático de Play/privacidad. Se sirve ANTES de OG y de la SPA. */
+function legalPageAssetPath(pathname) {
+  const p = String(pathname || '').replace(/\/+$/, '') || '/';
+  // Pages hace 308 de *.html → sin extensión. Pedir la pretty URL.
+  if (p === '/privacidad') return '/legal/privacidad';
+  if (p === '/eliminar-cuenta') return '/legal/eliminar-cuenta';
+  if (p === '/seguridad-infantil') return '/legal/seguridad-infantil';
+  return null;
+}
+
 const ASSETLINKS_JSON = JSON.stringify([
   {
     relation: ['delegate_permission/common.handle_all_urls'],
@@ -284,7 +294,7 @@ async function buildOgMeta(request, env, url) {
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
     'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mis-productos', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
-    'well-known',
+    'well-known', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil',
   ]);
 
   if (petMatch) {
@@ -564,6 +574,27 @@ export default {
       });
     }
 
+    // 0.5) Política de privacidad y eliminación de cuenta: HTML público,
+    //     sin login, sin SPA, sin perfil/mascota/QR. Incluye bots (Play).
+    const legalAsset = legalPageAssetPath(url.pathname);
+    if (legalAsset) {
+      const legalRes = await env.ASSETS.fetch(
+        new Request(new URL(legalAsset, url.origin).toString(), { method: 'GET' })
+      );
+      const htmlHeaders = {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'public, max-age=300, must-revalidate',
+        'X-Robots-Tag': 'index, follow',
+      };
+      if (legalRes.ok) {
+        return new Response(legalRes.body, { status: 200, headers: htmlHeaders });
+      }
+      return new Response(
+        '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"/><title>Animaldex</title></head><body><p>Página legal no disponible en este deploy.</p></body></html>',
+        { status: 200, headers: htmlHeaders }
+      );
+    }
+
     // 1) Bots de redes sociales en rutas con preview: servir OG HTML.
     if (BOT_RE.test(ua) && OG_PATH_RE.test(url.pathname)) {
       const meta = await buildOgMeta(request, env, url);
@@ -603,6 +634,7 @@ export default {
       'p','pet','a','m','r','reels','alertas','mercado','crear','mascotas','actividad','perfil',
       'explorar','verificar','escanear','entrar','tienda','admin','vender',
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
+      'privacidad','eliminar-cuenta','seguridad-infantil',
     ]);
     const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase());
     const maybePet = /^\/pet\/[^/]+\/?$/.test(url.pathname) || (spaHandle && /\.pet$/i.test(spaHandle));

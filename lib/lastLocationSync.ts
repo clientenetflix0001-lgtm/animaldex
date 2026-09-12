@@ -1,11 +1,37 @@
+// ============================================================
+// Señal de ubicación para el orden de Inicio.
+// ============================================================
+// Hasta Fase 4 esta era la última pieza que usaba el reverse geocoder del
+// sistema operativo como identidad territorial:
+//
+//   detectCurrentLocality() -> Location.reverseGeocodeAsync() -> texto
+//
+// El texto del sistema operativo no es un identificador: difiere entre Android
+// e iOS, cambia entre versiones y no se puede comparar con el catálogo. Desde
+// Fase 5 la señal sale de `locateCurrentPlace()`, que pasa por el endpoint
+// /geo y devuelve lugares del catálogo.
+//
+// PRIVACIDAD: la coordenada del dispositivo se usa dentro de
+// `locateCurrentPlace()` y no sale de ahí. Lo que se guarda en caché y se
+// manda al servidor es el centroide del lugar, que es público. Nada de esto se
+// registra en logs.
+//
+// RANKING AUTOMÁTICO: esto ordena Inicio sin que nadie lo pida, así que no
+// puede inventar una localidad. Si /geo pide confirmación, se degrada al
+// departamento oficial —que viene de contención de polígono y sí es confiable—
+// y si tampoco lo hay, no se afirma territorio alguno.
+// ============================================================
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, type AppStateStatus } from 'react-native';
 import { db } from './db';
-import { detectCurrentLocality } from './geo';
+import { locateCurrentPlace } from './placeLocate';
+import { placeSignalFromResolution } from './lastLocationSignal.ts';
 import {
   LAST_LOCATION_CACHE_KEY,
   LAST_LOCATION_POLICY,
   fallbackLocality,
+  localityChanged,
   locationIsStale,
   parseLastLocation,
   shouldWriteLastLocation,
@@ -43,17 +69,23 @@ export async function syncLastUsefulLocation(input?: {
       return cached;
     }
 
-    const gps = await detectCurrentLocality();
-    const locality = fallbackLocality(gps?.locality, input?.profileLocality, input?.profileLocationText);
+    const { place, territory } = placeSignalFromResolution(await locateCurrentPlace());
+    const locality = fallbackLocality(place?.localityName, input?.profileLocality, input?.profileLocationText);
+    // La identidad anterior sólo se conserva si sigue hablando del mismo lugar.
+    const carried = cached && !localityChanged(cached, locality) ? cached.territory : null;
     const next: LastLocationSnapshot = {
-      lat: gps?.lat ?? cached?.lat ?? null,
-      lng: gps?.lon ?? cached?.lng ?? null,
+      // Centroide del lugar, no la posición del dispositivo. Si esta vuelta no
+      // se pudo afirmar un lugar, se conserva el punto anterior: esto es la
+      // última ubicación útil, no un rastreo.
+      lat: place?.centroidLat ?? cached?.lat ?? null,
+      lng: place?.centroidLng ?? cached?.lng ?? null,
       locality,
-      updatedAt: gps || locality ? now : cached?.updatedAt ?? now,
-      source: gps ? 'gps' : locality ? 'profile' : 'cache',
+      territory: territory ?? carried,
+      updatedAt: place || territory || locality ? now : cached?.updatedAt ?? now,
+      source: place || territory ? 'geo' : locality ? 'profile' : 'cache',
     };
 
-    if (!next.lat && !next.lng && !next.locality) return cached;
+    if (next.lat == null && next.lng == null && !next.locality && !next.territory) return cached;
 
     await writeCachedLastLocation(next);
 

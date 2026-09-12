@@ -64,6 +64,7 @@ import { extractTagCode } from './lib/tags';
 import { createTabProfileStack, navigateMainTab } from './lib/tabProfileStack';
 import { MOBILE_TAB_ORDER, TAB_ICONS, TAB_LABELS } from './lib/mainTabs';
 import { planMainTabPress, shouldHighlightTab } from './lib/feedReelsNav';
+import { nestedCrearRouteName, shouldHideCrearTabBar } from './lib/crearFlyerRoutes';
 import { FeedReelsNavProvider, useFeedReelsNav } from './lib/feedReelsNavContext';
 import { navigationRef } from './lib/navigationRef';
 import { attachPushResponseListeners, ensurePushHandler, registerPushTokenIfGranted, setPushNavGate } from './lib/push';
@@ -101,6 +102,7 @@ function ReelsTabBridge() {
 const InicioStack = createTabProfileStack(InicioRoot);
 const ReelsStack = createTabProfileStack(ReelsTabBridge);
 const AlertasStack = createTabProfileStack(AlertsScreen);
+const CrearStack = createTabProfileStack(CreateChooserScreen);
 const MercadoStack = createTabProfileStack(MarketScreen);
 const ActividadStack = createTabProfileStack(ActivityScreen);
 const PerfilStack = createTabProfileStack(MyProfileTab);
@@ -115,7 +117,10 @@ function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
   const insets = useSafeAreaInsets();
   const bottomInset = Platform.OS === 'web' ? 0 : insets.bottom;
   const focusedName = state.routes[state.index]?.name as keyof TabParamList;
+  const nestedName = nestedCrearRouteName(state.routes[state.index]);
   const { page, setPage } = useFeedReelsNav();
+
+  if (shouldHideCrearTabBar(focusedName, nestedName)) return null;
 
   return (
     <View
@@ -201,7 +206,7 @@ function Tabs() {
           <Tab.Screen name="Reels" component={ReelsStack} />
           <Tab.Screen name="Alertas" component={AlertasStack} />
           <Tab.Screen name="Mercado" component={MercadoStack} />
-          <Tab.Screen name="Crear" component={CreateChooserScreen} />
+          <Tab.Screen name="Crear" component={CrearStack} />
           <Tab.Screen name="Mascotas" component={MascotasStack} />
           <Tab.Screen name="Actividad" component={ActividadStack} />
           <Tab.Screen name="Perfil" component={PerfilStack} />
@@ -225,7 +230,7 @@ function Tabs() {
         <Tab.Screen name="Inicio" component={InicioStack} />
         <Tab.Screen name="Reels" component={ReelsStack} />
         <Tab.Screen name="Alertas" component={AlertasStack} />
-        <Tab.Screen name="Crear" component={CreateChooserScreen} />
+        <Tab.Screen name="Crear" component={CrearStack} />
         <Tab.Screen name="Mascotas" component={MascotasStack} />
         <Tab.Screen name="Mercado" component={MercadoStack} />
         <Tab.Screen name="Perfil" component={PerfilStack} />

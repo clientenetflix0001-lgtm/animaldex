@@ -25,6 +25,8 @@ import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHan
 import { PUBLIC_WEB_HOST } from '../lib/publicWeb';
 import BioField from '../components/BioField';
 import { BIO_WORD_LIMIT_ERROR, isBioWithinWordLimit } from '../lib/bio';
+import { PlacePicker } from '../components/PlacePicker';
+import type { GeoPlace } from '../lib/geoplace/types.ts';
 
 export default function EditProfileScreen() {
   const navigation = useNavigation<any>();
@@ -32,7 +34,12 @@ export default function EditProfileScreen() {
   const [name, setName] = useState(user?.name ?? '');
   const [username, setUsername] = useState(user?.username ?? '');
   const [bio, setBio] = useState(user?.bio ?? '');
+  // `location` dejó de ser un campo de texto libre: sólo lo escribe el
+  // PlacePicker, con el nombre oficial del lugar elegido. Lo que ya estaba
+  // guardado se muestra tal cual, sin reinterpretarlo como identidad.
   const [location, setLocation] = useState(user?.location ?? '');
+  const [place, setPlace] = useState<GeoPlace | null>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -92,6 +99,9 @@ export default function EditProfileScreen() {
         bio: bio.trim(),
         location: location.trim(),
         avatarUrl: avatarUrl ?? undefined,
+        placeId: place?.placeId,
+        admin1Code: place?.admin1Code,
+        admin2Code: place?.admin2Code,
       });
       await refreshUser();
       navigation.goBack();
@@ -100,7 +110,7 @@ export default function EditProfileScreen() {
     } finally {
       setSaving(false);
     }
-  }, [name, username, bio, location, avatarUrl, refreshUser, navigation]);
+  }, [name, username, bio, location, place, avatarUrl, refreshUser, navigation]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -154,14 +164,17 @@ export default function EditProfileScreen() {
           />
 
           <Text style={styles.label}>Ubicación</Text>
-          <TextInput
-            style={styles.input}
-            value={location}
-            onChangeText={setLocation}
-            maxLength={60}
-            placeholder="Ciudad, País"
-            placeholderTextColor={colors.textMuted}
-          />
+          <Pressable style={styles.locationBox} onPress={() => setPickerVisible(true)}>
+            <Ionicons name="location" size={18} color={colors.primary} />
+            <Text
+              style={[styles.locationText, !location && styles.locationTextEmpty]}
+              numberOfLines={1}
+            >
+              {location || 'Elegir localidad'}
+            </Text>
+            <Text style={styles.changeLocText}>{location ? 'Cambiar' : 'Elegir'}</Text>
+          </Pressable>
+          <Text style={styles.hint}>Se elige de la lista oficial de localidades.</Text>
 
           <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading || !isBioWithinWordLimit(bio)}>
             {saving ? (
@@ -172,6 +185,16 @@ export default function EditProfileScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+      <PlacePicker
+        visible={pickerVisible}
+        currentProvince={place?.admin1Name ?? null}
+        title="Tu localidad"
+        onClose={() => setPickerVisible(false)}
+        onSelect={(entry) => {
+          setPlace(entry.place);
+          setLocation(entry.locality);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -215,6 +238,20 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   bioInput: { minHeight: 90, textAlignVertical: 'top' },
+  locationBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 12,
+  },
+  locationText: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text },
+  locationTextEmpty: { fontWeight: '400', color: colors.textMuted },
+  changeLocText: { fontSize: 12, fontWeight: '700', color: colors.primary },
   saveBtn: {
     backgroundColor: colors.primary,
     borderRadius: radius.full,

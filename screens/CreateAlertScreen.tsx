@@ -1,7 +1,7 @@
 // ============================================================
 // Animaldex — Crear alerta (animal perdido / encontrado)
 // ============================================================
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -16,13 +16,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { RouteProp, useLayoutEffect, useNavigation, useRoute } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { db } from '../lib/db';
+import { db, type ApiPet } from '../lib/db';
 import { uploadImage } from '../lib/api';
-import { detectCurrentLocality, withProvinceFallback } from '../lib/geo';
-import { LocalityPicker } from '../components/LocalityPicker';
+import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
+import { PlacePicker, placeSelection, type PlaceSelection } from '../components/PlacePicker';
+import type { GeoPlace } from '../lib/geoplace/types.ts';
+import PetAvatar from '../components/PetAvatar';
 import {
   ALERT_CREATE_PRIMARY,
   ALERT_SIGHTING_SUBCHOICES,
@@ -36,33 +37,56 @@ import {
   dateStringToTimestamp,
 } from '../lib/alerts';
 import { buildAlertFlyerData, finiteCoord } from '../lib/alertFlyer';
-import { isFlyerDraftReady, setFlyerDraft } from '../lib/alertFlyerSession';
-import { navigateRoot } from '../lib/rootNavigate';
-import { PET_SEXES } from '../lib/petFields';
+import { getFlyerDraft, isFlyerDraftReady, setFlyerDraft, startEmptyFlyerDraft } from '../lib/alertFlyerSession';
+import { flyerDebug } from '../lib/flyerDebug';
+import { CREAR_FLYER_DRAFT_ROUTE, CREAR_FLYER_PREVIEW_ROUTE } from '../lib/crearFlyerRoutes';
+import { PET_SEXES, parsePetSex, speciesGroup } from '../lib/petFields';
+import { petPhotoUri } from '../lib/petAvatar';
+import { petsForPublishingIdentity, reconcileSelectedPetId } from '../lib/petOwnership';
+import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
-import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
 import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib/adoptionContact';
 import { SelectedImagePreview } from '../components/SelectedImagePreview';
 import { GALLERY_IMAGE_PICKER_OPTIONS } from '../lib/galleryImagePicker';
 
-type Nav = NativeStackNavigationProp<RootStackParamList>;
+function alertSpeciesFromPet(species: string | null | undefined): string {
+  const id = String(species || '').trim().toLowerCase();
+  if (ALERT_SPECIES.some((s) => s.id === id)) return id;
+  return speciesGroup(id);
+}
 
 export default function CreateAlertScreen() {
-  const navigation = useNavigation<Nav>();
-  const route = useRoute<RouteProp<RootStackParamList, 'CreateAlert'>>();
-  const flyerMode = route.params?.purpose === 'flyer';
-  const { activeProfile } = useProfiles();
+  const navigation = useNavigation<any>();
+  const route = useRoute();
+  const routeName = String(route.name || '');
+  const flyerMode = (route.params as { purpose?: string } | undefined)?.purpose === 'flyer' || routeName === CREAR_FLYER_DRAFT_ROUTE;
+  const { activeProfile, activeProfileId, profiles } = useProfiles();
+  const { myPets } = useStore();
 
   useLayoutEffect(() => {
+    if (routeName === CREAR_FLYER_DRAFT_ROUTE) return;
     navigation.setOptions({ title: flyerMode ? 'Crear flyer' : 'Crear alerta' });
-  }, [flyerMode, navigation]);
+  }, [flyerMode, navigation, routeName]);
+
+  useEffect(() => {
+    if (!flyerMode) return;
+    // El flyer siempre trabaja sobre un draft en memoria. CreateFlyerDraft ya lo
+    // inicializa; esto cubre el modo flyer abierto desde otra ruta.
+    if (!getFlyerDraft()) startEmptyFlyerDraft();
+    void flyerDebug('FLYER_DEBUG_05_FORM_RENDER', { route: routeName });
+  }, [flyerMode, routeName]);
 
   const [primary, setPrimary] = useState<AlertCreatePrimaryId>('lost');
   const [seenKind, setSeenKind] = useState<'sighting' | 'found' | null>(null);
   const [species, setSpecies] = useState('perro');
   const [petName, setPetName] = useState('');
   const [sex, setSex] = useState<'macho' | 'hembra' | null>(null);
+  const [breed, setBreed] = useState('');
+  const [color, setColor] = useState('');
+  const [ageLabel, setAgeLabel] = useState('');
+  const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
+  const [flyerPetUsername, setFlyerPetUsername] = useState<string | undefined>();
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
@@ -75,6 +99,9 @@ export default function CreateAlertScreen() {
   const [province, setProvince] = useState<string | null>(null);
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
+  // Identidad territorial normalizada. Desde Fase 3 es lo que se persiste;
+  // locality/province quedan como texto de presentación y compatibilidad.
+  const [place, setPlace] = useState<GeoPlace | null>(null);
   const [locating, setLocating] = useState(true);
   const [pickerVisible, setPickerVisible] = useState(false);
 
@@ -83,21 +110,49 @@ export default function CreateAlertScreen() {
   const type: AlertType | null = alertTypeFromCreatePrimary(primary, seenKind);
   const isProtectorAdoption = type === 'adoption' && activeProfile?.type === 'protector';
   const needsPersonalContact = type === 'adoption' && !isProtectorAdoption;
+  const showSex = type === 'adoption' || flyerMode;
+
+  const pickerPets = useMemo(
+    () =>
+      petsForPublishingIdentity(
+        myPets,
+        { profileId: activeProfileId, type: activeProfile?.type },
+        profiles
+      ),
+    [myPets, activeProfileId, activeProfile?.type, profiles]
+  );
+  const activePetId = reconcileSelectedPetId(selectedPetId, pickerPets);
+
+  useEffect(() => {
+    setSelectedPetId((current) => reconcileSelectedPetId(current, pickerPets));
+  }, [pickerPets]);
 
   // Ubicación por defecto = ubicación actual del usuario (representa
   // dónde se perdió/encontró el animal, no necesariamente su domicilio).
   // El usuario puede cambiarla libremente con "Cambiar ubicación".
+  //
+  // Solo se precarga cuando el resolvedor dice que no hay ambigüedad
+  // territorial. Si hay varios candidatos, el campo queda vacío y la elección
+  // la hace el usuario en el PlacePicker: nunca se confirma en silencio.
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const detected = await detectCurrentLocality();
-      if (detected && detected.locality) {
-        setLocality(detected.locality);
-        setProvince(withProvinceFallback(detected.locality, detected.province));
-        setLat(detected.lat);
-        setLon(detected.lon);
+      const res = await locateCurrentPlace();
+      const only = res.ok ? unambiguousPlace(res) : null;
+      if (cancelled) return;
+      if (only) {
+        const selection = placeSelection(only);
+        setPlace(only);
+        setLocality(selection.locality);
+        setProvince(selection.province);
+        setLat(selection.lat);
+        setLon(selection.lon);
       }
       setLocating(false);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const pickPhoto = useCallback(async () => {
@@ -112,6 +167,10 @@ export default function CreateAlertScreen() {
     setPreviewUri(asset.uri);
     const mime = asset.mimeType || 'image/jpeg';
     const dataUrl = asset.base64 ? `data:${mime};base64,${asset.base64}` : asset.uri;
+    if (flyerMode) {
+      setImage(dataUrl);
+      return;
+    }
     if (!dataUrl.startsWith('data:')) return;
     setUploading(true);
     try {
@@ -127,17 +186,36 @@ export default function CreateAlertScreen() {
     } finally {
       setUploading(false);
     }
+  }, [flyerMode]);
+
+  const applyLocality = useCallback((entry: PlaceSelection) => {
+    setPlace(entry.place);
+    setLocality(entry.locality);
+    setProvince(entry.province);
+    if (entry.lat != null) setLat(entry.lat);
+    if (entry.lon != null) setLon(entry.lon);
   }, []);
 
-  const applyLocality = useCallback(
-    (entry: { locality: string; province: string | null; lat?: number | null; lon?: number | null }) => {
-      setLocality(entry.locality);
-      setProvince(entry.province);
-      if (entry.lat != null) setLat(entry.lat);
-      if (entry.lon != null) setLon(entry.lon);
-    },
-    []
-  );
+  const applyExistingPet = useCallback((pet: ApiPet | null) => {
+    if (!pet) {
+      setSelectedPetId(null);
+      setFlyerPetUsername(undefined);
+      return;
+    }
+    setSelectedPetId(pet.id);
+    setPetName(pet.name || '');
+    setSpecies(alertSpeciesFromPet(pet.species));
+    setBreed(pet.breed || '');
+    const parsed = parsePetSex(pet.sex);
+    setSex(parsed.ok ? parsed.value : null);
+    setAgeLabel(pet.age || '');
+    const photo = petPhotoUri(pet.avatarUrl);
+    if (photo) {
+      setPreviewUri(photo);
+      setImage(photo);
+    }
+    setFlyerPetUsername(pet.username || undefined);
+  }, []);
 
   const publish = useCallback(async () => {
     const resolvedType = alertTypeFromCreatePrimary(primary, seenKind);
@@ -149,7 +227,7 @@ export default function CreateAlertScreen() {
       Alert.alert('Falta la foto', 'Agrega una foto del animal.');
       return;
     }
-    if (description.trim().length < 3) {
+    if (!flyerMode && description.trim().length < 3) {
       Alert.alert('Falta la descripción', 'Cuenta brevemente qué pasó.');
       return;
     }
@@ -180,13 +258,18 @@ export default function CreateAlertScreen() {
       type: resolvedType,
       species,
       petName: petName.trim() || undefined,
-      sex: resolvedType === 'adoption' ? sex : undefined,
+      sex: resolvedType === 'adoption' || flyerMode ? sex : undefined,
+      breed: breed.trim() || undefined,
       description: description.trim(),
       image,
       locality,
       province: province || undefined,
       lat: finiteCoord(lat),
       lon: finiteCoord(lon),
+      // Identidad normalizada. Aditiva: los campos legacy siguen viajando.
+      placeId: place?.placeId ?? null,
+      admin1Code: place?.admin1Code ?? null,
+      admin2Code: place?.admin2Code ?? null,
       eventDate,
       authorProfileId: resolvedType === 'adoption' ? activeProfile?.id : undefined,
       contactWhatsapp: contactWhatsappNorm,
@@ -196,27 +279,43 @@ export default function CreateAlertScreen() {
     if (flyerMode) {
       setFlyerDraft({
         source: 'draft',
+        petId: activePetId || undefined,
+        petUsername: flyerPetUsername,
         flyer: buildAlertFlyerData({
           type: resolvedType,
           image,
           petName: payload.petName,
           species,
           sex: payload.sex,
+          age: ageLabel.trim() || undefined,
+          breed: payload.breed,
+          color: color.trim() || undefined,
           locality,
           province,
           eventDate,
-          description: payload.description,
+          description: payload.description || undefined,
           contactWhatsapp: contactWhatsappNorm,
           contactPhone: contactPhoneNorm,
           userName: activeProfile?.name,
+          petUsername: flyerPetUsername,
         }),
         publish: payload,
       });
       if (!isFlyerDraftReady()) {
-        Alert.alert('No pudimos preparar el flyer', 'Revisá los datos e intentá nuevamente.');
+        Alert.alert('No pudimos preparar el flyer', 'Revisá foto, tipo y ubicación e intentá nuevamente.');
         return;
       }
-      navigateRoot(navigation, 'AlertFlyerPreview', { from: 'draft' });
+      void flyerDebug('FLYER_DEBUG_06_PREVIEW_NAV', {
+        route: routeName,
+        navigator: routeName === CREAR_FLYER_DRAFT_ROUTE ? 'CrearStack' : 'RootStack',
+        dest: routeName === CREAR_FLYER_DRAFT_ROUTE ? CREAR_FLYER_PREVIEW_ROUTE : 'AlertFlyerPreview',
+        draftReady: true,
+      });
+      if (routeName === CREAR_FLYER_DRAFT_ROUTE) {
+        navigation.navigate(CREAR_FLYER_PREVIEW_ROUTE, { from: 'draft' });
+      } else {
+        navigation.navigate('AlertFlyerPreview', { from: 'draft' });
+      }
       return;
     }
 
@@ -229,7 +328,7 @@ export default function CreateAlertScreen() {
     } finally {
       setSaving(false);
     }
-  }, [image, description, locality, province, lat, lon, primary, seenKind, species, petName, sex, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode]);
+  }, [image, description, locality, province, lat, lon, place, primary, seenKind, species, petName, sex, breed, color, ageLabel, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode, activePetId, flyerPetUsername, routeName]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -256,6 +355,39 @@ export default function CreateAlertScreen() {
               );
             })}
           </View>
+
+          {flyerMode && pickerPets.length > 0 ? (
+            <>
+              <Text style={styles.label}>Usar una de mis mascotas</Text>
+              <Text style={styles.help}>Opcional. Precarga nombre, foto y usuario .pet. No crea otra mascota.</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.petPicker}>
+                <Pressable
+                  style={[styles.petOption, !activePetId && styles.petOptionActive]}
+                  onPress={() => applyExistingPet(null)}
+                >
+                  <View style={[styles.petOptionImg, styles.noneAvatar]}>
+                    <Ionicons name="close" size={16} color={colors.textMuted} />
+                  </View>
+                  <Text style={[styles.petOptionName, !activePetId && { color: colors.primary }]}>Ninguna</Text>
+                </Pressable>
+                {pickerPets.map((p) => {
+                  const active = p.id === activePetId;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      style={[styles.petOption, active && styles.petOptionActive]}
+                      onPress={() => applyExistingPet(p)}
+                    >
+                      <PetAvatar uri={p.avatarUrl} size={34} style={styles.petOptionImg} />
+                      <Text style={[styles.petOptionName, active && { color: colors.primary }]} numberOfLines={1}>
+                        {p.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </>
+          ) : null}
 
           {primary === 'seen-or-found' ? (
             <>
@@ -322,7 +454,39 @@ export default function CreateAlertScreen() {
             maxLength={40}
           />
 
-          {type === 'adoption' ? (
+          {flyerMode ? (
+            <>
+              <Text style={styles.label}>Raza (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Labrador, mestizo..."
+                placeholderTextColor={colors.textMuted}
+                value={breed}
+                onChangeText={setBreed}
+                maxLength={40}
+              />
+              <Text style={styles.label}>Color (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Negro con blanco..."
+                placeholderTextColor={colors.textMuted}
+                value={color}
+                onChangeText={setColor}
+                maxLength={40}
+              />
+              <Text style={styles.label}>Edad (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="2 años, cachorro..."
+                placeholderTextColor={colors.textMuted}
+                value={ageLabel}
+                onChangeText={setAgeLabel}
+                maxLength={30}
+              />
+            </>
+          ) : null}
+
+          {showSex ? (
             <>
               <Text style={styles.label}>Sexo (opcional)</Text>
               <View style={styles.typeRow}>
@@ -370,7 +534,7 @@ export default function CreateAlertScreen() {
           ) : null}
 
           {/* Descripción */}
-          <Text style={styles.label}>Descripción *</Text>
+          <Text style={styles.label}>{flyerMode ? 'Descripción (opcional)' : 'Descripción *'}</Text>
           <TextInput
             style={[styles.input, styles.descInput]}
             placeholder="Color, tamaño, características, collar, actitud, dónde exactamente..."
@@ -431,7 +595,7 @@ export default function CreateAlertScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <LocalityPicker
+      <PlacePicker
         visible={pickerVisible}
         currentProvince={province}
         title="Ubicación del hecho"
@@ -534,6 +698,27 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   dateChipText: { fontSize: 12, fontWeight: '700', color: colors.text },
+  petPicker: { gap: spacing.sm, paddingVertical: 4 },
+  petOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxWidth: 180,
+  },
+  petOptionActive: { borderColor: colors.primary, backgroundColor: colors.primarysoft },
+  petOptionImg: { width: 34, height: 34, borderRadius: 17 },
+  noneAvatar: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+  },
+  petOptionName: { fontWeight: '700', fontSize: 13, color: colors.text, maxWidth: 110 },
   saveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
