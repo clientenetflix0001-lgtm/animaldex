@@ -285,6 +285,12 @@ describe('el endpoint /upload', () => {
     assert.match(api, /post\('\/upload', \{ image: dataUrl \}, \{ auth: true \}\)/);
     assert.match(api, /headers\.Authorization = `Bearer \$\{token\}`/);
   });
+
+  it('el módulo de entrada no exporta nada que no sea el handler', () => {
+    // El runtime toma cada export nombrado del módulo de entrada como un
+    // entrypoint; si alguno no es función, el Worker no arranca.
+    assert.deepEqual(workerCode.match(/^export (?!default)\S+/gm) || [], []);
+  });
 });
 
 describe('URLs a partir de contenido de usuario', () => {

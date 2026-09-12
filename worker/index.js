@@ -1070,8 +1070,10 @@ function shareLocationLimited(ip, petId, now) {
 // cómoda; un script que quiera quemar la cuota de Cloudflare Images, no.
 // Se cuenta por cuenta Y por IP: así una cuenta no se multiplica cambiando de
 // red, ni una IP creando cuentas.
-export const UPLOAD_WINDOW_MS = 60 * 1000;
-export const UPLOAD_MAX_PER_WINDOW = 20;
+// Sin `export`: el runtime toma los exports nombrados del módulo de entrada
+// como entrypoints y rechaza el arranque si alguno no es una función.
+const UPLOAD_WINDOW_MS = 60 * 1000;
+const UPLOAD_MAX_PER_WINDOW = 20;
 const uploadByKey = new Map();
 function uploadCounterHit(key, now) {
   const rec = uploadByKey.get(key);
