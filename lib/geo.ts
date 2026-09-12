@@ -44,15 +44,27 @@ export async function detectCurrentLocality(): Promise<ResolvedLocality | null> 
   }
 }
 
-// Persistencia de la localidad elegida por el usuario para el filtro
-// de Alertas (independiente de la ubicación real del dispositivo).
-export async function saveAlertsLocality(entry: { locality: string; province: string | null }): Promise<void> {
+/**
+ * Lugar elegido por el usuario para el filtro de Alertas, independiente de la
+ * ubicación real del dispositivo.
+ *
+ * `placeId` es la identidad con la que filtra el Worker desde Fase 5.
+ * `locality`/`province` se siguen guardando para mostrar y para alcanzar las
+ * filas anteriores al catálogo.
+ */
+export type SavedAlertsLocality = {
+  locality: string;
+  province: string | null;
+  placeId?: string | null;
+};
+
+export async function saveAlertsLocality(entry: SavedAlertsLocality): Promise<void> {
   try {
     await AsyncStorage.setItem(ALERTS_LOCALITY_KEY, JSON.stringify(entry));
   } catch {}
 }
 
-export async function loadSavedAlertsLocality(): Promise<{ locality: string; province: string | null } | null> {
+export async function loadSavedAlertsLocality(): Promise<SavedAlertsLocality | null> {
   try {
     const raw = await AsyncStorage.getItem(ALERTS_LOCALITY_KEY);
     if (!raw) return null;

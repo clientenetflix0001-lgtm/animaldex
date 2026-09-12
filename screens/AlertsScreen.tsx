@@ -25,6 +25,12 @@ import { AlertCard } from '../components/AlertCard';
 import { PlacePicker, placeSelection, type PlaceSelection } from '../components/PlacePicker';
 import { loadSavedAlertsLocality, saveAlertsLocality } from '../lib/geo';
 import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
+import {
+  territoryFromPlace,
+  territoryFromPlaceId,
+  territoryQuery,
+  type Territory,
+} from '../lib/geoplace/territory.ts';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
@@ -49,11 +55,18 @@ export default function AlertsScreen() {
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const oldestRef = useRef<number | undefined>(undefined);
-  const localityRef = useRef<string | null>(null);
+  /**
+   * Lugar por el que se está filtrando. `territory` es la identidad con la que
+   * filtra el Worker; el texto viaja al lado para alcanzar las alertas
+   * anteriores al catálogo.
+   */
+  const targetRef = useRef<{ locality: string; province: string | null; territory: Territory | null } | null>(null);
   const didInitialFocusRef = useRef(false);
 
   const fetchPage = useCallback(
-    async (targetLocality: string, reset: boolean) => {
+    async (reset: boolean) => {
+      const target = targetRef.current;
+      if (!target) return;
       if (reset) {
         setLoading(true);
         oldestRef.current = undefined;
@@ -61,7 +74,10 @@ export default function AlertsScreen() {
         setLoadingMore(true);
       }
       try {
-        const res = await db.alertsFeed(targetLocality, reset ? undefined : oldestRef.current, PAGE_SIZE);
+        const res = await db.alertsFeed(target.locality, reset ? undefined : oldestRef.current, PAGE_SIZE, {
+          ...territoryQuery(target.territory),
+          province: target.province,
+        });
         setAlerts((prev) => (reset ? res.alerts : [...prev, ...res.alerts]));
         if (res.alerts.length > 0) {
           const last = res.alerts[res.alerts.length - 1];
@@ -82,13 +98,17 @@ export default function AlertsScreen() {
 
   const applyLocality = useCallback(
     (entry: PlaceSelection) => {
-      localityRef.current = entry.locality;
+      targetRef.current = {
+        locality: entry.locality,
+        province: entry.province,
+        territory: territoryFromPlace(entry.place),
+      };
       setLocality(entry.locality);
       setProvince(entry.province);
-      // El filtro del feed sigue siendo por texto en esta fase. Lo que cambia
-      // es que el texto ya no puede ser inventado: viene del catálogo oficial.
-      saveAlertsLocality({ locality: entry.locality, province: entry.province });
-      fetchPage(entry.locality, true);
+      // Lo que se guarda como filtro es el `placeId`: el nombre queda para
+      // mostrar y para las alertas anteriores al catálogo.
+      saveAlertsLocality({ locality: entry.locality, province: entry.province, placeId: entry.place.placeId });
+      fetchPage(true);
     },
     [fetchPage]
   );
@@ -99,11 +119,15 @@ export default function AlertsScreen() {
       setLocating(true);
       const saved = await loadSavedAlertsLocality();
       if (saved) {
-        localityRef.current = saved.locality;
+        targetRef.current = {
+          locality: saved.locality,
+          province: saved.province,
+          territory: territoryFromPlaceId(saved.placeId),
+        };
         setLocality(saved.locality);
         setProvince(saved.province);
         setLocating(false);
-        fetchPage(saved.locality, true);
+        fetchPage(true);
         return;
       }
       // Sin localidad guardada se intenta el GPS, pero solo se aplica cuando
@@ -111,14 +135,7 @@ export default function AlertsScreen() {
       // pantalla queda a la espera de que el usuario elija.
       const res = await locateCurrentPlace();
       const only = res.ok ? unambiguousPlace(res) : null;
-      if (only) {
-        const entry = placeSelection(only);
-        localityRef.current = entry.locality;
-        setLocality(entry.locality);
-        setProvince(entry.province);
-        saveAlertsLocality({ locality: entry.locality, province: entry.province });
-        fetchPage(entry.locality, true);
-      }
+      if (only) applyLocality(placeSelection(only));
       setLocating(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,19 +149,19 @@ export default function AlertsScreen() {
         didInitialFocusRef.current = true;
         return;
       }
-      if (localityRef.current) fetchPage(localityRef.current, true);
+      if (targetRef.current) fetchPage(true);
     }, [fetchPage])
   );
 
   const onRefresh = useCallback(() => {
     if (!locality) return;
     setRefreshing(true);
-    fetchPage(locality, true);
+    fetchPage(true);
   }, [locality, fetchPage]);
 
   const loadMore = useCallback(() => {
     if (!locality || loadingMore || !hasMore) return;
-    fetchPage(locality, false);
+    fetchPage(false);
   }, [locality, loadingMore, hasMore, fetchPage]);
 
   const handleToggleLike = useCallback((alertId: string) => {

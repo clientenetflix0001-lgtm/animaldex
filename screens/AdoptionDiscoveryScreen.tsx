@@ -16,7 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AdoptionDiscoveryCard from '../components/AdoptionDiscoveryCard';
-import { PlacePicker, placeSelection } from '../components/PlacePicker';
+import { PlacePicker, placeSelection, type PlaceSelection } from '../components/PlacePicker';
 import {
   ADOPTION_PAGE_SIZE,
   ADOPTION_SEX_FILTERS,
@@ -36,6 +36,11 @@ import {
 import { fetchAdoptionPage, loadSavedAdoptionLocality, saveAdoptionLocality } from '../lib/adoptionFeed';
 import { loadSavedAlertsLocality } from '../lib/geo';
 import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
+import {
+  territoryFromPlace,
+  territoryFromPlaceId,
+  type Territory,
+} from '../lib/geoplace/territory.ts';
 import { radius, spacing } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 
@@ -53,6 +58,8 @@ export default function AdoptionDiscoveryScreen() {
   const cardBottomPad = pads.systemBottomPad + spacing.lg;
   const [locality, setLocality] = useState<string | null>(null);
   const [province, setProvince] = useState<string | null>(null);
+  /** Identidad del lugar elegido. Es lo que filtra la búsqueda de adopción. */
+  const [territory, setTerritory] = useState<Territory | null>(null);
   const [locating, setLocating] = useState(true);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [species, setSpecies] = useState<AdoptionSpeciesFilter>('todos');
@@ -71,7 +78,7 @@ export default function AdoptionDiscoveryScreen() {
   const filters = useMemo(() => ({ species, size, sex }), [species, size, sex]);
 
   const loadPage = useCallback(
-    async (targetLocality: string | null, reset: boolean) => {
+    async (reset: boolean) => {
       if (reset) {
         setLoading(true);
         oldestRef.current = undefined;
@@ -83,7 +90,8 @@ export default function AdoptionDiscoveryScreen() {
       try {
         const page = await fetchAdoptionPage({
           ...filters,
-          locality: targetLocality,
+          locality,
+          territory,
           before: reset ? undefined : oldestRef.current,
           limit: ADOPTION_PAGE_SIZE,
         });
@@ -105,8 +113,19 @@ export default function AdoptionDiscoveryScreen() {
         loadingMoreRef.current = false;
       }
     },
-    [filters]
+    [filters, locality, territory]
   );
+
+  const applyLocality = useCallback((entry: PlaceSelection) => {
+    setLocality(entry.locality);
+    setProvince(entry.province);
+    setTerritory(territoryFromPlace(entry.place));
+    saveAdoptionLocality({
+      locality: entry.locality,
+      province: entry.province,
+      placeId: entry.place.placeId,
+    });
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -115,26 +134,23 @@ export default function AdoptionDiscoveryScreen() {
       if (saved) {
         setLocality(saved.locality);
         setProvince(saved.province);
+        setTerritory(territoryFromPlaceId(saved.placeId));
         setLocating(false);
         return;
       }
       // GPS solo si no quedó ambigüedad territorial; si no, elige el usuario.
       const res = await locateCurrentPlace();
       const only = res.ok ? unambiguousPlace(res) : null;
-      if (only) {
-        const entry = placeSelection(only);
-        setLocality(entry.locality);
-        setProvince(entry.province);
-        saveAdoptionLocality({ locality: entry.locality, province: entry.province });
-      }
+      if (only) applyLocality(placeSelection(only));
       setLocating(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (locating) return;
-    loadPage(locality, true);
-  }, [locating, locality, loadPage]);
+    loadPage(true);
+  }, [locating, locality, territory, loadPage]);
 
   const openPet = useCallback(
     (card: AdoptionCard) => {
@@ -207,7 +223,7 @@ export default function AdoptionDiscoveryScreen() {
           removeClippedSubviews
           onEndReachedThreshold={0.6}
           onEndReached={() => {
-            if (hasMore && !loadingMore) loadPage(locality, false);
+            if (hasMore && !loadingMore) loadPage(false);
           }}
           ListFooterComponent={loadingMore ? <ActivityIndicator color="#FFFFFF" /> : null}
         />
@@ -296,9 +312,7 @@ export default function AdoptionDiscoveryScreen() {
         title="Localidad para adoptar"
         onClose={() => setPickerVisible(false)}
         onSelect={(entry) => {
-          setLocality(entry.locality);
-          setProvince(entry.province);
-          saveAdoptionLocality({ locality: entry.locality, province: entry.province });
+          applyLocality(entry);
           setPickerVisible(false);
         }}
       />

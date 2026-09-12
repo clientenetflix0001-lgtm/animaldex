@@ -23,6 +23,12 @@ export interface MarketLocality {
   province: string | null;
   lat?: number | null;
   lon?: number | null;
+  /**
+   * Identidad del lugar elegido, ej. `AR:georef:66028050`. Es lo que filtra
+   * desde Fase 5; el nombre y la provincia quedan para mostrar y para las
+   * filas anteriores al catálogo.
+   */
+  placeId?: string | null;
 }
 
 const MARKET_LOCALITY_KEY = 'animaldex-market-locality';

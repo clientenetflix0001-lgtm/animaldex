@@ -25,6 +25,12 @@ import { PlacePicker, placeSelection, type PlaceSelection } from '../components/
 import { CategoryPickerSheet } from '../components/CategoryPickerSheet';
 import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
 import {
+  territoryFromPlace,
+  territoryFromPlaceId,
+  territoryQuery,
+  type Territory,
+} from '../lib/geoplace/territory.ts';
+import {
   saveMarketLocality,
   loadSavedMarketLocality,
   categoriesFor,
@@ -51,6 +57,8 @@ export default function MarketScreen() {
 
   const [locality, setLocality] = useState<string | null>(null);
   const [province, setProvince] = useState<string | null>(null);
+  /** Identidad del lugar elegido. Es lo que filtra la sección "cerca". */
+  const [territory, setTerritory] = useState<Territory | null>(null);
   const [viewerLat, setViewerLat] = useState<number | null>(null);
   const [viewerLon, setViewerLon] = useState<number | null>(null);
   const [locating, setLocating] = useState(true);
@@ -72,6 +80,24 @@ export default function MarketScreen() {
   const didInitialFocusRef = useRef(false);
 
 
+  const applyLocality = useCallback(
+    (entry: PlaceSelection) => {
+      setLocality(entry.locality);
+      setProvince(entry.province);
+      setTerritory(territoryFromPlace(entry.place));
+      if (entry.lat != null) setViewerLat(entry.lat);
+      if (entry.lon != null) setViewerLon(entry.lon);
+      saveMarketLocality({
+        locality: entry.locality,
+        province: entry.province,
+        lat: entry.lat ?? null,
+        lon: entry.lon ?? null,
+        placeId: entry.place.placeId,
+      });
+    },
+    []
+  );
+
   // ---------- Ubicación inicial (misma lógica que Alertas) ----------
   useEffect(() => {
     (async () => {
@@ -80,6 +106,7 @@ export default function MarketScreen() {
       if (saved) {
         setLocality(saved.locality);
         setProvince(saved.province);
+        setTerritory(territoryFromPlaceId(saved.placeId));
         setViewerLat(saved.lat ?? null);
         setViewerLon(saved.lon ?? null);
         setLocating(false);
@@ -90,28 +117,11 @@ export default function MarketScreen() {
       // posición del dispositivo.
       const res = await locateCurrentPlace();
       const only = res.ok ? unambiguousPlace(res) : null;
-      if (only) {
-        const entry = placeSelection(only);
-        setLocality(entry.locality);
-        setProvince(entry.province);
-        setViewerLat(entry.lat);
-        setViewerLon(entry.lon);
-        saveMarketLocality({ locality: entry.locality, province: entry.province, lat: entry.lat, lon: entry.lon });
-      }
+      if (only) applyLocality(placeSelection(only));
       setLocating(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const applyLocality = useCallback(
-    (entry: PlaceSelection) => {
-      setLocality(entry.locality);
-      setProvince(entry.province);
-      if (entry.lat != null) setViewerLat(entry.lat);
-      if (entry.lon != null) setViewerLon(entry.lon);
-      saveMarketLocality({ locality: entry.locality, province: entry.province, lat: entry.lat ?? null, lon: entry.lon ?? null });
-    },
-    []
-  );
 
   // ---------- Grilla paginada (modo búsqueda/categoría) ----------
   const fetchPage = useCallback(
@@ -127,6 +137,8 @@ export default function MarketScreen() {
         const res = await db.listingsFeed({
           kind,
           locality: locality ?? undefined,
+          province,
+          ...territoryQuery(territory),
           category: category ?? undefined,
           q: searchActive.trim() || undefined,
           section,
@@ -157,13 +169,13 @@ export default function MarketScreen() {
         setLoadingMore(false);
       }
     },
-    [kind, category, searchActive, locality]
+    [kind, category, searchActive, locality, province, territory]
   );
 
   useEffect(() => {
     if (!locating) fetchPage(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, category, searchActive, locality, locating]);
+  }, [kind, category, searchActive, locality, territory, locating]);
 
   useFocusEffect(
     useCallback(() => {

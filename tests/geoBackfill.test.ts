@@ -389,9 +389,16 @@ describe('alcance de la Fase 4', () => {
     assert.match(code, /geoplace\/catalog\.ts/);
   });
 
-  it('los seis filtros territoriales del Worker siguen usando el texto legacy', () => {
-    const worker = readFileSync(join(root, 'worker', 'index.js'), 'utf8');
-    const filtros = worker.match(/LOWER\((?:a|l|pr)\.locality\) = LOWER\(\?\)/g) || [];
-    assert.equal(filtros.length, 6);
+  it('el backfill y los filtros comparten el criterio, no el código', () => {
+    // Fase 4 dejó los filtros comparando texto; Fase 5 los pasó a identidad.
+    // Lo que no puede cambiar es el criterio: ambos aceptan un texto legacy
+    // sólo cuando el resolvedor devuelve un único lugar.
+    assert.match(code, /resolvePlaceFromText/);
+    const filtro = readFileSync(join(root, 'worker', 'geoFilter.js'), 'utf8');
+    assert.match(filtro, /resolvePlaceFromText/);
+    // Y el backfill sigue siendo el único que escribe: el filtro sólo lee.
+    for (const prohibido of ['UPDATE ', 'INSERT ', 'ALTER ']) {
+      assert.ok(!filtro.includes(prohibido), `el filtro no debe contener ${prohibido}`);
+    }
   });
 });

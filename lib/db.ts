@@ -3,6 +3,7 @@
 // ============================================================
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { TerritoryQuery } from './geoplace/territory.ts';
 
 // Backend real: Cloudflare Worker con acceso nativo a D1 (rápido y confiable).
 // Las funciones serverless de Vercel no se desplegaban de forma consistente,
@@ -401,11 +402,16 @@ export const auth = {
 export const db = {
   feed: (before?: number, limit = 10): Promise<{ posts: ApiPost[] }> =>
     call('/db', { action: 'feed', before, limit }),
+  /**
+   * `TerritoryQuery` es la identidad del lugar del visitante. Desde Fase 5 el
+   * Worker filtra alertas y adopciones de Inicio con ella; sin identidad
+   * degrada al texto guardado en la cuenta.
+   */
   homeFeed: (input?: {
     before?: number;
     limit?: number;
     includeModules?: boolean;
-  }): Promise<{
+  } & TerritoryQuery): Promise<{
     posts: ApiPost[];
     /** Locality-relevant post ids. Not a 10 km metric. */
     nearbyPostIds: string[];
@@ -458,12 +464,13 @@ export const db = {
     call('/db', { action: 'featuredPets' }),
   adoptionFeed: (params: {
     locality?: string;
+    province?: string | null;
     species?: string;
     size?: string;
     sex?: string;
     before?: number;
     limit?: number;
-  }): Promise<{
+  } & TerritoryQuery): Promise<{
     items: Array<
       ApiPet & {
         source?: 'protector_pet';
@@ -669,8 +676,18 @@ export const db = {
   listTags: (): Promise<{ ok: boolean; tags: ApiTag[] }> => call('/db', { action: 'listTags' }),
 
   // ---------- Alertas (animales perdidos/encontrados) ----------
-  alertsFeed: (locality: string, before?: number, limit = 10): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
-    call('/db', { action: 'alertsFeed', locality, before, limit }),
+  /**
+   * `territory` es la identidad del lugar elegido. `locality` sigue viajando
+   * porque el Worker la necesita para las filas anteriores al catálogo y para
+   * responder a versiones de la app que todavía no mandan identidad.
+   */
+  alertsFeed: (
+    locality: string,
+    before?: number,
+    limit = 10,
+    territory?: TerritoryQuery & { province?: string | null }
+  ): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
+    call('/db', { action: 'alertsFeed', locality, before, limit, ...territory }),
   alertDetail: (alertId: string): Promise<{ alert: ApiAlert }> => call('/db', { action: 'alertDetail', alertId }),
   alertComments: (alertId: string): Promise<{ comments: ApiComment[] }> =>
     call('/db', { action: 'alertComments', alertId }),
@@ -723,12 +740,13 @@ export const db = {
   listingsFeed: (params: {
     kind: 'product' | 'service';
     locality?: string;
+    province?: string | null;
     category?: string;
     section?: 'featured' | 'nearby' | 'top_rated' | 'recent';
     q?: string;
     before?: number;
     limit?: number;
-  }): Promise<{ listings: ApiListing[]; hasMore: boolean }> => call('/db', { action: 'listingsFeed', ...params }),
+  } & TerritoryQuery): Promise<{ listings: ApiListing[]; hasMore: boolean }> => call('/db', { action: 'listingsFeed', ...params }),
   listingDetail: (listingId: string): Promise<{ listing: ApiListing }> =>
     call('/db', { action: 'listingDetail', listingId }),
   listingContact: (listingId: string): Promise<{

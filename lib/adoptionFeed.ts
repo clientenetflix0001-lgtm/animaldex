@@ -12,20 +12,26 @@ import {
   type AdoptionQuery,
   type ApiAdoptionItem,
 } from './adoptionDiscovery';
+import { territoryQuery } from './geoplace/territory.ts';
 
-export async function saveAdoptionLocality(entry: {
+/**
+ * Lugar elegido para la búsqueda de adopción. `placeId` es la identidad con la
+ * que filtra el Worker; el nombre y la provincia quedan para mostrar y para
+ * los perfiles anteriores al catálogo.
+ */
+export type SavedAdoptionLocality = {
   locality: string;
   province: string | null;
-}): Promise<void> {
+  placeId?: string | null;
+};
+
+export async function saveAdoptionLocality(entry: SavedAdoptionLocality): Promise<void> {
   try {
     await AsyncStorage.setItem(ADOPTION_LOCALITY_KEY, JSON.stringify(entry));
   } catch {}
 }
 
-export async function loadSavedAdoptionLocality(): Promise<{
-  locality: string;
-  province: string | null;
-} | null> {
+export async function loadSavedAdoptionLocality(): Promise<SavedAdoptionLocality | null> {
   try {
     const raw = await AsyncStorage.getItem(ADOPTION_LOCALITY_KEY);
     if (!raw) return null;
@@ -89,6 +95,7 @@ export async function fetchAdoptionPage(query: AdoptionQuery): Promise<AdoptionP
   try {
     const res = await db.adoptionFeed({
       locality: query.locality || undefined,
+      ...territoryQuery(query.territory),
       species: query.species,
       size: query.size,
       sex: query.sex,

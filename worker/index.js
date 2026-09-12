@@ -33,6 +33,14 @@ import {
   runStoryCleanup,
 } from './stories.js';
 import { alertWithinRadiusKm, boundingBox, localitiesMatch, validLatLng } from '../lib/feedGeo.ts';
+import {
+  legacyTextCondition,
+  normalizeTerritory,
+  rowMatchesTerritory,
+  territoryCondition,
+  territoryFromText,
+  territoryRejected,
+} from './geoFilter.js';
 import { pickLocalityRelevantPostIds, pickTrendingPostIds } from '../lib/feedRanking.ts';
 import { parseLastLocation, shouldWriteLastLocation } from '../lib/lastLocation.ts';
 import { getMuxThumbnail } from '../lib/reels.ts';
@@ -119,7 +127,7 @@ import {
   transferRequestedCopy,
 } from '../lib/petTransfer.ts';
 import { handleGeo } from './geo.js';
-import { geoInsertFragment, geoUpdateFragment, normalizeIncomingPlace, placeIdRejected } from './geoWrite.js';
+import { geoColumns, geoInsertFragment, geoUpdateFragment, normalizeIncomingPlace, placeIdRejected } from './geoWrite.js';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -1652,19 +1660,62 @@ function stripAlertCoords(alert) {
   return rest;
 }
 
-async function loadViewerLastLocation(env, viewerId) {
-  if (!viewerId) return { lat: null, lng: null, locality: null };
+/**
+ * Territorio y punto de referencia del visitante de Home.
+ *
+ * La identidad se busca en este orden, y ninguno de los pasos adivina:
+ *   1. la que mandó el cliente, validada contra el catálogo;
+ *   2. la identidad declarada en la cuenta (columna `place_id` de `users`);
+ *   3. el texto guardado, sólo si resuelve a un único lugar.
+ *
+ * `lat`/`lng` son el centroide público del lugar que la app sincronizó, no la
+ * posición del dispositivo: desde Fase 5 el cliente ya no manda la coordenada
+ * real (ver lib/lastLocationSync.ts).
+ */
+async function loadViewerLastLocation(env, viewerId, body) {
+  const requested = normalizeTerritory(body);
+  if (!viewerId) return { lat: null, lng: null, locality: null, territory: requested };
   await ensureLastLocationSchema(env);
+  const userColumns = await geoColumns(env, 'users');
+  const declared = userColumns.includes('place_id') ? ', place_id' : '';
   const [users, personal] = await Promise.all([
-    d1(env, 'SELECT last_lat, last_lng, last_locality, location FROM users WHERE id = ?', [viewerId]),
+    d1(env, `SELECT last_lat, last_lng, last_locality, location${declared} FROM users WHERE id = ?`, [viewerId]),
     d1(env, "SELECT locality FROM profiles WHERE account_id = ? AND type = 'personal' LIMIT 1", [viewerId]),
   ]);
   const u = users[0] || {};
+  const locality = u.last_locality || personal[0]?.locality || u.location || null;
   return {
     lat: u.last_lat ?? null,
     lng: u.last_lng ?? null,
-    locality: u.last_locality || personal[0]?.locality || u.location || null,
+    locality,
+    territory: requested
+      || normalizeTerritory({ placeId: u.place_id })
+      || territoryFromText(locality, null),
   };
+}
+
+/**
+ * Condición territorial para el visitante: identidad si la hay, y si no el
+ * texto guardado, que es lo único que queda cuando la ubicación de la cuenta
+ * es texto libre anterior al catálogo.
+ */
+async function viewerTerritoryCondition(env, table, alias, viewer) {
+  if (viewer.territory) return territoryCondition(env, table, alias, viewer.territory);
+  return legacyTextCondition(alias, table, viewer.locality, null);
+}
+
+/**
+ * Condición territorial para una consulta del cliente.
+ *
+ * Una app al día manda la identidad del GeoPlace que eligió la persona. Una
+ * app vieja manda sólo el texto: se intenta resolverlo contra el catálogo y,
+ * si queda ambiguo, se compara como texto. Las versiones anteriores tienen que
+ * seguir funcionando igual que antes.
+ */
+async function requestTerritoryCondition(env, table, alias, body, locality, province) {
+  const territory = normalizeTerritory(body) || territoryFromText(locality, province);
+  if (territory) return territoryCondition(env, table, alias, territory);
+  return legacyTextCondition(alias, table, locality, province);
 }
 
 async function loadAuthorLocationHints(env, userIds) {
@@ -1689,18 +1740,21 @@ async function loadHomeAlerts(env, viewerId, viewer, now) {
   const limit = 3;
   const conditions = ["(a.status IS NULL OR a.status = 'active')", 'a.resolved_at IS NULL'];
   const params = [];
-  if (validLatLng(viewer.lat, viewer.lng)) {
+  // FILTRO TERRITORIAL 1 y 2 (Home · alertas).
+  const territorial = await viewerTerritoryCondition(env, 'alerts', 'a', viewer);
+  const hasPoint = validLatLng(viewer.lat, viewer.lng);
+  if (hasPoint) {
     const box = boundingBox(viewer.lat, viewer.lng, 10);
-    if (viewer.locality) {
-      conditions.push('((a.lat IS NOT NULL AND a.lat BETWEEN ? AND ? AND a.lon BETWEEN ? AND ?) OR LOWER(a.locality) = LOWER(?))');
-      params.push(box.minLat, box.maxLat, box.minLng, box.maxLng, viewer.locality);
+    if (territorial) {
+      conditions.push(`((a.lat IS NOT NULL AND a.lat BETWEEN ? AND ? AND a.lon BETWEEN ? AND ?) OR ${territorial.sql})`);
+      params.push(box.minLat, box.maxLat, box.minLng, box.maxLng, ...territorial.values);
     } else {
       conditions.push('a.lat IS NOT NULL AND a.lat BETWEEN ? AND ? AND a.lon BETWEEN ? AND ?');
       params.push(box.minLat, box.maxLat, box.minLng, box.maxLng);
     }
-  } else if (viewer.locality) {
-    conditions.push('LOWER(a.locality) = LOWER(?)');
-    params.push(viewer.locality);
+  } else if (territorial) {
+    conditions.push(territorial.sql);
+    params.push(...territorial.values);
   }
   const rows = await d1(
     env,
@@ -1710,9 +1764,13 @@ async function loadHomeAlerts(env, viewerId, viewer, now) {
     params
   );
   const filtered = rows.filter((r) => {
-    if (validLatLng(viewer.lat, viewer.lng) && validLatLng(r.lat, r.lon)) {
-      return alertWithinRadiusKm({ lat: r.lat, lon: r.lon }, { lat: viewer.lat, lng: viewer.lng }, 10)
-        || localitiesMatch(r.locality, viewer.locality);
+    if (hasPoint && validLatLng(r.lat, r.lon)) {
+      // El radio métrico se refina acá, pero una fila que entró por identidad
+      // territorial no se descarta por estar a más de 10 km del centroide.
+      if (alertWithinRadiusKm({ lat: r.lat, lon: r.lon }, { lat: viewer.lat, lng: viewer.lng }, 10)) return true;
+      return viewer.territory
+        ? rowMatchesTerritory(r, 'alerts', viewer.territory)
+        : localitiesMatch(r.locality, viewer.locality);
     }
     return true;
   }).slice(0, limit);
@@ -1720,16 +1778,19 @@ async function loadHomeAlerts(env, viewerId, viewer, now) {
   return alerts.map(stripAlertCoords);
 }
 
-async function loadHomeAdoptions(env, locality) {
+async function loadHomeAdoptions(env, viewer) {
   const conditions = [
     'p.archived_at IS NULL',
     "p.care_status = 'en_adopcion'",
     "pr.type = 'protector'",
   ];
   const params = [];
-  if (locality) {
-    conditions.push('LOWER(pr.locality) = LOWER(?)');
-    params.push(locality);
+  // FILTRO TERRITORIAL 3 (Home · adopciones). Filtra por la página del refugio.
+  const territorial = await viewerTerritoryCondition(env, 'profiles', 'pr', viewer);
+  const scoped = !!territorial;
+  if (territorial) {
+    conditions.push(territorial.sql);
+    params.push(...territorial.values);
   }
   let rows = await d1(
     env,
@@ -1742,7 +1803,7 @@ async function loadHomeAdoptions(env, locality) {
      LIMIT 2`,
     params
   );
-  if (!rows.length && locality) {
+  if (!rows.length && scoped) {
     rows = await d1(
       env,
       `SELECT p.*, pr.id AS shelter_id, pr.name AS shelter_name, pr.username AS shelter_username,
@@ -2007,7 +2068,8 @@ async function handleDb(request, env) {
       const before = Number(body.before) || now + 1000;
       const limit = Math.min(Number(body.limit) || 10, 30);
       const includeModules = body.includeModules !== false && !body.before;
-      const viewer = await loadViewerLastLocation(env, viewerId);
+      if (territoryRejected(body)) return json({ error: 'Esa ubicación no está en el catálogo' }, 400);
+      const viewer = await loadViewerLastLocation(env, viewerId, body);
       const rows = await d1(env, `${POST_SELECT} WHERE p.created_at < ? ORDER BY p.created_at DESC LIMIT ?`, [before, limit]);
       const pageIds = new Set(rows.map((r) => r.id));
       let viralRows = [];
@@ -2056,7 +2118,7 @@ async function handleDb(request, env) {
           loadStoryRail(env, viewerId, identity, now),
           loadHomeAlerts(env, viewerId, viewer, now),
           loadHomePageRecommendations(env, viewerId, viewer.locality),
-          loadHomeAdoptions(env, viewer.locality),
+          loadHomeAdoptions(env, viewer),
           loadReadyReels(env, viewerId, 2),
         ]);
         storyRail = extras[0].status === 'fulfilled' ? extras[0].value || [] : [];
@@ -2195,6 +2257,7 @@ async function handleDb(request, env) {
     // en_adopcion. Fuente B (alertas) queda para más adelante.
     // Lectura pública; no crea tablas ni índices nuevos.
     if (action === 'adoptionFeed') {
+      if (territoryRejected(body)) return json({ error: 'Esa ubicación no está en el catálogo' }, 400);
       const locality = clean(body.locality, 100);
       const species = clean(body.species, 20).toLowerCase();
       const size = normalizeSize(body.size);
@@ -2223,9 +2286,11 @@ async function handleDb(request, env) {
         conditions.push("LOWER(COALESCE(p.sex, '')) = ?");
         params.push(sex);
       }
-      if (locality) {
-        conditions.push('LOWER(pr.locality) = LOWER(?)');
-        params.push(locality);
+      // FILTRO TERRITORIAL 4 (búsqueda de adopción).
+      const territorial = await requestTerritoryCondition(env, 'profiles', 'pr', body, locality);
+      if (territorial) {
+        conditions.push(territorial.sql);
+        params.push(...territorial.values);
       }
       conditions.push('p.created_at < ?');
       params.push(before);
@@ -2356,20 +2421,24 @@ async function handleDb(request, env) {
     // Lectura pública, filtrada por localidad; la sesión es opcional
     // (si viene token, se marca isLiked correctamente por usuario).
     if (action === 'alertsFeed') {
+      if (territoryRejected(body)) return json({ error: 'Esa ubicación no está en el catálogo' }, 400);
       const locality = clean(body.locality, 100);
-      if (!locality) return json({ error: 'Falta la localidad' }, 400);
+      const province = clean(body.province, 100);
+      // FILTRO TERRITORIAL 5 (feed de alertas).
+      const territorial = await requestTerritoryCondition(env, 'alerts', 'a', body, locality, province);
+      if (!territorial) return json({ error: 'Falta la localidad' }, 400);
       const before = Number(body.before) || now + 1000;
       const limit = Math.min(Number(body.limit) || 10, 30);
       const viewerId = await authUser(request, env, body);
       const rows = await d1(
         env,
-        `${ALERT_SELECT} WHERE LOWER(a.locality) = LOWER(?)
+        `${ALERT_SELECT} WHERE ${territorial.sql}
            AND (a.status IS NULL OR a.status = 'active')
            AND a.resolved_at IS NULL
            AND COALESCE(a.renewed_at, a.created_at) < ?
          ORDER BY COALESCE(a.renewed_at, a.created_at) DESC
          LIMIT ?`,
-        [locality, before, limit + 1]
+        [...territorial.values, before, limit + 1]
       );
       const hasMore = rows.length > limit;
       const page = hasMore ? rows.slice(0, limit) : rows;
@@ -2443,8 +2512,10 @@ async function handleDb(request, env) {
     // (destacados, con fallback a recientes), 'top_rated' (mejor valorados),
     // o el valor por defecto (recién publicados).
     if (action === 'listingsFeed') {
+      if (territoryRejected(body)) return json({ error: 'Esa ubicación no está en el catálogo' }, 400);
       const kind = body.kind === 'service' ? 'service' : 'product';
       const locality = clean(body.locality, 100);
+      const province = clean(body.province, 100);
       const category = clean(body.category, 40);
       const section = clean(body.section, 20) || 'recent';
       const q = clean(body.q, 80).toLowerCase();
@@ -2462,9 +2533,13 @@ async function handleDb(request, env) {
         conditions.push('(LOWER(l.title) LIKE ? OR LOWER(l.description) LIKE ?)');
         params.push(`%${q}%`, `%${q}%`);
       }
-      if (section === 'nearby' && locality) {
-        conditions.push('LOWER(l.locality) = LOWER(?)');
-        params.push(locality);
+      // FILTRO TERRITORIAL 6 (Mercado · sección "cerca").
+      if (section === 'nearby') {
+        const territorial = await requestTerritoryCondition(env, 'listings', 'l', body, locality, province);
+        if (territorial) {
+          conditions.push(territorial.sql);
+          params.push(...territorial.values);
+        }
       }
       conditions.push('COALESCE(l.renewed_at, l.created_at) < ?');
       params.push(before);

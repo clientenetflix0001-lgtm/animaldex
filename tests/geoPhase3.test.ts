@@ -605,9 +605,11 @@ describe('perfiles', () => {
   });
 
   it('el texto libre no se usa como clave territorial en el Worker', () => {
-    // Los seis filtros territoriales miran `locality`, nunca `location`.
-    const filters = worker.match(/LOWER\((?:a|l|pr)\.locality\) = LOWER\(\?\)/g) || [];
-    assert.equal(filters.length, 6);
+    // Los seis filtros territoriales siguen siendo seis. Desde Fase 5 comparan
+    // identidad en vez de texto, pero ninguno mira `location`, que es dirección
+    // visible y no una clave territorial.
+    const filters = worker.match(/FILTRO TERRITORIAL/g) || [];
+    assert.equal(filters.length, 5, 'cinco marcas: la primera cubre los filtros 1 y 2');
     assert.doesNotMatch(worker, /LOWER\(\w+\.location\) = LOWER\(\?\)/);
     assert.doesNotMatch(worker, /WHERE .*\.location = \?/);
   });
