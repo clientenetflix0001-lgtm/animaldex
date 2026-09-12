@@ -149,6 +149,10 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
     Linking.openURL(publicWebUrl('/privacidad')).catch(() => {});
   }, []);
 
+  const openChildSafety = useCallback(() => {
+    Linking.openURL(publicWebUrl('/seguridad-infantil')).catch(() => {});
+  }, []);
+
   const confirmDeleteAccount = useCallback(() => {
     const message =
       'Podés solicitar la eliminación permanente de tu cuenta de Animaldex y de los datos asociados.';
@@ -312,6 +316,9 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
           <Pressable style={styles.editBtn} onPress={() => { if (guest) requireLogin(); }}>
             <Text style={styles.editText}>Mensaje</Text>
           </Pressable>
+          <Pressable style={styles.editBtn} onPress={openChildSafety} accessibilityLabel="Reportar">
+            <Text style={styles.editText}>Reportar</Text>
+          </Pressable>
         </View>
       )}
 
@@ -332,6 +339,10 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         <View style={styles.accountLinks}>
           <Pressable style={styles.accountLink} onPress={openPrivacyPolicy}>
             <Text style={styles.accountLinkText}>Política de privacidad</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+          <Pressable style={styles.accountLink} onPress={openChildSafety} accessibilityLabel="Reportar">
+            <Text style={styles.accountLinkText}>Seguridad infantil</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
           <Pressable style={styles.accountLink} onPress={() => setDataSourcesVisible(true)}>
