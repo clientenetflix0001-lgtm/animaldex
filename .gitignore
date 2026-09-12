@@ -9,6 +9,9 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Wrangler: estado del D1 local que crea `wrangler dev`
+.wrangler/
+
 # Native
 .kotlin/
 *.orig.*
