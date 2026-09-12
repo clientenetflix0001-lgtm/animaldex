@@ -309,9 +309,14 @@ async function main() {
         String(c.localityLegacy ?? '—').padEnd(21) +
         String(c.provinceLegacy ?? '—').padEnd(11) +
         c.motivo +
-        (c.candidatos.length ? `  candidatos=[${c.candidatos.join(', ')}]` : '') +
         (c.distanciaKm != null ? `  d=${c.distanciaKm}km` : '')
       );
+      // Los candidatos con nombre: sin esto la decisión manual obliga a ir a
+      // buscar cada código al catálogo a mano.
+      for (const id of c.candidatos) {
+        const p = placeById(id);
+        console.log(`      candidato ${id}  ${p ? `${p.localityName} / ${p.admin2Name} / ${p.admin1Name}` : '(fuera del catálogo)'}`);
+      }
     }
   } else {
     console.log('\nCONFLICTOS — ninguno.');
