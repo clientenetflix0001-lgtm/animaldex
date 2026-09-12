@@ -188,6 +188,13 @@ function localQuery(dbPath, sql) {
   return out.trim() ? JSON.parse(out) : [];
 }
 
+/**
+ * Elige contra qué base corre el backfill.
+ *
+ * `--target` es obligatorio y no admite valores parecidos: un flag mal escrito
+ * tiene que abortar, no caer en remoto por omisión. Escribir sin querer en la
+ * base de producción no puede estar a un guion de distancia.
+ */
 function makeDriver(target) {
   if (target === 'remote') {
     return {
@@ -195,6 +202,12 @@ function makeDriver(target) {
       query: remoteQuery,
       runFile: (file) => wrangler(['d1', 'execute', D1_DATABASE, '--remote', '--file', file]),
     };
+  }
+  if (!target.startsWith('local:') || !target.slice('local:'.length)) {
+    throw new Error(
+      `--target inválido: ${JSON.stringify(target)}\n` +
+      'Usar --target=remote o --target=local:/ruta/copia.db'
+    );
   }
   const path = target.slice('local:'.length);
   return {
@@ -229,11 +242,23 @@ export function updateStatement(spec, id, place) {
   );
 }
 
+export const BACKFILL_FLAGS = ['--apply', '--target='];
+
 async function main() {
   const args = process.argv.slice(2);
+  const unknown = args.filter((a) => !BACKFILL_FLAGS.some((f) => (f.endsWith('=') ? a.startsWith(f) : a === f)));
+  if (unknown.length) {
+    throw new Error(
+      `argumentos no reconocidos: ${unknown.join(' ')}\n` +
+      'Uso: node scripts/geo/backfill.mjs --target=remote|local:/ruta/copia.db [--apply]'
+    );
+  }
+  const targetArg = args.find((a) => a.startsWith('--target='));
+  if (!targetArg) {
+    throw new Error('falta --target. Usar --target=remote o --target=local:/ruta/copia.db');
+  }
   const apply = args.includes('--apply');
-  const targetArg = (args.find((a) => a.startsWith('--target=')) || '--target=remote').slice('--target='.length);
-  const driver = makeDriver(targetArg);
+  const driver = makeDriver(targetArg.slice('--target='.length));
 
   console.log('='.repeat(70));
   console.log(`BACKFILL GEOPLACE — ${apply ? 'APLICAR' : 'DRY-RUN'}`);

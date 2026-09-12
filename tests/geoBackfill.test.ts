@@ -291,6 +291,33 @@ function correrBackfill(db: string, ...extra: string[]) {
   );
 }
 
+describe('elegir la base no puede fallar en silencio', () => {
+  /** Corre el script con argumentos crudos y devuelve salida y código. */
+  function correrCrudo(...args: string[]) {
+    const res = execFileSync(
+      process.execPath,
+      ['--experimental-strip-types', script, ...args],
+      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], reject: false } as any
+    );
+    return res;
+  }
+
+  it('sin --target aborta en vez de asumir remoto', () => {
+    // Escribir en la base de producción no puede estar a un guion de
+    // distancia de escribir en una copia.
+    assert.throws(() => correrCrudo('--apply'), /falta --target/);
+  });
+
+  it('un flag mal escrito aborta en vez de ignorarse', () => {
+    assert.throws(() => correrCrudo('--local', '/tmp/copia.db', '--apply'), /argumentos no reconocidos/);
+  });
+
+  it('un target con un prefijo parecido aborta', () => {
+    assert.throws(() => correrCrudo('--target=loca:/tmp/copia.db'), /--target inválido/);
+    assert.throws(() => correrCrudo('--target=local:'), /--target inválido/);
+  });
+});
+
 describe('backfill extremo a extremo', () => {
   it('el dry-run no escribe nada', () => {
     const db = nuevaCopia();
