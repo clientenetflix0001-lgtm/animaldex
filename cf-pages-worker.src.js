@@ -44,6 +44,7 @@ function legalPageAssetPath(pathname) {
   // Pages hace 308 de *.html → sin extensión. Pedir la pretty URL.
   if (p === '/privacidad') return '/legal/privacidad';
   if (p === '/eliminar-cuenta') return '/legal/eliminar-cuenta';
+  if (p === '/seguridad-infantil') return '/legal/seguridad-infantil';
   return null;
 }
 
@@ -293,7 +294,7 @@ async function buildOgMeta(request, env, url) {
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
     'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mis-productos', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
-    'well-known', 'privacidad', 'eliminar-cuenta',
+    'well-known', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil',
   ]);
 
   if (petMatch) {
@@ -633,7 +634,7 @@ export default {
       'p','pet','a','m','r','reels','alertas','mercado','crear','mascotas','actividad','perfil',
       'explorar','verificar','escanear','entrar','tienda','admin','vender',
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
-      'privacidad','eliminar-cuenta',
+      'privacidad','eliminar-cuenta','seguridad-infantil',
     ]);
     const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase());
     const maybePet = /^\/pet\/[^/]+\/?$/.test(url.pathname) || (spaHandle && /\.pet$/i.test(spaHandle));
