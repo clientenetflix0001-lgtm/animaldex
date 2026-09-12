@@ -72,6 +72,7 @@
     "test:geo": "node --experimental-strip-types --test tests/geo.test.ts",
     "test:geo-phase3": "node --experimental-strip-types --test tests/geoPhase3.test.ts",
     "test:geo-backfill": "node --experimental-strip-types --test tests/geoBackfill.test.ts",
+    "test:geo-phase5": "node --experimental-strip-types --test tests/geoPhase5.test.ts",
     "geo:backfill": "node --experimental-strip-types scripts/geo/backfill.mjs",
     "geo:backfill:verify": "node --experimental-strip-types scripts/geo/backfill-verify.mjs",
     "geo:catalog": "node scripts/geo/build-catalog.mjs",

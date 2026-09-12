@@ -32,6 +32,7 @@ import {
   placeFullLabel,
 } from '../lib/geoplace/format.ts';
 import { placeFromCoords } from '../lib/geoplace/resolve.ts';
+import { unambiguousPlace } from '../lib/placeResolution.ts';
 import { geoCell } from '../lib/geoplace/cell.ts';
 import type { AdministrativeArea, PlaceResolution } from '../lib/geoplace/types.ts';
 import { handleGeo } from '../worker/geo.js';
@@ -294,23 +295,18 @@ describe('GPS normalizado', () => {
   });
 
   it('sólo un candidato realmente inequívoco puede preseleccionarse', () => {
-    assert.match(locate, /if \(resolution\.requiresConfirmation\) return null/);
-    assert.match(locate, /if \(resolution\.confidence !== 'high'\) return null/);
-    assert.match(locate, /if \(resolution\.boundaryRisk\) return null/);
-    assert.match(locate, /if \(inArea\.length !== 1\) return null/);
+    const rule = read('lib/placeResolution.ts');
+    assert.match(rule, /if \(resolution\.requiresConfirmation\) return null/);
+    assert.match(rule, /if \(resolution\.confidence !== 'high'\) return null/);
+    assert.match(rule, /if \(resolution\.boundaryRisk\) return null/);
+    assert.match(rule, /if \(inArea\.length !== 1\) return null/);
     assert.match(picker, /const only = unambiguousPlace\(res\)/);
+    // placeLocate lo reexporta para que las pantallas no cambien de import.
+    assert.match(locate, /export \{ unambiguousPlace \} from '\.\/placeResolution\.ts'/);
   });
 });
 
-/** Réplica de `unambiguousPlace` sin importar expo-location. */
-function unambiguous(resolution: PlaceResolution) {
-  if (resolution.requiresConfirmation) return null;
-  if (resolution.confidence !== 'high') return null;
-  if (resolution.boundaryRisk) return null;
-  const inArea = resolution.candidates.filter((c) => c.withinResolvedArea);
-  if (inArea.length !== 1) return null;
-  return inArea[0].place;
-}
+const unambiguous = unambiguousPlace;
 
 // ------------------------------------------------------------
 // 4. Georef caído: el sistema sigue usable

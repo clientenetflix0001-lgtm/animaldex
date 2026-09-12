@@ -25,9 +25,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, type AppStateStatus } from 'react-native';
 import { db } from './db';
-import { locateCurrentPlace, unambiguousPlace } from './placeLocate';
-import { territoryFromArea, territoryFromPlace, type Territory } from './geoplace/territory.ts';
-import type { GeoPlace } from './geoplace/types.ts';
+import { locateCurrentPlace } from './placeLocate';
+import { placeSignalFromResolution } from './lastLocationSignal.ts';
 import {
   LAST_LOCATION_CACHE_KEY,
   LAST_LOCATION_POLICY,
@@ -57,30 +56,6 @@ export async function writeCachedLastLocation(snapshot: LastLocationSnapshot): P
   } catch {}
 }
 
-export type ResolvedPlaceSignal = {
-  /** Sólo cuando /geo afirmó una localidad sin pedir confirmación. */
-  place: GeoPlace | null;
-  territory: Territory | null;
-};
-
-/**
- * Traduce el resultado de /geo en señal para Inicio.
- *
- * Exportada para poder probar los tres caminos sin GPS ni red.
- */
-export function placeSignalFromResolution(resolution: Awaited<ReturnType<typeof locateCurrentPlace>>): ResolvedPlaceSignal {
-  if (!resolution.ok) return { place: null, territory: null };
-  const place = unambiguousPlace(resolution);
-  if (place) return { place, territory: territoryFromPlace(place) };
-  // Degradación segura: el área administrativa oficial es confiable aunque la
-  // localidad no lo sea. `administrativeArea` viene null en el fallback
-  // offline, así que esto no puede salir de un centroide adivinado.
-  if (resolution.administrativeArea) {
-    return { place: null, territory: territoryFromArea(resolution.administrativeArea) };
-  }
-  return { place: null, territory: null };
-}
-
 export async function syncLastUsefulLocation(input?: {
   profileLocality?: string | null;
   profileLocationText?: string | null;
@@ -99,7 +74,9 @@ export async function syncLastUsefulLocation(input?: {
     // La identidad anterior sólo se conserva si sigue hablando del mismo lugar.
     const carried = cached && !localityChanged(cached, locality) ? cached.territory : null;
     const next: LastLocationSnapshot = {
-      // Centroide del lugar, no la posición del dispositivo.
+      // Centroide del lugar, no la posición del dispositivo. Si esta vuelta no
+      // se pudo afirmar un lugar, se conserva el punto anterior: esto es la
+      // última ubicación útil, no un rastreo.
       lat: place?.centroidLat ?? cached?.lat ?? null,
       lng: place?.centroidLng ?? cached?.lng ?? null,
       locality,

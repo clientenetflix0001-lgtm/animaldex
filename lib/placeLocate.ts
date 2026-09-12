@@ -117,16 +117,6 @@ export async function locateCurrentPlace(): Promise<LocateResult> {
   return { ok: true, ...local };
 }
 
-/**
- * El único candidato que puede preseleccionarse sin preguntar. Devuelve null
- * salvo que el resolvedor haya dicho explícitamente que no hace falta
- * confirmar Y haya exactamente un candidato dentro del área oficial.
- */
-export function unambiguousPlace(resolution: PlaceResolution): GeoPlace | null {
-  if (resolution.requiresConfirmation) return null;
-  if (resolution.confidence !== 'high') return null;
-  if (resolution.boundaryRisk) return null;
-  const inArea = resolution.candidates.filter((c: GeoCandidate) => c.withinResolvedArea);
-  if (inArea.length !== 1) return null;
-  return inArea[0].place;
-}
+// `unambiguousPlace` vive en placeResolution.ts, que no importa expo-location
+// ni el cliente HTTP. Se reexporta para que las pantallas sigan pidiéndolo acá.
+export { unambiguousPlace } from './placeResolution.ts';
