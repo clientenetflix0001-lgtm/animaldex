@@ -200,9 +200,25 @@ describe('subidas de imagen · tamaño', () => {
     assert.match((res as any).error, /grande/i);
   });
 
-  it('el máximo declarado coincide con el histórico de ~3 MB', () => {
-    assert.equal(MAX_IMAGE_BYTES, 3_000_000);
-    assert.ok(MAX_BASE64_LENGTH >= 4_000_000);
+  it('el máximo es 8 MB y queda por debajo del tope de Cloudflare Images', () => {
+    assert.equal(MAX_IMAGE_BYTES, 8_000_000);
+    assert.ok(MAX_IMAGE_BYTES < 10_000_000);
+    assert.equal(MAX_BASE64_LENGTH, 10_666_668);
+  });
+
+  it('acepta una imagen de 5 MB, que antes del cambio a 8 MB era rechazada', () => {
+    const cinco = [...PNG, ...new Array(5_000_000 - PNG.length).fill(0)];
+    const res = validateImageUpload(dataUrl('image/png', cinco));
+    assert.equal(res.ok, true);
+    assert.equal((res as any).mime, 'image/png');
+  });
+
+  it('rechaza una imagen de 9 MB con 413', () => {
+    const nueve = [...PNG, ...new Array(9_000_000 - PNG.length).fill(0)];
+    const res = validateImageUpload(dataUrl('image/png', nueve));
+    assert.equal(res.ok, false);
+    assert.equal((res as any).status, 413);
+    assert.match((res as any).error, /8 MB/);
   });
 
   it('rechaza contenido vacío', () => {

@@ -41,11 +41,14 @@
 //         vez de dejar que falle más adelante con un error opaco.
 // ============================================================
 
-/** Tope de bytes ya decodificados. Equivale al límite histórico de ~3 MB. */
-export const MAX_IMAGE_BYTES = 3_000_000;
+/** Tope de bytes ya decodificados. Queda por debajo de los 10 MB de Cloudflare. */
+export const MAX_IMAGE_BYTES = 8_000_000;
 
 /** Longitud máxima del base64 que representa ese tamaño (4 chars = 3 bytes). */
 export const MAX_BASE64_LENGTH = Math.ceil(MAX_IMAGE_BYTES / 3) * 4;
+
+/** El mensaje sale del constante para que no puedan desincronizarse. */
+const TOO_LARGE = `Imagen demasiado grande (máx ${Math.round(MAX_IMAGE_BYTES / 1_000_000)} MB)`;
 
 /**
  * Formatos aceptados: los que produce el selector de fotos del teléfono y que
@@ -172,7 +175,7 @@ export function validateImageUpload(raw) {
 
   // El corte por tamaño va antes de decodificar.
   if (base64.length > MAX_BASE64_LENGTH) {
-    return { ok: false, status: 413, error: 'Imagen demasiado grande (máx 3 MB)' };
+    return { ok: false, status: 413, error: TOO_LARGE };
   }
 
   let bytes;
@@ -185,7 +188,7 @@ export function validateImageUpload(raw) {
     return { ok: false, status: 400, error: 'Imagen inválida (contenido vacío)' };
   }
   if (bytes.length > MAX_IMAGE_BYTES) {
-    return { ok: false, status: 413, error: 'Imagen demasiado grande (máx 3 MB)' };
+    return { ok: false, status: 413, error: TOO_LARGE };
   }
 
   // Lo que el cliente declara ni siquiera se considera si el contenido es otra
