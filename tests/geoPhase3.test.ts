@@ -498,6 +498,44 @@ describe('esquema defensivo', () => {
     db.close();
   });
 
+  it('el INSERT real del Worker es válido con y sin las columnas nuevas', async () => {
+    // Se extrae la plantilla tal como está en worker/index.js y se ejecuta
+    // contra sqlite en las dos formas del esquema. Los fragmentos pueden ser
+    // correctos y el SQL resultante no serlo, así que se comprueba el SQL.
+    const template = worker.slice(
+      worker.indexOf('INSERT INTO alerts'),
+      worker.indexOf('`,\n        [id, userId, type,')
+    );
+    assert.match(template, /\$\{geo\.columns\}/);
+
+    const place = normalizeIncomingPlace({ placeId: 'AR:georef:66028050' });
+    for (const migrated of [false, true]) {
+      const db = new DatabaseSync(':memory:');
+      db.exec(LEGACY_ALERTS);
+      db.exec('ALTER TABLE alerts ADD COLUMN sex TEXT');
+      db.exec('ALTER TABLE alerts ADD COLUMN author_profile_id TEXT');
+      db.exec('ALTER TABLE alerts ADD COLUMN contact_whatsapp TEXT');
+      db.exec('ALTER TABLE alerts ADD COLUMN contact_phone TEXT');
+      if (migrated) {
+        for (const col of GEO_WRITE_COLUMNS) db.exec(`ALTER TABLE alerts ADD COLUMN ${col} TEXT`);
+      }
+      const geo = await geoInsertFragment(fakeEnv(db), 'alerts', place);
+      const sql = template.replace('${geo.columns}', geo.columns).replace('${geo.placeholders}', geo.placeholders);
+      const legacyValues = ['al-1', 'u-1', 'lost', 'Toby', 'perro', 'mestizo', 'se perdió', 'https://i/1.jpg',
+        'Salta', 'Salta', 'AR', null, null, 1, 1, 1, null, null, null, null];
+      db.prepare(sql).run(...legacyValues, ...(geo.values as string[]));
+
+      const row = db.prepare('SELECT * FROM alerts WHERE id = ?').get('al-1') as any;
+      // Legacy idéntico en los dos casos.
+      assert.equal(row.locality, 'Salta');
+      assert.equal(row.province, 'Salta');
+      assert.equal(row.country, 'AR');
+      assert.equal(row.place_id ?? null, migrated ? 'AR:georef:66028050' : null);
+      assert.equal(row.admin2_code ?? null, migrated ? place.admin2Code : null);
+      db.close();
+    }
+  });
+
   it('el Worker nunca ejecuta ALTER TABLE para estas columnas', () => {
     assert.doesNotMatch(readCode('worker/geoWrite.js'), /ALTER TABLE/);
     assert.match(read('worker/geoWrite.js'), /PRAGMA table_info/);
