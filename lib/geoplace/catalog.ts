@@ -31,7 +31,7 @@ export const GEO_PROVIDER = snapshot.provider;
 
 /**
  * Atribución CC BY 4.0. Obligatoria en cualquier pantalla que muestre estos
- * datos. Todavía no se renderiza en ningún lado: eso es Fase 3.
+ * datos: se renderiza en el pie del PlacePicker y en "Fuentes de datos".
  */
 export const GEO_ATTRIBUTION = snapshot.attribution;
 

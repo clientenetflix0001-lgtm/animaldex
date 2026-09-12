@@ -16,7 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AdoptionDiscoveryCard from '../components/AdoptionDiscoveryCard';
-import { LocalityPicker } from '../components/LocalityPicker';
+import { PlacePicker, placeSelection } from '../components/PlacePicker';
 import {
   ADOPTION_PAGE_SIZE,
   ADOPTION_SEX_FILTERS,
@@ -34,7 +34,8 @@ import {
   type AdoptionSpeciesFilter,
 } from '../lib/adoptionDiscovery';
 import { fetchAdoptionPage, loadSavedAdoptionLocality, saveAdoptionLocality } from '../lib/adoptionFeed';
-import { detectCurrentLocality, loadSavedAlertsLocality, withProvinceFallback } from '../lib/geo';
+import { loadSavedAlertsLocality } from '../lib/geo';
+import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
 import { radius, spacing } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 
@@ -117,15 +118,14 @@ export default function AdoptionDiscoveryScreen() {
         setLocating(false);
         return;
       }
-      const detected = await detectCurrentLocality();
-      if (detected?.locality) {
-        const entry = {
-          locality: detected.locality,
-          province: withProvinceFallback(detected.locality, detected.province),
-        };
+      // GPS solo si no quedó ambigüedad territorial; si no, elige el usuario.
+      const res = await locateCurrentPlace();
+      const only = res.ok ? unambiguousPlace(res) : null;
+      if (only) {
+        const entry = placeSelection(only);
         setLocality(entry.locality);
         setProvince(entry.province);
-        saveAdoptionLocality(entry);
+        saveAdoptionLocality({ locality: entry.locality, province: entry.province });
       }
       setLocating(false);
     })();
@@ -290,7 +290,7 @@ export default function AdoptionDiscoveryScreen() {
         <Pressable style={styles.dismiss} onPress={() => setOpenFilter(null)} accessibilityLabel="Cerrar filtros" />
       ) : null}
 
-      <LocalityPicker
+      <PlacePicker
         visible={pickerVisible}
         currentProvince={province}
         title="Localidad para adoptar"

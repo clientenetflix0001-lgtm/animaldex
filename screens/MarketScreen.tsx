@@ -21,9 +21,9 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiListing } from '../lib/db';
 import { ListingCard } from '../components/ListingCard';
-import { LocalityPicker } from '../components/LocalityPicker';
+import { PlacePicker, placeSelection, type PlaceSelection } from '../components/PlacePicker';
 import { CategoryPickerSheet } from '../components/CategoryPickerSheet';
-import { detectCurrentLocality, withProvinceFallback } from '../lib/geo';
+import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
 import {
   saveMarketLocality,
   loadSavedMarketLocality,
@@ -85,21 +85,25 @@ export default function MarketScreen() {
         setLocating(false);
         return;
       }
-      const detected = await detectCurrentLocality();
-      if (detected && detected.locality) {
-        const prov = withProvinceFallback(detected.locality, detected.province);
-        setLocality(detected.locality);
-        setProvince(prov);
-        setViewerLat(detected.lat);
-        setViewerLon(detected.lon);
-        saveMarketLocality({ locality: detected.locality, province: prov, lat: detected.lat, lon: detected.lon });
+      // Solo se aplica el GPS cuando no hay ambigüedad territorial. Las
+      // coordenadas guardadas son el centroide público del lugar, no la
+      // posición del dispositivo.
+      const res = await locateCurrentPlace();
+      const only = res.ok ? unambiguousPlace(res) : null;
+      if (only) {
+        const entry = placeSelection(only);
+        setLocality(entry.locality);
+        setProvince(entry.province);
+        setViewerLat(entry.lat);
+        setViewerLon(entry.lon);
+        saveMarketLocality({ locality: entry.locality, province: entry.province, lat: entry.lat, lon: entry.lon });
       }
       setLocating(false);
     })();
   }, []);
 
   const applyLocality = useCallback(
-    (entry: { locality: string; province: string | null; lat?: number | null; lon?: number | null }) => {
+    (entry: PlaceSelection) => {
       setLocality(entry.locality);
       setProvince(entry.province);
       if (entry.lat != null) setViewerLat(entry.lat);
@@ -380,7 +384,7 @@ export default function MarketScreen() {
         </SafeAreaView>
       )}
 
-      <LocalityPicker
+      <PlacePicker
         visible={pickerVisible}
         currentProvince={province}
         title="Ubicación del Mercado"

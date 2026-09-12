@@ -20,8 +20,9 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { db, type ApiPet } from '../lib/db';
 import { uploadImage } from '../lib/api';
-import { detectCurrentLocality, withProvinceFallback } from '../lib/geo';
-import { LocalityPicker } from '../components/LocalityPicker';
+import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
+import { PlacePicker, placeSelection, type PlaceSelection } from '../components/PlacePicker';
+import type { GeoPlace } from '../lib/geoplace/types.ts';
 import PetAvatar from '../components/PetAvatar';
 import {
   ALERT_CREATE_PRIMARY,
@@ -98,6 +99,9 @@ export default function CreateAlertScreen() {
   const [province, setProvince] = useState<string | null>(null);
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
+  // Identidad territorial normalizada. Desde Fase 3 es lo que se persiste;
+  // locality/province quedan como texto de presentación y compatibilidad.
+  const [place, setPlace] = useState<GeoPlace | null>(null);
   const [locating, setLocating] = useState(true);
   const [pickerVisible, setPickerVisible] = useState(false);
 
@@ -126,17 +130,29 @@ export default function CreateAlertScreen() {
   // Ubicación por defecto = ubicación actual del usuario (representa
   // dónde se perdió/encontró el animal, no necesariamente su domicilio).
   // El usuario puede cambiarla libremente con "Cambiar ubicación".
+  //
+  // Solo se precarga cuando el resolvedor dice que no hay ambigüedad
+  // territorial. Si hay varios candidatos, el campo queda vacío y la elección
+  // la hace el usuario en el PlacePicker: nunca se confirma en silencio.
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const detected = await detectCurrentLocality();
-      if (detected && detected.locality) {
-        setLocality(detected.locality);
-        setProvince(withProvinceFallback(detected.locality, detected.province));
-        setLat(detected.lat);
-        setLon(detected.lon);
+      const res = await locateCurrentPlace();
+      const only = res.ok ? unambiguousPlace(res) : null;
+      if (cancelled) return;
+      if (only) {
+        const selection = placeSelection(only);
+        setPlace(only);
+        setLocality(selection.locality);
+        setProvince(selection.province);
+        setLat(selection.lat);
+        setLon(selection.lon);
       }
       setLocating(false);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const pickPhoto = useCallback(async () => {
@@ -172,15 +188,13 @@ export default function CreateAlertScreen() {
     }
   }, [flyerMode]);
 
-  const applyLocality = useCallback(
-    (entry: { locality: string; province: string | null; lat?: number | null; lon?: number | null }) => {
-      setLocality(entry.locality);
-      setProvince(entry.province);
-      if (entry.lat != null) setLat(entry.lat);
-      if (entry.lon != null) setLon(entry.lon);
-    },
-    []
-  );
+  const applyLocality = useCallback((entry: PlaceSelection) => {
+    setPlace(entry.place);
+    setLocality(entry.locality);
+    setProvince(entry.province);
+    if (entry.lat != null) setLat(entry.lat);
+    if (entry.lon != null) setLon(entry.lon);
+  }, []);
 
   const applyExistingPet = useCallback((pet: ApiPet | null) => {
     if (!pet) {
@@ -252,6 +266,10 @@ export default function CreateAlertScreen() {
       province: province || undefined,
       lat: finiteCoord(lat),
       lon: finiteCoord(lon),
+      // Identidad normalizada. Aditiva: los campos legacy siguen viajando.
+      placeId: place?.placeId ?? null,
+      admin1Code: place?.admin1Code ?? null,
+      admin2Code: place?.admin2Code ?? null,
       eventDate,
       authorProfileId: resolvedType === 'adoption' ? activeProfile?.id : undefined,
       contactWhatsapp: contactWhatsappNorm,
@@ -310,7 +328,7 @@ export default function CreateAlertScreen() {
     } finally {
       setSaving(false);
     }
-  }, [image, description, locality, province, lat, lon, primary, seenKind, species, petName, sex, breed, color, ageLabel, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode, activePetId, flyerPetUsername, routeName]);
+  }, [image, description, locality, province, lat, lon, place, primary, seenKind, species, petName, sex, breed, color, ageLabel, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode, activePetId, flyerPetUsername, routeName]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -577,7 +595,7 @@ export default function CreateAlertScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <LocalityPicker
+      <PlacePicker
         visible={pickerVisible}
         currentProvince={province}
         title="Ubicación del hecho"

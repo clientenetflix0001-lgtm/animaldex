@@ -383,8 +383,17 @@ export const auth = {
     call('/auth', { action: 'checkEmail', email }),
   me: () => call('/auth', { action: 'me' }),
   logout: () => call('/auth', { action: 'logout' }),
-  updateProfile: (fields: { name?: string; bio?: string; location?: string; avatarUrl?: string; username?: string }) =>
-    call('/auth', { action: 'updateProfile', ...fields }),
+  updateProfile: (fields: {
+    name?: string;
+    bio?: string;
+    location?: string;
+    avatarUrl?: string;
+    username?: string;
+    /** Identidad del lugar normalizado: `AR:georef:66028050`. Aditivo. */
+    placeId?: string | null;
+    admin1Code?: string | null;
+    admin2Code?: string | null;
+  }) => call('/auth', { action: 'updateProfile', ...fields }),
 };
 
 // ---------- Datos ----------
@@ -543,6 +552,10 @@ export const db = {
     avatar?: string | null;
     adoptionWhatsapp?: string | null;
     adoptionPhone?: string | null;
+    /** Identidad del lugar normalizado: `AR:georef:66028050`. Aditivo. */
+    placeId?: string | null;
+    admin1Code?: string | null;
+    admin2Code?: string | null;
   }): Promise<{ profile: import('../features/profiles/profileTypes').PublicProfile }> =>
     call('/db', { action: 'updatePublicProfile', ...input }),
   updatePost: (postId: string, caption: string): Promise<{ caption: string }> =>
@@ -677,6 +690,14 @@ export const db = {
     authorProfileId?: string | null;
     contactWhatsapp?: string | null;
     contactPhone?: string | null;
+    /**
+     * Identidad del lugar normalizado, ej. `AR:georef:66028050`. Aditivo: el
+     * Worker lo valida contra el catálogo y `locality`/`province` se siguen
+     * enviando para no romper a los consumidores actuales.
+     */
+    placeId?: string | null;
+    admin1Code?: string | null;
+    admin2Code?: string | null;
   }): Promise<{ alert: ApiAlert }> => call('/db', { action: 'createAlert', ...alert }),
   myAlerts: (tab: 'active' | 'resolved', before?: number, limit = 20): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
     call('/db', { action: 'myAlerts', tab, before, limit }),
@@ -737,6 +758,10 @@ export const db = {
     lon?: number | null;
     contactMethod?: 'whatsapp' | 'phone';
     contactValue?: string;
+    /** Identidad del lugar normalizado. Aditivo, igual que en createAlert. */
+    placeId?: string | null;
+    admin1Code?: string | null;
+    admin2Code?: string | null;
   }): Promise<{ listing: ApiListing }> => call('/db', { action: 'createListing', ...listing }),
   deleteListing: (listingId: string): Promise<{ ok: boolean }> => call('/db', { action: 'deleteListing', listingId }),
   myListings: (): Promise<{ listings: ApiListing[] }> => call('/db', { action: 'myListings' }),
@@ -844,6 +869,13 @@ export const db = {
     call('/db', { action: 'createStoryComment', storyId, text }),
   reportStory: (storyId: string): Promise<{ ok: boolean; reportType: string; targetId: string }> =>
     call('/db', { action: 'reportStory', storyId }),
+
+  // ---------- Geo ----------
+  // La app NUNCA llama a Georef directamente: el Worker redondea la coordenada
+  // a una celda de ~1 km antes de consultar al proveedor oficial. La respuesta
+  // trae candidatos y un nivel de confianza, nunca una localidad afirmada.
+  geoResolveCoords: (lat: number, lon: number): Promise<any> =>
+    call('/geo', { action: 'resolveCoords', lat, lon }),
 };
 
 // ---------- Helpers ----------

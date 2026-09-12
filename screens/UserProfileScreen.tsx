@@ -30,6 +30,7 @@ import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { useProfiles, CreateProfileSheet } from '../features/profiles';
+import { DataSourcesSheet } from '../components/DataSourcesSheet';
 import { PROFILE_TYPE_LABEL, type PublicProfile } from '../features/profiles/profileTypes';
 import { filterPersonalPets } from '../lib/petOwnership';
 import { useGuestAccess, ExternalNavButton } from '../lib/guestAccess';
@@ -88,6 +89,7 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'posts' | 'reels' | 'saved'>('posts');
   const [personalProfileId, setPersonalProfileId] = useState<string | null>(null);
+  const [dataSourcesVisible, setDataSourcesVisible] = useState(false);
 
   const load = useCallback(async () => {
     // Usuario demo: datos generados
@@ -332,6 +334,10 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
             <Text style={styles.accountLinkText}>Política de privacidad</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
+          <Pressable style={styles.accountLink} onPress={() => setDataSourcesVisible(true)}>
+            <Text style={styles.accountLinkText}>Fuentes de datos</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
           <Pressable style={styles.accountLink} onPress={confirmDeleteAccount}>
             <Text style={styles.accountLinkText}>Eliminar cuenta</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -413,6 +419,9 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
         )}
       />
       {isMe && <CreateProfileSheet visible={creatingProfile} onClose={() => setCreatingProfile(false)} />}
+      {isMe && (
+        <DataSourcesSheet visible={dataSourcesVisible} onClose={() => setDataSourcesVisible(false)} />
+      )}
 
       {/* Tabs */}
       <View style={styles.tabRow}>

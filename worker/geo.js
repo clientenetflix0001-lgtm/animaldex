@@ -264,6 +264,7 @@ export async function handleGeo(request, env, json, authUser) {
       confidence: resolution.confidence,
       requiresConfirmation: resolution.requiresConfirmation,
       boundaryRisk: resolution.boundaryRisk,
+      governmentLocalCorroborated: resolution.governmentLocalCorroborated,
       reason: resolution.reason,
       source: resolution.source,
       // Solo el centro de celda, y redondeado. La coordenada recibida no se devuelve.

@@ -22,8 +22,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiAlert } from '../lib/db';
 import { useStore } from '../lib/store';
 import { AlertCard } from '../components/AlertCard';
-import { LocalityPicker } from '../components/LocalityPicker';
-import { detectCurrentLocality, loadSavedAlertsLocality, saveAlertsLocality, withProvinceFallback } from '../lib/geo';
+import { PlacePicker, placeSelection, type PlaceSelection } from '../components/PlacePicker';
+import { loadSavedAlertsLocality, saveAlertsLocality } from '../lib/geo';
+import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
@@ -80,11 +81,13 @@ export default function AlertsScreen() {
   );
 
   const applyLocality = useCallback(
-    (entry: { locality: string; province: string | null }) => {
+    (entry: PlaceSelection) => {
       localityRef.current = entry.locality;
       setLocality(entry.locality);
       setProvince(entry.province);
-      saveAlertsLocality(entry);
+      // El filtro del feed sigue siendo por texto en esta fase. Lo que cambia
+      // es que el texto ya no puede ser inventado: viene del catálogo oficial.
+      saveAlertsLocality({ locality: entry.locality, province: entry.province });
       fetchPage(entry.locality, true);
     },
     [fetchPage]
@@ -103,14 +106,17 @@ export default function AlertsScreen() {
         fetchPage(saved.locality, true);
         return;
       }
-      const detected = await detectCurrentLocality();
-      if (detected && detected.locality) {
-        const prov = withProvinceFallback(detected.locality, detected.province);
-        const entry = { locality: detected.locality, province: prov };
+      // Sin localidad guardada se intenta el GPS, pero solo se aplica cuando
+      // el resolvedor no dejó ambigüedad territorial. Si quedan candidatos, la
+      // pantalla queda a la espera de que el usuario elija.
+      const res = await locateCurrentPlace();
+      const only = res.ok ? unambiguousPlace(res) : null;
+      if (only) {
+        const entry = placeSelection(only);
         localityRef.current = entry.locality;
         setLocality(entry.locality);
         setProvince(entry.province);
-        saveAlertsLocality(entry);
+        saveAlertsLocality({ locality: entry.locality, province: entry.province });
         fetchPage(entry.locality, true);
       }
       setLocating(false);
@@ -273,7 +279,7 @@ export default function AlertsScreen() {
           {content}
         </SafeAreaView>
       )}
-      <LocalityPicker
+      <PlacePicker
         visible={pickerVisible}
         currentProvince={province}
         onClose={() => setPickerVisible(false)}
