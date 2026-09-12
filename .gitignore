@@ -49,3 +49,4 @@ node_modules_old*/
 .git_old_*/
 dist_broken_*/
 .junk/
+scripts/geo/.backfill.generated.sql

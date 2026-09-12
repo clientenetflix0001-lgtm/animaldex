@@ -71,6 +71,8 @@
     "test:legal": "node --experimental-strip-types --test tests/legalPages.test.ts",
     "test:geo": "node --experimental-strip-types --test tests/geo.test.ts",
     "test:geo-phase3": "node --experimental-strip-types --test tests/geoPhase3.test.ts",
+    "test:geo-backfill": "node --experimental-strip-types --test tests/geoBackfill.test.ts",
+    "geo:backfill": "node --experimental-strip-types scripts/geo/backfill.mjs",
     "geo:catalog": "node scripts/geo/build-catalog.mjs",
     "geo:catalog:check": "node scripts/geo/build-catalog.mjs --check"
   },
