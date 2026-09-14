@@ -166,8 +166,10 @@ describe('LOCATION', () => {
   });
 
   it('5. sin permiso funciona fallback', () => {
-    assert.match(lastSync, /detectCurrentLocality/);
-    assert.match(lastSync, /source: gps \? 'gps' : locality \? 'profile' : 'cache'/);
+    // Desde Fase 5 la señal sale de /geo, no del reverse geocoder del sistema.
+    assert.match(lastSync, /locateCurrentPlace\(\)/);
+    assert.doesNotMatch(lastSync, /await detectCurrentLocality/);
+    assert.match(lastSync, /source: place \|\| territory \? 'geo' : locality \? 'profile' : 'cache'/);
     assert.match(feed, /bindLastLocationForegroundSync/);
     assert.doesNotMatch(feed, /Obteniendo ubicación/);
     assert.doesNotMatch(feed, /estás en|estas en|cambiar ubicación/i);

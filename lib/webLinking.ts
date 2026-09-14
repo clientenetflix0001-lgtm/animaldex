@@ -1,4 +1,5 @@
 import { resolveAppLink } from './appLinks.ts';
+import { isPublicLegalPath } from './legalPages.ts';
 import { PUBLIC_WEB_ORIGIN } from './publicWeb.ts';
 import { extractTagCode } from './tags.ts';
 
@@ -61,6 +62,9 @@ export function shouldAutoOpenPendingTag(opts: {
 }
 
 export function getStateFromPublicPath(path: string, options?: object) {
+  if (isPublicLegalPath(path)) {
+    return null;
+  }
   if (isWebRootPath(path)) {
     return webHomeState(linkingHasUser);
   }

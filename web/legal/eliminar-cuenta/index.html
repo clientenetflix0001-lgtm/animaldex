@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Eliminar cuenta de Animaldex</title>
+  <meta name="description" content="Solicitá la eliminación permanente de tu cuenta de Animaldex y de los datos asociados." />
+  <link rel="canonical" href="https://animaldex.com/eliminar-cuenta" />
+  <meta name="robots" content="index,follow" />
+  <meta name="theme-color" content="#FF6B4A" />
+  <meta property="og:site_name" content="Animaldex" />
+  <meta property="og:title" content="Eliminar cuenta de Animaldex" />
+  <meta property="og:description" content="Cómo solicitar la eliminación permanente de tu cuenta y datos asociados." />
+  <meta property="og:url" content="https://animaldex.com/eliminar-cuenta" />
+  <meta property="og:type" content="website" />
+  <link rel="stylesheet" href="/legal/legal.css" />
+  <link rel="icon" href="/legal/animaldex-logo-mark.png" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="https://animaldex.com/">
+        <img src="/legal/animaldex-logo-mark.png" alt="Logo Animaldex" width="40" height="40" />
+        Animaldex
+      </a>
+      <nav class="nav" aria-label="Páginas legales">
+        <a href="/privacidad">Política de Privacidad</a>
+        <a href="/seguridad-infantil">Seguridad infantil</a>
+        <a href="/eliminar-cuenta">Eliminar cuenta</a>
+      </nav>
+    </header>
+
+    <main class="card">
+      <span class="kicker">Solicitud de eliminación</span>
+      <h1>Eliminar cuenta de Animaldex</h1>
+      <p class="lead">Podés solicitar la eliminación permanente de tu cuenta de Animaldex y de los datos asociados.</p>
+
+      <h2>Cómo funciona</h2>
+      <ol class="steps">
+        <li>
+          <strong>Identificá la cuenta.</strong>
+          Indicá el nombre de usuario y, si lo tenés, el correo o teléfono con el que te registraste.
+        </li>
+        <li>
+          <strong>Solicitá la eliminación.</strong>
+          Completá el formulario de esta página y copiá o enviá la solicitud al canal oficial de Animaldex.
+        </li>
+        <li>
+          <strong>Animaldex procesará la solicitud.</strong>
+          Revisaremos que se trate de una solicitud válida y correspondiente a esa cuenta.
+        </li>
+        <li>
+          <strong>Se eliminarán la cuenta y los datos asociados</strong>, salvo información que deba conservarse legítimamente según la <a href="/privacidad">Política de Privacidad</a>.
+        </li>
+      </ol>
+
+      <p class="note">Esta página inicia una solicitud de eliminación. Completar el formulario, copiar el texto o enviar el correo no significa que la cuenta ya fue eliminada. Animaldex revisará la solicitud antes de borrar nada. No hay borrado automático ni un endpoint web de eliminación.</p>
+
+      <form class="form" id="delete-form" novalidate>
+        <div>
+          <label for="account">Cuenta a identificar *</label>
+          <input id="account" name="account" type="text" required maxlength="120" autocomplete="username" placeholder="Usuario, correo o teléfono" />
+        </div>
+        <div>
+          <label for="details">Información adicional (opcional)</label>
+          <textarea id="details" name="details" maxlength="1000" placeholder="Por ejemplo: nombre de una mascota asociada o el motivo de la solicitud"></textarea>
+        </div>
+        <div class="actions">
+          <button type="submit">Copiar solicitud</button>
+          <button type="button" class="secondary" id="email-request">Enviar solicitud por correo</button>
+        </div>
+        <p class="status" id="status" role="status"></p>
+      </form>
+
+      <h2>Qué se elimina</h2>
+      <p>Cuando corresponda una solicitud válida, Animaldex eliminará la cuenta y los datos personales asociados, excepto aquella información que deba conservarse temporalmente por motivos legítimos de seguridad, prevención de fraude, resolución de controversias o cumplimiento de obligaciones legales, según la Política de Privacidad.</p>
+
+      <h2>Contacto</h2>
+      <p>
+        Animaldex<br />
+        Argentina<br />
+        Correo: <!--email_off--><a href="mailto:soporte@animaldex.com">soporte@animaldex.com</a><!--/email_off-->
+      </p>
+    </main>
+
+    <footer class="footer">
+      <a href="/privacidad">Política de Privacidad</a>
+      <a href="/seguridad-infantil">Seguridad infantil</a>
+      <span>© Animaldex</span>
+    </footer>
+  </div>
+  <script>
+    (function () {
+      var form = document.getElementById('delete-form');
+      var status = document.getElementById('status');
+      var emailBtn = document.getElementById('email-request');
+      function accountValue() {
+        return (document.getElementById('account').value || '').trim();
+      }
+      function detailsValue() {
+        return (document.getElementById('details').value || '').trim();
+      }
+      function requireAccount() {
+        var account = accountValue();
+        if (account) return account;
+        status.textContent = 'Identificá la cuenta para armar la solicitud.';
+        document.getElementById('account').focus();
+        return '';
+      }
+      function buildRequest() {
+        var account = accountValue();
+        var details = detailsValue();
+        var lines = [
+          'Solicitud de eliminación de cuenta — Animaldex',
+          '',
+          'Pido la eliminación permanente de mi cuenta de Animaldex y de los datos asociados.',
+          'Cuenta: ' + (account || '(completar)'),
+        ];
+        if (details) lines.push('Información adicional: ' + details);
+        lines.push('', 'Enviado desde https://animaldex.com/eliminar-cuenta');
+        return lines.join('\n');
+      }
+      function buildMailtoBody(account, details) {
+        return [
+          'Hola, solicito la eliminación de mi cuenta de Animaldex y de los datos personales asociados.',
+          '',
+          'Cuenta/usuario/correo:',
+          account,
+          '',
+          'Información adicional:',
+          details,
+          '',
+          'Gracias.',
+        ].join('\n');
+      }
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (!requireAccount()) return;
+        var text = buildRequest();
+        function ok() {
+          status.textContent = 'Solicitud copiada. Esto inicia una solicitud: todavía no se eliminó ninguna cuenta.';
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(ok).catch(function () {
+            window.prompt('Copiá esta solicitud:', text);
+            ok();
+          });
+        } else {
+          window.prompt('Copiá esta solicitud:', text);
+          ok();
+        }
+      });
+      emailBtn.addEventListener('click', function () {
+        var account = requireAccount();
+        if (!account) return;
+        var mailto = 'mailto:soporte@animaldex.com'
+          + '?subject=' + encodeURIComponent('Solicitud de eliminación de cuenta - Animaldex')
+          + '&body=' + encodeURIComponent(buildMailtoBody(account, detailsValue()));
+        window.location.href = mailto;
+        status.textContent = 'Se abrió el correo para iniciar la solicitud. Esto no significa que la cuenta ya fue eliminada.';
+      });
+    })();
+  </script>
+</body>
+</html>

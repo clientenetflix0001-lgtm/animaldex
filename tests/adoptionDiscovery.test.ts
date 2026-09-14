@@ -207,7 +207,8 @@ describe('navegación PetProfile / PublicProfile y fuente A', () => {
     assert.match(chunk, /p\.created_at < \?/);
     assert.match(chunk, /hasMore/);
     assert.match(chunk, /source: 'protector_pet'/);
-    assert.match(chunk, /LOWER\(pr\.locality\) = LOWER\(\?\)/);
+    // Desde Fase 5 el ámbito territorial entra por identidad, no por texto.
+    assert.match(chunk, /requestTerritoryCondition\(env, 'profiles', 'pr', body, locality\)/);
     assert.match(chunk, /shelterLocality/);
     assert.doesNotMatch(chunk, /en_recuperacion/);
     assert.doesNotMatch(chunk, /pr\.location, ''\)\) LIKE/);
@@ -266,7 +267,7 @@ describe('locality normalizada del protector', () => {
     assert.match(chunk, /locality = \?/);
     assert.match(chunk, /location = \?, locality = \?, phone/);
     const edit = readFileSync(join(root, 'screens/EditPublicProfileScreen.tsx'), 'utf8');
-    assert.match(edit, /LocalityPicker/);
+    assert.match(edit, /PlacePicker/);
     assert.match(edit, /profileType === 'protector'/);
     assert.match(edit, /location: location\.trim\(\)/);
     assert.match(edit, /locality: profileType === 'protector' \? locality/);
@@ -359,8 +360,8 @@ describe('layout inmersivo Adoptar', () => {
     assert.match(discovery, /setSpecies/);
     assert.match(discovery, /setSize/);
     assert.match(discovery, /setSex/);
-    assert.match(discovery, /\.\.\.filters,\s*locality: targetLocality/);
-    assert.match(discovery, /LocalityPicker/);
+    assert.match(discovery, /\.\.\.filters,\s*locality,\s*territory,/);
+    assert.match(discovery, /PlacePicker/);
     assert.match(discovery, /saveAdoptionLocality/);
   });
 
@@ -407,7 +408,7 @@ describe('layout inmersivo Adoptar', () => {
   it('no modifica adoptionFeed ni el Worker', () => {
     const start = worker.indexOf("action === 'adoptionFeed'");
     const chunk = worker.slice(start, start + 2800);
-    assert.match(chunk, /LOWER\(pr\.locality\) = LOWER\(\?\)/);
+    assert.match(chunk, /requestTerritoryCondition\(env, 'profiles', 'pr', body, locality\)/);
     assert.match(chunk, /p\.care_status = 'en_adopcion'/);
     const feedLib = readFileSync(join(root, 'lib/adoptionFeed.ts'), 'utf8');
     assert.match(feedLib, /db\.adoptionFeed/);

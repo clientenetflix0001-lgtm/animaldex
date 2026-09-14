@@ -9,6 +9,9 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Wrangler: estado del D1 local que crea `wrangler dev`
+.wrangler/
+
 # Native
 .kotlin/
 *.orig.*
@@ -49,3 +52,4 @@ node_modules_old*/
 .git_old_*/
 dist_broken_*/
 .junk/
+scripts/geo/.backfill.generated.sql

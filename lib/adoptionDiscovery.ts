@@ -14,6 +14,8 @@
  * siendo dirección visible y no se usa como filtro.
  */
 
+import type { Territory } from './geoplace/territory.ts';
+
 function speciesBucket(species: string | null | undefined): 'perro' | 'gato' | 'otro' {
   if (species === 'perro') return 'perro';
   if (species === 'gato') return 'gato';
@@ -146,6 +148,12 @@ export interface AdoptionFilters {
 
 export interface AdoptionQuery extends AdoptionFilters {
   locality?: string | null;
+  /**
+   * Identidad del lugar elegido. Es lo que filtra en el servidor desde Fase 5;
+   * `locality` queda para el ranking local y para los perfiles cuya ubicación
+   * es anterior al catálogo.
+   */
+  territory?: Territory | null;
   before?: number;
   limit?: number;
 }

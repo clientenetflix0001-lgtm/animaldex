@@ -3,6 +3,7 @@
 // ============================================================
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { TerritoryQuery } from './geoplace/territory.ts';
 
 // Backend real: Cloudflare Worker con acceso nativo a D1 (rápido y confiable).
 // Las funciones serverless de Vercel no se desplegaban de forma consistente,
@@ -383,8 +384,17 @@ export const auth = {
     call('/auth', { action: 'checkEmail', email }),
   me: () => call('/auth', { action: 'me' }),
   logout: () => call('/auth', { action: 'logout' }),
-  updateProfile: (fields: { name?: string; bio?: string; location?: string; avatarUrl?: string; username?: string }) =>
-    call('/auth', { action: 'updateProfile', ...fields }),
+  updateProfile: (fields: {
+    name?: string;
+    bio?: string;
+    location?: string;
+    avatarUrl?: string;
+    username?: string;
+    /** Identidad del lugar normalizado: `AR:georef:66028050`. Aditivo. */
+    placeId?: string | null;
+    admin1Code?: string | null;
+    admin2Code?: string | null;
+  }) => call('/auth', { action: 'updateProfile', ...fields }),
 };
 
 // ---------- Datos ----------
@@ -392,11 +402,16 @@ export const auth = {
 export const db = {
   feed: (before?: number, limit = 10): Promise<{ posts: ApiPost[] }> =>
     call('/db', { action: 'feed', before, limit }),
+  /**
+   * `TerritoryQuery` es la identidad del lugar del visitante. Desde Fase 5 el
+   * Worker filtra alertas y adopciones de Inicio con ella; sin identidad
+   * degrada al texto guardado en la cuenta.
+   */
   homeFeed: (input?: {
     before?: number;
     limit?: number;
     includeModules?: boolean;
-  }): Promise<{
+  } & TerritoryQuery): Promise<{
     posts: ApiPost[];
     /** Locality-relevant post ids. Not a 10 km metric. */
     nearbyPostIds: string[];
@@ -449,12 +464,13 @@ export const db = {
     call('/db', { action: 'featuredPets' }),
   adoptionFeed: (params: {
     locality?: string;
+    province?: string | null;
     species?: string;
     size?: string;
     sex?: string;
     before?: number;
     limit?: number;
-  }): Promise<{
+  } & TerritoryQuery): Promise<{
     items: Array<
       ApiPet & {
         source?: 'protector_pet';
@@ -543,6 +559,10 @@ export const db = {
     avatar?: string | null;
     adoptionWhatsapp?: string | null;
     adoptionPhone?: string | null;
+    /** Identidad del lugar normalizado: `AR:georef:66028050`. Aditivo. */
+    placeId?: string | null;
+    admin1Code?: string | null;
+    admin2Code?: string | null;
   }): Promise<{ profile: import('../features/profiles/profileTypes').PublicProfile }> =>
     call('/db', { action: 'updatePublicProfile', ...input }),
   updatePost: (postId: string, caption: string): Promise<{ caption: string }> =>
@@ -656,8 +676,18 @@ export const db = {
   listTags: (): Promise<{ ok: boolean; tags: ApiTag[] }> => call('/db', { action: 'listTags' }),
 
   // ---------- Alertas (animales perdidos/encontrados) ----------
-  alertsFeed: (locality: string, before?: number, limit = 10): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
-    call('/db', { action: 'alertsFeed', locality, before, limit }),
+  /**
+   * `territory` es la identidad del lugar elegido. `locality` sigue viajando
+   * porque el Worker la necesita para las filas anteriores al catálogo y para
+   * responder a versiones de la app que todavía no mandan identidad.
+   */
+  alertsFeed: (
+    locality: string,
+    before?: number,
+    limit = 10,
+    territory?: TerritoryQuery & { province?: string | null }
+  ): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
+    call('/db', { action: 'alertsFeed', locality, before, limit, ...territory }),
   alertDetail: (alertId: string): Promise<{ alert: ApiAlert }> => call('/db', { action: 'alertDetail', alertId }),
   alertComments: (alertId: string): Promise<{ comments: ApiComment[] }> =>
     call('/db', { action: 'alertComments', alertId }),
@@ -677,6 +707,14 @@ export const db = {
     authorProfileId?: string | null;
     contactWhatsapp?: string | null;
     contactPhone?: string | null;
+    /**
+     * Identidad del lugar normalizado, ej. `AR:georef:66028050`. Aditivo: el
+     * Worker lo valida contra el catálogo y `locality`/`province` se siguen
+     * enviando para no romper a los consumidores actuales.
+     */
+    placeId?: string | null;
+    admin1Code?: string | null;
+    admin2Code?: string | null;
   }): Promise<{ alert: ApiAlert }> => call('/db', { action: 'createAlert', ...alert }),
   myAlerts: (tab: 'active' | 'resolved', before?: number, limit = 20): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
     call('/db', { action: 'myAlerts', tab, before, limit }),
@@ -702,12 +740,13 @@ export const db = {
   listingsFeed: (params: {
     kind: 'product' | 'service';
     locality?: string;
+    province?: string | null;
     category?: string;
     section?: 'featured' | 'nearby' | 'top_rated' | 'recent';
     q?: string;
     before?: number;
     limit?: number;
-  }): Promise<{ listings: ApiListing[]; hasMore: boolean }> => call('/db', { action: 'listingsFeed', ...params }),
+  } & TerritoryQuery): Promise<{ listings: ApiListing[]; hasMore: boolean }> => call('/db', { action: 'listingsFeed', ...params }),
   listingDetail: (listingId: string): Promise<{ listing: ApiListing }> =>
     call('/db', { action: 'listingDetail', listingId }),
   listingContact: (listingId: string): Promise<{
@@ -737,6 +776,10 @@ export const db = {
     lon?: number | null;
     contactMethod?: 'whatsapp' | 'phone';
     contactValue?: string;
+    /** Identidad del lugar normalizado. Aditivo, igual que en createAlert. */
+    placeId?: string | null;
+    admin1Code?: string | null;
+    admin2Code?: string | null;
   }): Promise<{ listing: ApiListing }> => call('/db', { action: 'createListing', ...listing }),
   deleteListing: (listingId: string): Promise<{ ok: boolean }> => call('/db', { action: 'deleteListing', listingId }),
   myListings: (): Promise<{ listings: ApiListing[] }> => call('/db', { action: 'myListings' }),
@@ -844,6 +887,13 @@ export const db = {
     call('/db', { action: 'createStoryComment', storyId, text }),
   reportStory: (storyId: string): Promise<{ ok: boolean; reportType: string; targetId: string }> =>
     call('/db', { action: 'reportStory', storyId }),
+
+  // ---------- Geo ----------
+  // La app NUNCA llama a Georef directamente: el Worker redondea la coordenada
+  // a una celda de ~1 km antes de consultar al proveedor oficial. La respuesta
+  // trae candidatos y un nivel de confianza, nunca una localidad afirmada.
+  geoResolveCoords: (lat: number, lon: number): Promise<any> =>
+    call('/geo', { action: 'resolveCoords', lat, lon }),
 };
 
 // ---------- Helpers ----------

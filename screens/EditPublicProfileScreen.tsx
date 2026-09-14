@@ -24,7 +24,8 @@ import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
 import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
 import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib/adoptionContact';
-import { LocalityPicker } from '../components/LocalityPicker';
+import { PlacePicker } from '../components/PlacePicker';
+import type { GeoPlace } from '../lib/geoplace/types.ts';
 import type { ProfileType } from '../features/profiles/profileTypes';
 import BioField from '../components/BioField';
 import { BIO_WORD_LIMIT_ERROR, isBioWithinWordLimit } from '../lib/bio';
@@ -39,6 +40,9 @@ export default function EditPublicProfileScreen() {
   const [location, setLocation] = useState('');
   const [locality, setLocality] = useState<string | null>(null);
   const [province, setProvince] = useState<string | null>(null);
+  // Ubicación administrativa de la página. Separada del campo "Dirección",
+  // que es texto libre y no se usa nunca como clave territorial.
+  const [place, setPlace] = useState<GeoPlace | null>(null);
   const [profileType, setProfileType] = useState<ProfileType | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [phone, setPhone] = useState('');
@@ -138,6 +142,11 @@ export default function EditPublicProfileScreen() {
         avatar: avatarUrl,
         adoptionWhatsapp: profileType === 'protector' ? adoptionWhatsapp.trim() : undefined,
         adoptionPhone: profileType === 'protector' ? adoptionPhone.trim() : undefined,
+        // Solo se envía si el usuario eligió la localidad en esta sesión:
+        // `undefined` deja el valor existente intacto.
+        placeId: place?.placeId,
+        admin1Code: place?.admin1Code,
+        admin2Code: place?.admin2Code,
       });
       await refreshProfiles();
       navigation.goBack();
@@ -146,7 +155,7 @@ export default function EditPublicProfileScreen() {
     } finally {
       setSaving(false);
     }
-  }, [profileId, name, username, bio, location, locality, profileType, phone, adoptionWhatsapp, adoptionPhone, avatarUrl, refreshProfiles, navigation]);
+  }, [profileId, name, username, bio, location, locality, place, profileType, phone, adoptionWhatsapp, adoptionPhone, avatarUrl, refreshProfiles, navigation]);
 
   if (loading) {
     return (
@@ -223,9 +232,13 @@ export default function EditPublicProfileScreen() {
             value={location}
             onChangeText={setLocation}
             maxLength={80}
-            placeholder="Calle, ciudad"
+            placeholder="Calle y número"
             placeholderTextColor={colors.textMuted}
           />
+          <Text style={styles.localityHint}>
+            Es sólo para mostrar. La ubicación que se usa para encontrar tu página se elige más
+            abajo, en Localidad.
+          </Text>
 
           {profileType === 'protector' ? (
             <>
@@ -262,7 +275,8 @@ export default function EditPublicProfileScreen() {
                 <Text style={styles.changeLocText}>Cambiar</Text>
               </Pressable>
               <Text style={styles.localityHint}>
-                Se usa para mostrar tus mascotas en Adoptar. La dirección de arriba sigue siendo texto libre.
+                Se usa para mostrar tus mascotas en Adoptar. Se elige de la lista oficial de
+                localidades; la dirección de arriba no cuenta para esto.
               </Text>
             </>
           ) : null}
@@ -272,12 +286,13 @@ export default function EditPublicProfileScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
-      <LocalityPicker
+      <PlacePicker
         visible={pickerVisible}
         currentProvince={province}
         title="Localidad de Bienestar Animal"
         onClose={() => setPickerVisible(false)}
         onSelect={(entry) => {
+          setPlace(entry.place);
           setLocality(entry.locality);
           setProvince(entry.province);
           setPickerVisible(false);

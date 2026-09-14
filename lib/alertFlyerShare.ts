@@ -2,12 +2,15 @@ import { Platform, Share, type View } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import { FLYER_EXPORT_HEIGHT, FLYER_EXPORT_WIDTH, type AlertFlyer } from './alertFlyer.ts';
 import {
+  FLYER_FALLBACK_HEIGHT,
+  FLYER_FALLBACK_WIDTH,
   FLYER_JPEG_QUALITIES,
   FLYER_SHARE_MIME,
   FLYER_SHARE_UTI,
   flyerJpegQualityForAttempt,
   flyerShareSize,
   pickSmallerFlyer,
+  shouldFallbackFlyerResolution,
   shouldRetryFlyerCompress,
   type FlyerCompressAttempt,
 } from './alertFlyerOptimize.ts';
@@ -78,7 +81,7 @@ async function compressFlyerJpeg(
   height: number
 ): Promise<{ uri: string; width: number; height: number }> {
   const { ImageManipulator, SaveFormat } = await import('expo-image-manipulator');
-  const size = flyerShareSize(width, height);
+  const size = flyerShareSize(width, height, width, height);
   const context = ImageManipulator.manipulate(uri);
   context.resize(size);
   const rendered = await context.renderAsync();
@@ -88,11 +91,16 @@ async function compressFlyerJpeg(
   });
 }
 
-async function optimizeCapturedFlyer(sourceUri: string, temps: string[]): Promise<FlyerCompressAttempt> {
+async function compressAtSize(
+  sourceUri: string,
+  temps: string[],
+  width: number,
+  height: number
+): Promise<FlyerCompressAttempt> {
   let best: FlyerCompressAttempt | null = null;
   for (let attempt = 0; attempt < FLYER_JPEG_QUALITIES.length; attempt++) {
     const quality = flyerJpegQualityForAttempt(attempt);
-    const result = await compressFlyerJpeg(sourceUri, quality, FLYER_EXPORT_WIDTH, FLYER_EXPORT_HEIGHT);
+    const result = await compressFlyerJpeg(sourceUri, quality, width, height);
     temps.push(result.uri);
     const bytes = await flyerFileBytes(result.uri);
     best = pickSmallerFlyer(best, { uri: result.uri, bytes, quality });
@@ -100,6 +108,13 @@ async function optimizeCapturedFlyer(sourceUri: string, temps: string[]): Promis
   }
   if (!best) throw new Error('No se pudo comprimir el flyer');
   return best;
+}
+
+async function optimizeCapturedFlyer(sourceUri: string, temps: string[]): Promise<FlyerCompressAttempt> {
+  const best = await compressAtSize(sourceUri, temps, FLYER_EXPORT_WIDTH, FLYER_EXPORT_HEIGHT);
+  if (!shouldFallbackFlyerResolution(best.bytes)) return best;
+  const fallback = await compressAtSize(sourceUri, temps, FLYER_FALLBACK_WIDTH, FLYER_FALLBACK_HEIGHT);
+  return pickSmallerFlyer(best, fallback);
 }
 
 async function optimizeByRecapture(view: View, temps: string[]): Promise<FlyerCompressAttempt> {
@@ -113,7 +128,9 @@ async function optimizeByRecapture(view: View, temps: string[]): Promise<FlyerCo
     if (!bytes || !shouldRetryFlyerCompress(bytes, attempt)) break;
   }
   if (!best) throw new Error('No se pudo capturar el flyer');
-  return best;
+  if (!shouldFallbackFlyerResolution(best.bytes)) return best;
+  const fallback = await compressAtSize(best.uri, temps, FLYER_FALLBACK_WIDTH, FLYER_FALLBACK_HEIGHT);
+  return pickSmallerFlyer(best, fallback);
 }
 
 async function shareOptimizedJpeg(uri: string, flyer: AlertFlyer): Promise<void> {

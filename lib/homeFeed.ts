@@ -13,6 +13,7 @@ import {
 } from './feedComposition.ts';
 import { pickLocalityRelevantPostIds, pickTrendingPostIds } from './feedRanking.ts';
 import { readCachedLastLocation } from './lastLocationSync';
+import { territoryQuery, type TerritoryQuery } from './geoplace/territory.ts';
 
 export const HOME_FEED_CACHE_KEY = 'animaldex-home-feed-cache-v1';
 
@@ -95,9 +96,11 @@ async function fallbackBuckets(input: {
   before?: number;
   limit: number;
   locality?: string | null;
+  territory?: TerritoryQuery;
   firstPage: boolean;
 }): Promise<HomeFeedBuckets> {
   const locality = input.locality || undefined;
+  const territory = input.territory || {};
   const tasks: Promise<void>[] = [];
   let posts: ApiPost[] = [];
   let storyRail: ApiStoryRailItem[] = [];
@@ -117,15 +120,18 @@ async function fallbackBuckets(input: {
         storyRail = res.items || [];
       }).catch(() => {})
     );
-    if (locality) {
+    // Con identidad territorial no hace falta el texto: el Worker ya puede
+    // armar el filtro sin él.
+    const scoped = Boolean(territory.placeId || territory.admin2Code || territory.admin1Code);
+    if (locality || scoped) {
       tasks.push(
-        db.alertsFeed(locality, undefined, FEED_COMPOSITION_POLICY.alertCandidateLimit).then((res) => {
+        db.alertsFeed(locality || '', undefined, FEED_COMPOSITION_POLICY.alertCandidateLimit, territory).then((res) => {
           alerts = (res.alerts || []).filter((a) => a.status !== 'resolved');
         }).catch(() => {})
       );
     }
     tasks.push(
-      db.adoptionFeed({ locality, limit: FEED_COMPOSITION_POLICY.maxAdoptions }).then((res) => {
+      db.adoptionFeed({ locality, ...territory, limit: FEED_COMPOSITION_POLICY.maxAdoptions }).then((res) => {
         adoptions = mapAdoptions(res.items);
       }).catch(() => {})
     );
@@ -161,18 +167,27 @@ export async function fetchHomeFeedBuckets(input: {
   const limit = input.limit ?? (input.firstPage
     ? FEED_COMPOSITION_POLICY.firstPagePostLimit
     : FEED_COMPOSITION_POLICY.laterPagePostLimit);
+  // La identidad territorial de la señal sincronizada. El Worker la prefiere
+  // sobre el texto de la cuenta, que puede ser anterior al catálogo.
+  const cached = await readCachedLastLocation();
   try {
     const json = await db.homeFeed({
       before: input.before,
       limit,
       includeModules: input.firstPage,
+      ...territoryQuery(cached?.territory),
     });
     return { buckets: bucketsFromHomeFeedResponse(json), source: 'homeFeed' };
   } catch {
-    const cached = await readCachedLastLocation();
     const locality = input.locality || cached?.locality || null;
     return {
-      buckets: await fallbackBuckets({ before: input.before, limit, locality, firstPage: input.firstPage }),
+      buckets: await fallbackBuckets({
+        before: input.before,
+        limit,
+        locality,
+        territory: territoryQuery(cached?.territory),
+        firstPage: input.firstPage,
+      }),
       source: 'fallback',
     };
   }

@@ -6,7 +6,9 @@ import PetTransferRequestScreen from '../screens/PetTransferRequestScreen';
 import PublicProfileScreen from '../screens/PublicProfileScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import AdoptionDiscoveryScreen from '../screens/AdoptionDiscoveryScreen';
+import { CreateFlyerDraftScreen, CreateFlyerPreviewScreen } from '../screens/CreateFlyerScreens';
 import type { TabParamList, TabProfileStackParamList } from './types';
+import { colors } from './theme';
 
 const Stack = createNativeStackNavigator<TabProfileStackParamList>();
 
@@ -47,6 +49,34 @@ export function createTabProfileStack(Root: React.ComponentType) {
           name="AdoptionDiscovery"
           component={AdoptionDiscoveryScreen}
           options={{ contentStyle: { backgroundColor: '#000' } }}
+        />
+        <Stack.Screen
+          name="CreateFlyerDraft"
+          component={CreateFlyerDraftScreen}
+          options={{
+            headerShown: true,
+            title: 'Crear flyer',
+            headerBackTitle: 'Atrás',
+            headerTintColor: colors.text,
+            headerTitleStyle: { fontWeight: '800', color: colors.text },
+            headerStyle: { backgroundColor: colors.bg },
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: colors.bg },
+          }}
+        />
+        <Stack.Screen
+          name="CreateFlyerPreview"
+          component={CreateFlyerPreviewScreen}
+          options={{
+            headerShown: true,
+            title: 'Flyer',
+            headerBackTitle: 'Atrás',
+            headerTintColor: colors.text,
+            headerTitleStyle: { fontWeight: '800', color: colors.text },
+            headerStyle: { backgroundColor: colors.bg },
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: colors.bg },
+          }}
         />
       </Stack.Navigator>
     );

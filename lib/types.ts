@@ -7,6 +7,8 @@ export type TabProfileStackParamList = {
   PublicProfile: { profileId?: string; username?: string };
   UserProfile: { userId: string };
   AdoptionDiscovery: undefined;
+  CreateFlyerDraft: { purpose?: 'flyer' } | undefined;
+  CreateFlyerPreview: { from?: import('./alertFlyer').AlertFlyerSource } | undefined;
 };
 
 export type TabParamList = {
@@ -14,7 +16,7 @@ export type TabParamList = {
   Reels: NavigatorScreenParams<TabProfileStackParamList> | undefined;
   Alertas: NavigatorScreenParams<TabProfileStackParamList> | undefined;
   Mercado: NavigatorScreenParams<TabProfileStackParamList> | undefined;
-  Crear: undefined;
+  Crear: NavigatorScreenParams<TabProfileStackParamList> | undefined;
   Mascotas: NavigatorScreenParams<TabProfileStackParamList> | undefined;
   Actividad: NavigatorScreenParams<TabProfileStackParamList> | undefined;
   Perfil: NavigatorScreenParams<TabProfileStackParamList> | undefined;

@@ -58,6 +58,9 @@ export const RESERVED_PUBLIC_USERNAMES: readonly string[] = [
   'favicon.ico',
   'robots.txt',
   'well-known',
+  'privacidad',
+  'eliminar-cuenta',
+  'seguridad-infantil',
 ];
 
 const RESERVED_SET = new Set(RESERVED_PUBLIC_USERNAMES);

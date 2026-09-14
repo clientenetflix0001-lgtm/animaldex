@@ -22,8 +22,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { db } from '../lib/db';
 import { uploadImage } from '../lib/api';
-import { detectCurrentLocality, withProvinceFallback } from '../lib/geo';
-import { LocalityPicker } from '../components/LocalityPicker';
+import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
+import { PlacePicker, placeSelection, type PlaceSelection } from '../components/PlacePicker';
+import type { GeoPlace } from '../lib/geoplace/types.ts';
 import {
   categoriesFor,
   DELIVERY_OPTIONS,
@@ -64,21 +65,33 @@ export default function CreateListingScreen() {
   const [province, setProvince] = useState<string | null>(null);
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
+  // Identidad territorial normalizada de la publicación.
+  const [place, setPlace] = useState<GeoPlace | null>(null);
   const [locating, setLocating] = useState(true);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const detected = await detectCurrentLocality();
-      if (detected && detected.locality) {
-        setLocality(detected.locality);
-        setProvince(withProvinceFallback(detected.locality, detected.province));
-        setLat(detected.lat);
-        setLon(detected.lon);
+      // Precarga solo sin ambigüedad territorial. Con varios candidatos el
+      // campo queda vacío y lo resuelve el usuario en el PlacePicker.
+      const res = await locateCurrentPlace();
+      const only = res.ok ? unambiguousPlace(res) : null;
+      if (cancelled) return;
+      if (only) {
+        const entry = placeSelection(only);
+        setPlace(only);
+        setLocality(entry.locality);
+        setProvince(entry.province);
+        setLat(entry.lat);
+        setLon(entry.lon);
       }
       setLocating(false);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -130,15 +143,13 @@ export default function CreateListingScreen() {
     setImages((prev) => prev.filter((i) => i !== uri));
   }, []);
 
-  const applyLocality = useCallback(
-    (entry: { locality: string; province: string | null; lat?: number | null; lon?: number | null }) => {
-      setLocality(entry.locality);
-      setProvince(entry.province);
-      if (entry.lat != null) setLat(entry.lat);
-      if (entry.lon != null) setLon(entry.lon);
-    },
-    []
-  );
+  const applyLocality = useCallback((entry: PlaceSelection) => {
+    setPlace(entry.place);
+    setLocality(entry.locality);
+    setProvince(entry.province);
+    if (entry.lat != null) setLat(entry.lat);
+    if (entry.lon != null) setLon(entry.lon);
+  }, []);
 
   const publish = useCallback(async () => {
     if (images.length === 0) {
@@ -183,6 +194,9 @@ export default function CreateListingScreen() {
         province: province || undefined,
         lat,
         lon,
+        placeId: place?.placeId ?? null,
+        admin1Code: place?.admin1Code ?? null,
+        admin2Code: place?.admin2Code ?? null,
       });
       navigation.replace('ListingDetail', { listingId: listing.id });
     } catch (e: any) {
@@ -190,7 +204,7 @@ export default function CreateListingScreen() {
     } finally {
       setSaving(false);
     }
-  }, [images, title, description, locality, province, lat, lon, kind, category, priceArs, stock, deliveryMethod, modality, availability, contactMethod, contactValue, navigation]);
+  }, [images, title, description, locality, province, lat, lon, place, kind, category, priceArs, stock, deliveryMethod, modality, availability, contactMethod, contactValue, navigation]);
 
   // ---------- Paso 1: elegir tipo ----------
   if (step === 'choose') {
@@ -421,7 +435,7 @@ export default function CreateListingScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <LocalityPicker
+      <PlacePicker
         visible={pickerVisible}
         currentProvince={province}
         title="Ubicación de tu publicación"
