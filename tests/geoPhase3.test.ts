@@ -96,7 +96,7 @@ describe('PlacePicker sin texto libre', () => {
     // onSelect se invoca exclusivamente con el resultado de placeSelection.
     const calls = picker.match(/onSelect\(/g) || [];
     assert.equal(calls.length, 1);
-    assert.match(picker, /onSelect\(placeSelection\(place\)\)/);
+    assert.match(picker, /onSelect\(placeSelection\(place\),\s*source\)/);
   });
 
   it('sin coincidencias ofrece reintentar o usar el GPS, no crear la localidad', () => {
