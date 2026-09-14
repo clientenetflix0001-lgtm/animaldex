@@ -8,6 +8,17 @@ import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProvinceForLocality } from './localities';
 import { haversineKm as haversineKmCore } from './feedGeo.ts';
+import type { AlertsLocalitySource } from './alertsLocality.ts';
+
+export type {
+  AlertsLocalityIdentity,
+  AlertsLocalitySource,
+} from './alertsLocality.ts';
+export {
+  alertsLocalityNeedsReplace,
+  parseAlertsLocalitySource,
+  shouldRefreshAlertsLocalityOnEnter,
+} from './alertsLocality.ts';
 
 export interface ResolvedLocality {
   locality: string;
@@ -54,8 +65,6 @@ export async function detectCurrentLocality(): Promise<ResolvedLocality | null> 
  * `source` distingue GPS automático de una búsqueda manual. Solo vive en
  * AsyncStorage: los guardados viejos sin este campo se tratan como `auto`.
  */
-export type AlertsLocalitySource = 'auto' | 'manual';
-
 export type SavedAlertsLocality = {
   locality: string;
   province: string | null;
@@ -67,36 +76,6 @@ export type SavedAlertsLocality = {
    */
   source?: AlertsLocalitySource;
 };
-
-/** Guardados viejos sin `source` se tratan como automáticos. */
-export function parseAlertsLocalitySource(raw: unknown): AlertsLocalitySource {
-  return raw === 'manual' ? 'manual' : 'auto';
-}
-
-export function shouldRefreshAlertsLocalityOnEnter(source: AlertsLocalitySource): boolean {
-  return source === 'auto';
-}
-
-export type AlertsLocalityIdentity = {
-  placeId?: string | null;
-  locality: string;
-  province: string | null;
-};
-
-/**
- * True cuando la detección actual apunta a otro municipio/departamento
- * que el filtro mostrado. Compara `placeId` si ambos lo tienen.
- */
-export function alertsLocalityNeedsReplace(
-  displayed: AlertsLocalityIdentity | null,
-  detected: AlertsLocalityIdentity
-): boolean {
-  if (!displayed) return true;
-  if (displayed.placeId && detected.placeId) return displayed.placeId !== detected.placeId;
-  return (
-    displayed.locality !== detected.locality || (displayed.province || '') !== (detected.province || '')
-  );
-}
 
 export async function saveAlertsLocality(entry: SavedAlertsLocality): Promise<void> {
   try {

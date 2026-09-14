@@ -23,14 +23,13 @@ import { db, ApiAlert } from '../lib/db';
 import { useStore } from '../lib/store';
 import { AlertCard } from '../components/AlertCard';
 import { PlacePicker, placeSelection, type PlaceSelection } from '../components/PlacePicker';
+import { loadSavedAlertsLocality, saveAlertsLocality } from '../lib/geo';
 import {
   alertsLocalityNeedsReplace,
-  loadSavedAlertsLocality,
   parseAlertsLocalitySource,
-  saveAlertsLocality,
   shouldRefreshAlertsLocalityOnEnter,
   type AlertsLocalitySource,
-} from '../lib/geo';
+} from '../lib/alertsLocality.ts';
 import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
 import {
   territoryFromPlace,

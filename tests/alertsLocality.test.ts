@@ -8,7 +8,7 @@ import {
   alertsLocalityNeedsReplace,
   parseAlertsLocalitySource,
   shouldRefreshAlertsLocalityOnEnter,
-} from '../lib/geo.ts';
+} from '../lib/alertsLocality.ts';
 import { placeById, searchPlaces } from '../lib/geoplace/catalog.ts';
 import { placeDisplayName } from '../lib/geoplace/format.ts';
 
@@ -141,6 +141,7 @@ describe('PlacePicker: búsqueda, contrato y teclado', () => {
 
   it('el source vive solo en AsyncStorage, no en D1 ni en GEO de detección', () => {
     assert.match(geo, /ALERTS_LOCALITY_KEY/);
+    assert.match(read('lib/alertsLocality.ts'), /export type AlertsLocalitySource/);
     assert.doesNotMatch(read('lib/placeLocate.ts'), /AlertsLocalitySource/);
     assert.doesNotMatch(read('lib/geoplace/fromGeocode.ts'), /AlertsLocalitySource/);
     assert.doesNotMatch(read('worker/index.js'), /alertsLocalitySource/);
