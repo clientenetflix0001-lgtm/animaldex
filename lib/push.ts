@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { db } from './db';
 import { EXPO_PROJECT_ID, PUSH_CHANNEL_PETS, PUSH_CHANNEL_PETS_URGENT, PUSH_CHANNEL_REMINDERS, isExpoPushToken, pushNavDestination, pushTapFlushDecision } from './pushPolicy';
 import { interpretNotificationPermission, PUSH_PROMPT_DISMISSED_KEY } from './pushPrompt';
+import { shouldRequestOsNotificationPermission } from './firstPermissionsOnboarding';
 import { navigationRef } from './navigationRef';
 
 const UNREGISTER_TIMEOUT_MS = 2500;
@@ -105,6 +106,16 @@ export async function requestPushPermission(): Promise<boolean> {
   await ensureAndroidChannels();
   const current = await native.Notifications.getPermissionsAsync();
   if (current.granted) return true;
+  // Android 12 e inferior no tienen popup runtime de POST_NOTIFICATIONS.
+  if (
+    !shouldRequestOsNotificationPermission({
+      platform: Platform.OS,
+      androidSdk: Platform.OS === 'android' ? Number(Platform.Version) || 0 : 0,
+      alreadyGranted: false,
+    })
+  ) {
+    return current.granted;
+  }
   const next = await native.Notifications.requestPermissionsAsync();
   return !!next.granted;
 }
