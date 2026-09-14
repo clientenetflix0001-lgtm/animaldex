@@ -36,6 +36,7 @@ import {
 } from '../lib/homeFeed';
 import { extractFeedPosts, feedItemKey, type FeedItem } from '../lib/feedComposition';
 import { bindLastLocationForegroundSync } from '../lib/lastLocationSync';
+import FirstPermissionsOnboarding from '../components/FirstPermissionsOnboarding';
 import { HOME_MODULE_TITLES, storiesForYouItems } from '../lib/homeFeedModules';
 import type { ApiStoryRailItem } from '../lib/db';
 
@@ -413,6 +414,7 @@ export default function FeedScreen() {
           </View>
           {showRightPanel && <SuggestionsPanel />}
         </View>
+        <FirstPermissionsOnboarding />
       </View>
     );
   }
@@ -466,6 +468,7 @@ export default function FeedScreen() {
         {feedList}
         {newPill}
       </View>
+      <FirstPermissionsOnboarding />
     </View>
   );
 }

@@ -7,6 +7,11 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/images/animaldex-logo-mark.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FD6904"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.lucasap123.animaldex",
@@ -23,6 +28,11 @@
         "backgroundColor": "#FD6904",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "splash": {
+        "image": "./assets/images/animaldex-logo-mark.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#FD6904"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -98,6 +108,15 @@
       "web"
     ],
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FD6904",
+          "image": "./assets/images/animaldex-logo-mark.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ],
       "expo-font",
       [
         "expo-camera",
