@@ -8,6 +8,17 @@ import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProvinceForLocality } from './localities';
 import { haversineKm as haversineKmCore } from './feedGeo.ts';
+import type { AlertsLocalitySource } from './alertsLocality.ts';
+
+export type {
+  AlertsLocalityIdentity,
+  AlertsLocalitySource,
+} from './alertsLocality.ts';
+export {
+  alertsLocalityNeedsReplace,
+  parseAlertsLocalitySource,
+  shouldRefreshAlertsLocalityOnEnter,
+} from './alertsLocality.ts';
 
 export interface ResolvedLocality {
   locality: string;
@@ -51,11 +62,19 @@ export async function detectCurrentLocality(): Promise<ResolvedLocality | null> 
  * `placeId` es la identidad con la que filtra el Worker desde Fase 5.
  * `locality`/`province` se siguen guardando para mostrar y para alcanzar las
  * filas anteriores al catálogo.
+ * `source` distingue GPS automático de una búsqueda manual. Solo vive en
+ * AsyncStorage: los guardados viejos sin este campo se tratan como `auto`.
  */
 export type SavedAlertsLocality = {
   locality: string;
   province: string | null;
   placeId?: string | null;
+  /**
+   * `auto`: GPS / "Usar mi ubicación actual".
+   * `manual`: búsqueda en el selector para explorar otro lugar.
+   * Ausente en guardados anteriores a este campo: se trata como `auto`.
+   */
+  source?: AlertsLocalitySource;
 };
 
 export async function saveAlertsLocality(entry: SavedAlertsLocality): Promise<void> {

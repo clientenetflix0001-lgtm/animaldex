@@ -15,17 +15,20 @@
 // muestran al usuario por primera vez.
 // ============================================================
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { GEO_ATTRIBUTION, coarseDistanceLabel, placeContextLabel, placeDisplayName } from '../lib/geoplace/format.ts';
 import { searchPlaces } from '../lib/geoplace/catalog.ts';
@@ -58,12 +61,15 @@ export function placeSelection(place: GeoPlace): PlaceSelection {
   };
 }
 
+/** GPS / "Usar mi ubicación actual" vs búsqueda para explorar otro lugar. */
+export type PlaceSelectionSource = 'auto' | 'manual';
+
 interface Props {
   visible: boolean;
   /** Nombre de nivel 1 conocido: acota la búsqueda sin impedir salir de él. */
   currentProvince?: string | null;
   onClose: () => void;
-  onSelect: (selection: PlaceSelection) => void;
+  onSelect: (selection: PlaceSelection, source: PlaceSelectionSource) => void;
   title?: string;
   /** Muestra "Usar mi ubicación actual". */
   allowUseCurrentLocation?: boolean;
@@ -86,8 +92,10 @@ export function PlacePicker({
   title = 'Elegir ubicación',
   allowUseCurrentLocation = true,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<Mode>({ kind: 'search' });
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const provinceCode = useMemo(() => resolveAdmin1Code(currentProvince), [currentProvince]);
 
@@ -109,14 +117,19 @@ export function PlacePicker({
     return searchPlaces(trimmed, { limit: SEARCH_LIMIT });
   }, [query, provinceCode]);
 
+  useEffect(() => {
+    if (!visible) setSearchFocused(false);
+  }, [visible]);
+
   const reset = useCallback(() => {
     setQuery('');
     setMode({ kind: 'search' });
+    setSearchFocused(false);
   }, []);
 
   const choose = useCallback(
-    (place: GeoPlace) => {
-      onSelect(placeSelection(place));
+    (place: GeoPlace, source: PlaceSelectionSource) => {
+      onSelect(placeSelection(place), source);
       reset();
       onClose();
     },
@@ -134,7 +147,7 @@ export function PlacePicker({
     // Con varios candidatos, la elección es del usuario.
     const only = unambiguousPlace(res);
     if (only) {
-      choose(only);
+      choose(only, 'auto');
       return;
     }
     if (!res.candidates.length) {
@@ -153,7 +166,7 @@ export function PlacePicker({
     ({ item }: { item: GeoCandidate }) => {
       const distance = coarseDistanceLabel(item.distanceKm);
       return (
-        <Pressable style={styles.item} onPress={() => choose(item.place)}>
+        <Pressable style={styles.item} onPress={() => choose(item.place, 'auto')}>
           <Ionicons
             name={item.withinResolvedArea ? 'location' : 'location-outline'}
             size={17}
@@ -251,11 +264,12 @@ export function PlacePicker({
             Hay más de una ubicación con ese nombre. Elegí la correcta.
           </Text>
         ) : null}
-        <FlatList
-          data={matches}
-          keyExtractor={(item) => item.place.placeId}
-          renderItem={({ item }) => (
-            <Pressable style={styles.item} onPress={() => choose(item.place)}>
+          <FlatList
+            data={matches}
+            keyExtractor={(item) => item.place.placeId}
+            style={searchFocused ? { flex: 1 } : undefined}
+            renderItem={({ item }) => (
+              <Pressable style={styles.item} onPress={() => choose(item.place, 'manual')}>
               <Ionicons name="location-outline" size={17} color={colors.textMuted} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.itemLocality}>{placeDisplayName(item.place)}</Text>
@@ -297,49 +311,72 @@ export function PlacePicker({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
-      <Pressable style={styles.backdrop} onPress={close} />
-      <View style={styles.sheet}>
-        <View style={styles.handle} />
-        <View style={styles.headerRow}>
-          <Text style={styles.title}>{title}</Text>
-          <Pressable onPress={close} hitSlop={8}>
-            <Ionicons name="close" size={22} color={colors.text} />
-          </Pressable>
-        </View>
+      <KeyboardAvoidingView
+        style={styles.avoid}
+        behavior="padding"
+        enabled={Platform.OS !== 'web'}
+        keyboardVerticalOffset={0}
+      >
+        <View
+          style={[
+            styles.sheetColumn,
+            searchFocused ? { paddingTop: insets.top + 12 } : null,
+          ]}
+        >
+          <Pressable style={styles.backdrop} onPress={close} />
+          <View
+            style={[
+              styles.sheet,
+              { paddingBottom: Math.max(insets.bottom, spacing.sm) },
+              searchFocused ? styles.sheetExpanded : null,
+            ]}
+          >
+            <View style={styles.handle} />
+            <View style={styles.headerRow}>
+              <Text style={styles.title}>{title}</Text>
+              <Pressable onPress={close} hitSlop={8}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </Pressable>
+            </View>
 
-        {allowUseCurrentLocation && mode.kind === 'search' ? (
-          <Pressable style={styles.currentLocBtn} onPress={useCurrentLocation}>
-            <Ionicons name="locate" size={17} color={colors.primary} />
-            <Text style={styles.currentLocText}>Usar mi ubicación actual</Text>
-          </Pressable>
-        ) : null}
+            {allowUseCurrentLocation && mode.kind === 'search' ? (
+              <Pressable style={styles.currentLocBtn} onPress={useCurrentLocation}>
+                <Ionicons name="locate" size={17} color={colors.primary} />
+                <Text style={styles.currentLocText}>Usar mi ubicación actual</Text>
+              </Pressable>
+            ) : null}
 
-        {mode.kind === 'search' ? (
-          <View style={styles.searchWrap}>
-            <Ionicons name="search" size={17} color={colors.textMuted} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Buscar localidad…"
-              placeholderTextColor={colors.textMuted}
-              value={query}
-              onChangeText={setQuery}
-              returnKeyType="search"
-              autoCorrect={false}
-            />
+            {mode.kind === 'search' ? (
+              <View style={styles.searchWrap}>
+                <Ionicons name="search" size={17} color={colors.textMuted} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Buscar localidad…"
+                  placeholderTextColor={colors.textMuted}
+                  value={query}
+                  onChangeText={setQuery}
+                  onFocus={() => setSearchFocused(true)}
+                  returnKeyType="search"
+                  autoCorrect={false}
+                />
+              </View>
+            ) : null}
+
+            <View style={[styles.bodyWrap, searchFocused ? styles.bodyWrapExpanded : null]}>{body()}</View>
+
+            {/* CC BY 4.0. Obligatorio donde se muestran estos datos. */}
+            <Text style={styles.attribution}>{GEO_ATTRIBUTION}</Text>
           </View>
-        ) : null}
-
-        <View style={styles.bodyWrap}>{body()}</View>
-
-        {/* CC BY 4.0. Obligatorio donde se muestran estos datos. */}
-        <Text style={styles.attribution}>{GEO_ATTRIBUTION}</Text>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  avoid: { flex: 1 },
+  sheetColumn: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius.lg,
@@ -348,6 +385,10 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     maxHeight: '80%',
     ...shadow.card,
+  },
+  sheetExpanded: {
+    flex: 1,
+    maxHeight: '100%',
   },
   handle: {
     width: 40,
@@ -388,6 +429,7 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, color: colors.text, paddingVertical: 11 },
   bodyWrap: { minHeight: 160, flexShrink: 1 },
+  bodyWrapExpanded: { flex: 1 },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
