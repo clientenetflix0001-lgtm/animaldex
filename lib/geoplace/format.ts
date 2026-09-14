@@ -26,16 +26,39 @@ export { GEO_ATTRIBUTION };
 export function placeContextLabel(place: GeoPlace): string {
   const admin1 = place.admin1Name || '';
   const admin2 = place.admin2Name || '';
+  const shown = normalizeGeoText(placeDisplayName(place));
   if (!admin2) return admin1;
+  if (normalizeGeoText(admin2) === shown) return admin1;
   if (normalizeGeoText(admin2) === normalizeGeoText(place.localityName)) return admin1;
   if (normalizeGeoText(admin2) === normalizeGeoText(admin1)) return admin1;
   return admin1 ? `${admin2}, ${admin1}` : admin2;
 }
 
+/**
+ * Nombre corto para mostrar. No cambia el `placeId` ni `localityName` oficial.
+ *
+ *   San José de los Cerrillos → Cerrillos
+ *   Salta (dpto Capital)      → Salta Capital
+ *   La Merced                 → La Merced
+ */
+export function placeDisplayName(place: GeoPlace): string {
+  const loc = place.localityName || '';
+  const admin1 = place.admin1Name || '';
+  const admin2 = place.admin2Name || '';
+  const nLoc = normalizeGeoText(loc);
+  const nA1 = normalizeGeoText(admin1);
+  const nA2 = normalizeGeoText(admin2);
+
+  if (nLoc && nA1 && nLoc === nA1) return `${admin1} Capital`;
+  if (nA2 && nA2 !== 'capital' && nLoc !== nA2 && nLoc.includes(nA2)) return admin2;
+  return loc;
+}
+
 /** Una línea completa: `San Lorenzo · Capital, Salta`. */
 export function placeFullLabel(place: GeoPlace): string {
   const context = placeContextLabel(place);
-  return context ? `${place.localityName} · ${context}` : place.localityName;
+  const name = placeDisplayName(place);
+  return context ? `${name} · ${context}` : name;
 }
 
 /** Etiqueta del nivel 2 según el país, para textos tipo "Departamento: X". */

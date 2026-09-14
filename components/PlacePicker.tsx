@@ -8,9 +8,8 @@
 // forma alguna de guardar texto que no corresponda a un lugar del catálogo
 // oficial. Si no hay coincidencias, no hay nada que elegir.
 //
-// GPS: coordenadas -> Worker /geo -> provincia y departamento oficiales ->
-// candidatos del catálogo -> confirmación del usuario. La coordenada exacta no
-// llega a esta pantalla y las distancias se muestran por tramos gruesos.
+// GPS: coordenadas → reverseGeocodeAsync → catálogo embebido → GeoPlace.
+// La coordenada exacta no llega a esta pantalla.
 //
 // CC BY 4.0: pie de atribución obligatorio, porque acá los datos de Georef se
 // muestran al usuario por primera vez.
@@ -28,7 +27,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { GEO_ATTRIBUTION, coarseDistanceLabel, placeContextLabel } from '../lib/geoplace/format.ts';
+import { GEO_ATTRIBUTION, coarseDistanceLabel, placeContextLabel, placeDisplayName } from '../lib/geoplace/format.ts';
 import { searchPlaces } from '../lib/geoplace/catalog.ts';
 import { resolveAdmin1Code } from '../lib/geoplace/aliases.ts';
 import type { GeoCandidate, GeoPlace, PlaceResolution } from '../lib/geoplace/types.ts';
@@ -50,7 +49,7 @@ export type PlaceSelection = {
 
 export function placeSelection(place: GeoPlace): PlaceSelection {
   return {
-    locality: place.localityName,
+    locality: placeDisplayName(place),
     province: place.admin1Name || null,
     // Centroide del catálogo, no la coordenada del dispositivo.
     lat: place.centroidLat,
@@ -138,6 +137,10 @@ export function PlacePicker({
       choose(only);
       return;
     }
+    if (!res.candidates.length) {
+      setMode({ kind: 'search' });
+      return;
+    }
     setMode({ kind: 'confirm', resolution: res });
   }, [choose]);
 
@@ -157,7 +160,7 @@ export function PlacePicker({
             color={item.withinResolvedArea ? colors.primary : colors.textMuted}
           />
           <View style={{ flex: 1 }}>
-            <Text style={styles.itemLocality}>{item.place.localityName}</Text>
+            <Text style={styles.itemLocality}>{placeDisplayName(item.place)}</Text>
             <Text style={styles.itemContext}>
               {/* El candidato de otro departamento va último aunque esté más
                   cerca, así que conviene decir por qué aparece. */}
@@ -255,7 +258,7 @@ export function PlacePicker({
             <Pressable style={styles.item} onPress={() => choose(item.place)}>
               <Ionicons name="location-outline" size={17} color={colors.textMuted} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.itemLocality}>{item.place.localityName}</Text>
+                <Text style={styles.itemLocality}>{placeDisplayName(item.place)}</Text>
                 <Text style={styles.itemContext}>{placeContextLabel(item.place)}</Text>
               </View>
             </Pressable>

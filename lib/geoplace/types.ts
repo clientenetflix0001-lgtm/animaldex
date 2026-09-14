@@ -85,7 +85,9 @@ export type GeoResolutionSource =
   /** Área obtenida del proveedor oficial por contención de polígono. */
   | 'official'
   /** Sin red o sin área oficial: candidatos por centroide cercano del catálogo local. */
-  | 'offline-fallback';
+  | 'offline-fallback'
+  /** Texto del reverse geocoder del dispositivo, normalizado contra el catálogo. */
+  | 'device-geocode';
 
 export type GeoResolutionReason =
   | 'single-candidate'

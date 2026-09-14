@@ -1,27 +1,26 @@
 // ============================================================
 // Animaldex — GPS a lugar normalizado.
 // ============================================================
-// Reemplaza a `detectCurrentLocality()` como identidad territorial. La
-// diferencia de fondo:
+// Camino normal (sin Georef remoto):
 //
-//   detectCurrentLocality()  ->  Location.reverseGeocodeAsync()  ->  texto
-//   locateCurrentPlace()     ->  Worker /geo  ->  provincia + departamento
-//                                oficiales  ->  candidatos GeoPlace
+//   GPS → Location.reverseGeocodeAsync() → texto de municipio/departamento
+//       → catálogo GEO embebido → GeoPlace + IDs existentes
 //
-// `reverseGeocodeAsync` devuelve el texto que le parece al sistema operativo:
-// no es un identificador, cambia entre Android e iOS, y no se puede comparar
-// con el catálogo oficial. Sirve para mostrar, no para decidir territorio.
+// El reverse geocoder del sistema operativo es rápido y ya distinguía
+// Cerrillos de Salta. El catálogo convierte ese texto en la identidad que
+// ya usan Alertas, Adopción y Páginas. `/geo` (Georef remoto) sigue en el
+// Worker por si otro sistema lo necesita; esta función ya no lo llama.
 //
-// PRIVACIDAD: la coordenada se obtiene acá y NO se devuelve al llamador. El
-// Worker la redondea a una celda de ~1 km antes de consultar al proveedor
-// oficial. Esta función sólo entrega lugares del catálogo, que son públicos.
+// PRIVACIDAD: la coordenada se obtiene acá y NO se devuelve al llamador.
+// Tampoco se manda al Worker. Esta función sólo entrega lugares del catálogo,
+// que son públicos.
 // ============================================================
 
 import * as Location from 'expo-location';
-import { db } from './db';
-import { placeById, placeFromCoords } from './geoplace/resolve.ts';
+import { placeById } from './geoplace/catalog.ts';
+import { resolutionFromGeocode } from './geoplace/fromGeocode.ts';
 import { GEO_COUNTRY_CODE, GEO_PROVIDER } from './geoplace/catalog.ts';
-import type { GeoCandidate, GeoPlace, PlaceResolution } from './geoplace/types.ts';
+import type { GeoCandidate, PlaceResolution } from './geoplace/types.ts';
 
 export type LocateFailure =
   /** El usuario no dio permiso de ubicación. */
@@ -47,9 +46,9 @@ function candidateFromWire(raw: any): GeoCandidate | null {
 }
 
 /**
- * Traduce la respuesta de `/geo`. Los lugares se resuelven contra el catálogo
- * embebido y no se construyen con lo que llegó por la red: el `placeId` es la
- * identidad, el resto del payload es sólo señal.
+ * Traduce la respuesta de `/geo`. Se conserva porque el endpoint sigue
+ * existiendo para otros consumidores; el camino de detección automática
+ * ya no lo usa.
  */
 export function resolutionFromWire(raw: any): PlaceResolution | null {
   if (!raw || raw.ok !== true) return null;
@@ -72,7 +71,6 @@ export function resolutionFromWire(raw: any): PlaceResolution | null {
       : null,
     candidates,
     confidence: raw.confidence === 'high' || raw.confidence === 'medium' ? raw.confidence : 'low',
-    // Se respeta lo que decidió el servidor, y ante la duda se confirma.
     requiresConfirmation: raw.requiresConfirmation !== false,
     source: raw.source === 'official' ? 'official' : 'offline-fallback',
     boundaryRisk: !!raw.boundaryRisk,
@@ -81,13 +79,23 @@ export function resolutionFromWire(raw: any): PlaceResolution | null {
   };
 }
 
+const SAFE_EMPTY: PlaceResolution = {
+  administrativeArea: null,
+  candidates: [],
+  confidence: 'low',
+  requiresConfirmation: true,
+  source: 'device-geocode',
+  boundaryRisk: false,
+  governmentLocalCorroborated: false,
+  reason: 'no-candidates',
+};
+
 /**
- * Pide la ubicación, la resuelve contra el endpoint GEO y devuelve candidatos.
+ * Pide la ubicación, la pasa por el reverse geocoder del dispositivo y la
+ * normaliza contra el catálogo embebido.
  *
- * Nunca devuelve la coordenada del usuario. Si el endpoint no responde (Georef
- * caído, sin red, sin sesión) resuelve localmente contra el catálogo embebido,
- * con confianza baja y confirmación obligatoria: crear contenido no se bloquea
- * porque un servicio externo esté caído.
+ * Nunca devuelve la coordenada del usuario. Si el geocoder falla, no se
+ * inventa un lugar por cercanía de centroide: el usuario elige a mano.
  */
 export async function locateCurrentPlace(): Promise<LocateResult> {
   let coords: { latitude: number; longitude: number };
@@ -104,17 +112,22 @@ export async function locateCurrentPlace(): Promise<LocateResult> {
   }
 
   try {
-    const wire = await db.geoResolveCoords(coords.latitude, coords.longitude);
-    const resolution = resolutionFromWire(wire);
-    if (resolution) return { ok: true, ...resolution };
+    const results = await Location.reverseGeocodeAsync({
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+    });
+    const r = results?.[0];
+    return {
+      ok: true,
+      ...resolutionFromGeocode({
+        city: r?.city ?? null,
+        subregion: r?.subregion ?? null,
+        region: r?.region ?? null,
+      }),
+    };
   } catch {
-    // Sin red o endpoint caído: se sigue con el catálogo local.
+    return { ok: true, ...SAFE_EMPTY };
   }
-
-  // Fallback local. No hay polígono oficial, así que esto es una sugerencia por
-  // cercanía de centroide y nunca una localidad confirmada.
-  const local = placeFromCoords({ lat: coords.latitude, lng: coords.longitude });
-  return { ok: true, ...local };
 }
 
 // `unambiguousPlace` vive en placeResolution.ts, que no importa expo-location

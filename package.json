@@ -70,7 +70,7 @@
     "test:flyer": "node --experimental-strip-types --test tests/alertFlyer.test.ts",
     "test:legal": "node --experimental-strip-types --test tests/legalPages.test.ts",
     "test:geo": "node --experimental-strip-types --test tests/geo.test.ts",
-    "test:geo-phase3": "node --experimental-strip-types --test tests/geoPhase3.test.ts",
+    "test:geo-detect": "node --experimental-strip-types --test tests/geoDetect.test.ts",
     "test:geo-backfill": "node --experimental-strip-types --test tests/geoBackfill.test.ts",
     "test:geo-phase5": "node --experimental-strip-types --test tests/geoPhase5.test.ts",
     "test:hardening": "node --experimental-strip-types --test tests/hardening.test.ts",

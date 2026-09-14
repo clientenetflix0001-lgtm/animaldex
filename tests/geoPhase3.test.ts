@@ -91,7 +91,7 @@ describe('PlacePicker sin texto libre', () => {
   it('la selección siempre sale de un GeoPlace del catálogo', () => {
     // `placeSelection` es la única constructora del payload y toma un GeoPlace.
     assert.match(picker, /export function placeSelection\(place: GeoPlace\)/);
-    assert.match(picker, /locality: place\.localityName/);
+    assert.match(picker, /locality: placeDisplayName\(place\)/);
     assert.match(picker, /place\.admin1Name \|\| null/);
     // onSelect se invoca exclusivamente con el resultado de placeSelection.
     const calls = picker.match(/onSelect\(/g) || [];
@@ -204,11 +204,11 @@ const CERRILLOS_AREA: AdministrativeArea = {
 };
 
 describe('GPS normalizado', () => {
-  it('no usa reverseGeocodeAsync como identidad territorial', () => {
-    assert.doesNotMatch(readCode('lib/placeLocate.ts'), /reverseGeocodeAsync/);
+  it('detecta con reverseGeocodeAsync y normaliza contra el catálogo', () => {
+    assert.match(readCode('lib/placeLocate.ts'), /reverseGeocodeAsync/);
+    assert.doesNotMatch(readCode('lib/placeLocate.ts'), /geoResolveCoords/);
     assert.match(locate, /requestForegroundPermissionsAsync/);
     assert.match(locate, /getCurrentPositionAsync/);
-    assert.match(locate, /db\.geoResolveCoords/);
     for (const file of PICKER_SCREENS) {
       assert.doesNotMatch(read(file), /detectCurrentLocality/, file);
     }
@@ -350,9 +350,11 @@ describe('Georef caído', () => {
     assert.ok(body.candidates.length > 0);
   });
 
-  it('la app cae al catálogo local cuando el endpoint falla', () => {
-    assert.match(locate, /placeFromCoords\(\{ lat: coords\.latitude, lng: coords\.longitude \}\)/);
-    assert.match(locate, /Sin red o endpoint caído/);
+  it('si reverseGeocodeAsync falla no se inventa un lugar por centroide', () => {
+    assert.match(locate, /reverseGeocodeAsync/);
+    assert.match(locate, /reason: 'no-candidates'/);
+    assert.doesNotMatch(locate, /placeFromCoords\(\{ lat: coords\.latitude, lng: coords\.longitude \}\)/);
+    assert.doesNotMatch(locate, /geoResolveCoords/);
   });
 });
 

@@ -7,9 +7,9 @@
 //   detectCurrentLocality() -> Location.reverseGeocodeAsync() -> texto
 //
 // El texto del sistema operativo no es un identificador: difiere entre Android
-// e iOS, cambia entre versiones y no se puede comparar con el catálogo. Desde
-// Fase 5 la señal sale de `locateCurrentPlace()`, que pasa por el endpoint
-// /geo y devuelve lugares del catálogo.
+// e iOS, cambia entre versiones y no se puede comparar con el catálogo. Se
+// usa sólo como pista, y `locateCurrentPlace()` la convierte en un GeoPlace
+// del catálogo embebido. `/geo` no forma parte de este camino.
 //
 // PRIVACIDAD: la coordenada del dispositivo se usa dentro de
 // `locateCurrentPlace()` y no sale de ahí. Lo que se guarda en caché y se
@@ -26,6 +26,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, type AppStateStatus } from 'react-native';
 import { db } from './db';
 import { locateCurrentPlace } from './placeLocate';
+import { placeDisplayName } from './geoplace/format.ts';
 import { placeSignalFromResolution } from './lastLocationSignal.ts';
 import {
   LAST_LOCATION_CACHE_KEY,
@@ -69,8 +70,12 @@ export async function syncLastUsefulLocation(input?: {
       return cached;
     }
 
-    const { place, territory } = placeSignalFromResolution(await locateCurrentPlace());
-    const locality = fallbackLocality(place?.localityName, input?.profileLocality, input?.profileLocationText);
+  const { place, territory } = placeSignalFromResolution(await locateCurrentPlace());
+    const locality = fallbackLocality(
+      place ? placeDisplayName(place) : null,
+      input?.profileLocality,
+      input?.profileLocationText
+    );
     // La identidad anterior sólo se conserva si sigue hablando del mismo lugar.
     const carried = cached && !localityChanged(cached, locality) ? cached.territory : null;
     const next: LastLocationSnapshot = {
