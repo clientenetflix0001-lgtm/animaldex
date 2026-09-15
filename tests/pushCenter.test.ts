@@ -598,9 +598,9 @@ describe('mercado, digest y sanitizado', () => {
     });
     assert.equal(r.action, 'immediate');
     assert.equal(rows.size, 0);
-    assert.equal(sent[0].message.title, 'Nueva consulta por tu publicación');
-    assert.equal(sent[0].message.body, 'Lucas preguntó por Correa para perro.');
-    assert.equal(listingInquiryCopy('Lucas', 'Correa para perro').body, 'Lucas preguntó por Correa para perro.');
+    assert.equal(sent[0].message.title, 'Nueva consulta por tu producto');
+    assert.equal(sent[0].message.body, 'Lucas comentó en Correa para perro.');
+    assert.equal(listingInquiryCopy('Lucas', 'Correa para perro').body, 'Lucas comentó en Correa para perro.');
   });
 
   it('digest y respuestas quedan clasificados pero diferidos', () => {

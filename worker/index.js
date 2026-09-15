@@ -63,7 +63,7 @@ import {
   tokensToDisableFromReceipts,
   tokensToDisableFromTickets,
 } from '../lib/pushPolicy.ts';
-import { PUSH_KIND, scheduledJobKind } from '../lib/pushCenter.ts';
+import { PUSH_KIND, listingCommentActivityItem, schedulePushCenterWork, scheduledJobKind } from '../lib/pushCenter.ts';
 import { actorDisplayName, flushDuePushBatches, ingestPushEvent } from './pushBatches.js';
 import {
   POST_PET_IDENTITY_ERROR,
@@ -1903,7 +1903,7 @@ async function loadHomePageRecommendations(env, viewerId, locality) {
   }));
 }
 
-async function handleDb(request, env) {
+async function handleDb(request, env, ctx) {
   const body = await request.json().catch(() => ({}));
   const action = clean(body.action, 40);
   const now = Date.now();
@@ -2954,7 +2954,7 @@ async function handleDb(request, env) {
         const ownerId = posts[0]?.user_id;
         if (ownerId) {
           const actorName = await actorDisplayName(env, userId);
-          ingestPushEvent(env, notifyUserPush, {
+          schedulePushCenterWork(ctx, ingestPushEvent(env, notifyUserPush, {
             kind: PUSH_KIND.LIKE,
             actorId: userId,
             actorName,
@@ -2962,7 +2962,7 @@ async function handleDb(request, env) {
             targetId: postId,
             idempotencyKey: `push:like:${postId}:${userId}:${now}`,
             now,
-          }).catch(() => {});
+          }));
         }
       }
       return json({ ok: true, likeCount: count[0].n });
@@ -2988,7 +2988,7 @@ async function handleDb(request, env) {
       if (body.value) {
         const actorName = await actorDisplayName(env, userId);
         if (targetType === 'user') {
-          ingestPushEvent(env, notifyUserPush, {
+          schedulePushCenterWork(ctx, ingestPushEvent(env, notifyUserPush, {
             kind: PUSH_KIND.FOLLOW_USER,
             actorId: userId,
             actorName,
@@ -2996,11 +2996,11 @@ async function handleDb(request, env) {
             targetId,
             idempotencyKey: `push:follow_user:${targetId}:${userId}:${now}`,
             now,
-          }).catch(() => {});
+          }));
         } else if (targetType === 'pet') {
           const pets = await d1(env, 'SELECT user_id, name FROM pets WHERE id = ?', [targetId]);
           if (pets[0]) {
-            ingestPushEvent(env, notifyUserPush, {
+            schedulePushCenterWork(ctx, ingestPushEvent(env, notifyUserPush, {
               kind: PUSH_KIND.FOLLOW_PET,
               actorId: userId,
               actorName,
@@ -3011,12 +3011,12 @@ async function handleDb(request, env) {
               subjectName: pets[0].name,
               idempotencyKey: `push:follow_pet:${targetId}:${userId}:${now}`,
               now,
-            }).catch(() => {});
+            }));
           }
         } else if (targetType === 'profile') {
           const pages = await d1(env, 'SELECT account_id, name FROM profiles WHERE id = ?', [targetId]);
           if (pages[0]) {
-            ingestPushEvent(env, notifyUserPush, {
+            schedulePushCenterWork(ctx, ingestPushEvent(env, notifyUserPush, {
               kind: PUSH_KIND.FOLLOW_PAGE,
               actorId: userId,
               actorName,
@@ -3026,7 +3026,7 @@ async function handleDb(request, env) {
               profileId: targetId,
               idempotencyKey: `push:follow_page:${targetId}:${userId}:${now}`,
               now,
-            }).catch(() => {});
+            }));
           }
         }
       }
@@ -3042,7 +3042,7 @@ async function handleDb(request, env) {
       const posts = await d1(env, 'SELECT user_id FROM posts WHERE id = ?', [postId]);
       if (posts[0]) {
         const actorName = await actorDisplayName(env, userId);
-        ingestPushEvent(env, notifyUserPush, {
+        schedulePushCenterWork(ctx, ingestPushEvent(env, notifyUserPush, {
           kind: PUSH_KIND.POST_COMMENT,
           actorId: userId,
           actorName,
@@ -3051,7 +3051,7 @@ async function handleDb(request, env) {
           preview: text,
           idempotencyKey: `push:post_comment:${id}`,
           now,
-        }).catch(() => {});
+        }));
       }
       return json({ ok: true, id, createdAt: now });
     }
@@ -3214,7 +3214,7 @@ async function handleDb(request, env) {
       const alerts = await d1(env, 'SELECT user_id, pet_name FROM alerts WHERE id = ?', [alertId]);
       if (alerts[0]) {
         const actorName = await actorDisplayName(env, userId);
-        ingestPushEvent(env, notifyUserPush, {
+        schedulePushCenterWork(ctx, ingestPushEvent(env, notifyUserPush, {
           kind: PUSH_KIND.ALERT_COMMENT,
           actorId: userId,
           actorName,
@@ -3224,7 +3224,7 @@ async function handleDb(request, env) {
           preview: text,
           idempotencyKey: `push:alert_comment:${id}`,
           now,
-        }).catch(() => {});
+        }));
       }
       return json({ ok: true, id, createdAt: now });
     }
@@ -3346,7 +3346,7 @@ async function handleDb(request, env) {
       const listings = await d1(env, 'SELECT user_id, title FROM listings WHERE id = ?', [listingId]);
       if (listings[0]) {
         const actorName = await actorDisplayName(env, userId);
-        ingestPushEvent(env, notifyUserPush, {
+        schedulePushCenterWork(ctx, ingestPushEvent(env, notifyUserPush, {
           kind: PUSH_KIND.LISTING_COMMENT,
           actorId: userId,
           actorName,
@@ -3355,7 +3355,7 @@ async function handleDb(request, env) {
           listingTitle: listings[0].title,
           idempotencyKey: `push:listing_comment:${id}`,
           now,
-        }).catch(() => {});
+        }));
       }
       return json({ ok: true, id, createdAt: now });
     }
@@ -3443,7 +3443,7 @@ async function handleDb(request, env) {
           [petId, userId]
         );
         for (const fol of followers) {
-          ingestPushEvent(env, notifyUserPush, {
+          schedulePushCenterWork(ctx, ingestPushEvent(env, notifyUserPush, {
             kind: PUSH_KIND.PET_FOLLOWING,
             actorId: userId,
             actorName: petName,
@@ -3454,7 +3454,7 @@ async function handleDb(request, env) {
             subjectName: petName,
             idempotencyKey: `push:pet_following:${fol.user_id}:${id}`,
             now,
-          }).catch(() => {});
+          }));
         }
       }
       if (authorRow && (authorRow.type === 'business' || authorRow.type === 'protector')) {
@@ -3466,7 +3466,7 @@ async function handleDb(request, env) {
           [authorProfileId, userId]
         );
         for (const fol of followers) {
-          ingestPushEvent(env, notifyUserPush, {
+          schedulePushCenterWork(ctx, ingestPushEvent(env, notifyUserPush, {
             kind: PUSH_KIND.PAGE_FOLLOWING,
             actorId: userId,
             actorName: pageName,
@@ -3477,7 +3477,7 @@ async function handleDb(request, env) {
             subjectName: pageName,
             idempotencyKey: `push:page_following:${fol.user_id}:${id}`,
             now,
-          }).catch(() => {});
+          }));
         }
       }
       return json({ ok: true, post: postRow(rows[0]) });
@@ -4041,7 +4041,7 @@ async function handleDb(request, env) {
     }
 
     if (action === 'notifications') {
-      const [likes, comments, reelLikes, reelComments, followsUser, followsPet, locations, birthdays] = await Promise.all([
+      const [likes, comments, reelLikes, reelComments, followsUser, followsPet, locations, birthdays, listingComments] = await Promise.all([
         d1(env, `SELECT l.created_at, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url, p.id AS post_id, p.image AS post_image
            FROM likes l JOIN posts p ON p.id = l.post_id JOIN users u ON u.id = l.user_id
            WHERE p.user_id = ? AND l.user_id != ? ORDER BY l.created_at DESC LIMIT 20`, [userId, userId]),
@@ -4072,6 +4072,10 @@ async function handleDb(request, env) {
            FROM activity_events
            WHERE user_id = ? AND type IN ('birthday', 'pet_transfer_requested', 'pet_transfer_accepted', 'pet_transfer_rejected')
            ORDER BY created_at DESC LIMIT 20`, [userId]),
+        d1(env, `SELECT c.created_at, c.text, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url,
+                l.id AS listing_id, l.title AS listing_title, l.images AS listing_images
+           FROM listing_comments c JOIN listings l ON l.id = c.listing_id JOIN users u ON u.id = c.user_id
+           WHERE l.user_id = ? AND c.user_id != ? ORDER BY c.created_at DESC LIMIT 20`, [userId, userId]),
       ]);
       const items = [
         ...likes.map((r) => ({ id: `like-${r.actor_id}-${r.post_id}-${r.created_at}`, type: 'like', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, postId: r.post_id, postImage: r.post_image || null, createdAt: r.created_at })),
@@ -4080,6 +4084,7 @@ async function handleDb(request, env) {
         ...reelComments.map((r) => ({ id: `rcomment-${r.actor_id}-${r.reel_id}-${r.created_at}`, type: 'reel_comment', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, reelId: r.reel_id, postImage: getMuxThumbnail(r.mux_playback_id, { width: 160, height: 284 }), text: (r.text || '').slice(0, 80), createdAt: r.created_at })),
         ...followsUser.map((r) => ({ id: `fu-${r.actor_id}-${r.created_at}`, type: 'follow_user', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, createdAt: r.created_at })),
         ...followsPet.map((r) => ({ id: `fp-${r.actor_id}-${r.pet_id}-${r.created_at}`, type: 'follow_pet', actorId: r.actor_id, actorName: r.actor_name, actorUsername: r.username, actorAvatar: r.avatar_url || null, petId: r.pet_id, petName: r.pet_name, createdAt: r.created_at })),
+        ...listingComments.map((r) => listingCommentActivityItem(r)),
         ...locations.map((r) => {
           const actorId = r.actor_user_id || null;
           const actorName = actorId ? displayPersonName({ name: r.actor_name, username: r.actor_username }) : null;
@@ -4348,7 +4353,7 @@ async function handleSms(request, env) {
 // ============================================================
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders() });
     }
@@ -4356,7 +4361,7 @@ export default {
     const url = new URL(request.url);
     try {
       if (url.pathname === '/auth') return await handleAuth(request, env);
-      if (url.pathname === '/db') return await handleDb(request, env);
+      if (url.pathname === '/db') return await handleDb(request, env, ctx);
       if (url.pathname === '/geo') return await handleGeo(request, env, json, authUser);
       if (url.pathname === '/upload') return await handleUpload(request, env);
       if (url.pathname === '/mux/webhook') return await handleMuxWebhook(request, env, json);

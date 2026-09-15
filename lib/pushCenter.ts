@@ -68,6 +68,63 @@ export function scheduledTasksForCron(cron: string | null | undefined): readonly
   ];
 }
 
+export type WaitUntilCtx = { waitUntil?: (promise: Promise<unknown>) => void } | null | undefined;
+
+function safePushCenterError(err: unknown): string {
+  const raw = err && typeof err === 'object' && 'message' in err ? String((err as { message?: unknown }).message || 'error') : 'error';
+  return raw.replace(/ExponentPushToken\[[^\]]+\]/gi, '[token]').replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]').slice(0, 160);
+}
+
+/** Encola ingest/flush en el isolate de Cloudflare sin bloquear la respuesta HTTP. */
+export function schedulePushCenterWork(ctx: WaitUntilCtx, work: Promise<unknown>): 'waitUntil' | 'missing_ctx' {
+  const safe = Promise.resolve(work).catch((err) => {
+    console.log('push-center', safePushCenterError(err));
+  });
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(safe);
+    return 'waitUntil';
+  }
+  console.log('push-center', 'missing_ctx');
+  return 'missing_ctx';
+}
+
+export function firstListingImage(raw: unknown): string | null {
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!Array.isArray(arr) || !arr[0]) return null;
+    const url = String(arr[0]).trim();
+    return url || null;
+  } catch {
+    return null;
+  }
+}
+
+export function listingCommentActivityItem(row: {
+  actor_id: string;
+  actor_name?: string | null;
+  username?: string | null;
+  avatar_url?: string | null;
+  listing_id: string;
+  listing_title?: string | null;
+  listing_images?: unknown;
+  text?: string | null;
+  created_at: number;
+}) {
+  return {
+    id: `lcomment-${row.actor_id}-${row.listing_id}-${row.created_at}`,
+    type: 'listing_comment' as const,
+    actorId: row.actor_id,
+    actorName: row.actor_name || '',
+    actorUsername: row.username || '',
+    actorAvatar: row.avatar_url || null,
+    listingId: row.listing_id,
+    listingTitle: row.listing_title || null,
+    postImage: firstListingImage(row.listing_images),
+    text: String(row.text || '').slice(0, 80),
+    createdAt: row.created_at,
+  };
+}
+
 export function pushBatchWindowMs(kind: PushKind): number {
   if (kind === PUSH_KIND.ALERT_COMMENT) return PUSH_BATCH_MINUTES.ALERT_COMMENT * 60_000;
   if (kind === PUSH_KIND.POST_COMMENT) return PUSH_BATCH_MINUTES.POST_COMMENT * 60_000;
@@ -240,8 +297,8 @@ export function listingInquiryCopy(actorName: string, listingTitle?: string | nu
   const actor = String(actorName || '').trim() || 'Alguien';
   const title = String(listingTitle || '').trim();
   return {
-    title: 'Nueva consulta por tu publicación',
-    body: title ? `${actor} preguntó por ${title}.` : `${actor} preguntó por tu publicación.`,
+    title: 'Nueva consulta por tu producto',
+    body: title ? `${actor} comentó en ${title}.` : `${actor} comentó tu producto.`,
   };
 }
 
