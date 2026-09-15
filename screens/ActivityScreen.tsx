@@ -28,6 +28,7 @@ const ICONS: Record<string, { name: keyof typeof Ionicons.glyphMap; bg: string }
   follow_user: { name: 'person-add', bg: colors.secondary },
   follow_pet: { name: 'paw', bg: colors.secondary },
   comment: { name: 'chatbubble', bg: colors.primary },
+  listing_comment: { name: 'chatbubble', bg: colors.primary },
   mention: { name: 'at', bg: colors.gold },
   location: { name: 'location', bg: colors.secondary },
   birthday: { name: 'gift', bg: colors.gold },
@@ -83,6 +84,8 @@ export default function ActivityScreen() {
         return 'le dio me gusta a tu Reel';
       case 'comment':
         return `comentó: "${n.text ?? ''}"`;
+      case 'listing_comment':
+        return n.listingTitle ? `comentó tu producto: ${n.listingTitle}` : 'comentó tu producto';
       case 'reel_comment':
         return n.text ? `comentó tu Reel: "${n.text}"` : 'comentó tu Reel';
       case 'follow_user':
@@ -134,6 +137,8 @@ export default function ActivityScreen() {
               navigation.navigate('PetProfile', { petId: n.petUsername || n.petId });
             } else if (n.type === 'follow_pet' && n.petId) {
               navigation.navigate('PetProfile', { petId: n.petId });
+            } else if (n.type === 'listing_comment' && n.listingId) {
+              navigation.navigate('ListingDetail', { listingId: n.listingId });
             } else if (n.reelId) {
               navigation.navigate('ReelViewer', { reelId: n.reelId });
             } else if (n.postId) {

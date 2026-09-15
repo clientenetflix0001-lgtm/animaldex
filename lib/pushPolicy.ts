@@ -44,6 +44,8 @@ export const DEFAULT_NOTIFICATION_PREFS = {
   adoption: true,
   comment: true,
   like: false,
+  follow: true,
+  following_activity: true,
 } as const;
 
 export type NotificationPrefKey = keyof typeof DEFAULT_NOTIFICATION_PREFS;
@@ -88,7 +90,19 @@ export function mergeNotificationPrefs(row: Partial<Record<NotificationPrefKey, 
   return out;
 }
 
-export type PushEventType = 'location' | 'birthday' | 'like' | 'comment' | 'reel_like' | 'reel_comment' | 'lost_pet' | 'adoption';
+export type PushEventType =
+  | 'location'
+  | 'birthday'
+  | 'like'
+  | 'comment'
+  | 'reel_like'
+  | 'reel_comment'
+  | 'lost_pet'
+  | 'adoption'
+  | 'follow'
+  | 'following_activity'
+  | 'alert_comment'
+  | 'listing_comment';
 
 /**
  * Reels reutiliza las prefs existentes `like` / `comment` (opción A).
@@ -98,7 +112,11 @@ export function prefAllows(prefs: ReturnType<typeof mergeNotificationPrefs>, typ
   if (type === 'location') return prefs.location;
   if (type === 'birthday') return prefs.birthday;
   if (type === 'like' || type === 'reel_like') return prefs.like;
-  if (type === 'comment' || type === 'reel_comment') return prefs.comment;
+  if (type === 'comment' || type === 'reel_comment' || type === 'alert_comment' || type === 'listing_comment') {
+    return prefs.comment;
+  }
+  if (type === 'follow') return prefs.follow;
+  if (type === 'following_activity') return prefs.following_activity;
   if (type === 'lost_pet') return prefs.lost_pet;
   if (type === 'adoption') return prefs.adoption;
   return false;
@@ -381,15 +399,23 @@ export type PushData = {
   reelId?: string;
   alertId?: string;
   requestId?: string;
+  postId?: string;
+  listingId?: string;
+  profileId?: string;
+  userId?: string;
 };
 
 export type PushNavTarget = {
-  kind: 'pet' | 'activity' | 'reel' | 'alert' | 'pet_transfer' | 'none';
+  kind: 'pet' | 'activity' | 'reel' | 'alert' | 'pet_transfer' | 'post' | 'listing' | 'user' | 'page' | 'none';
   petId?: string;
   shareId?: string;
   reelId?: string;
   alertId?: string;
   requestId?: string;
+  postId?: string;
+  listingId?: string;
+  profileId?: string;
+  userId?: string;
 };
 
 function asPushField(value: unknown): string | undefined {
@@ -423,6 +449,10 @@ export function normalizePushData(raw: unknown): PushData {
     reelId: asPushField(inner.reelId),
     alertId: asPushField(inner.alertId),
     requestId: asPushField(inner.requestId),
+    postId: asPushField(inner.postId),
+    listingId: asPushField(inner.listingId),
+    profileId: asPushField(inner.profileId),
+    userId: asPushField(inner.userId),
   };
 }
 
@@ -440,6 +470,28 @@ function reelIdFromPushUrl(url: string | undefined): string | undefined {
 function alertIdFromPushUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
   const m = String(url).match(/\/a\/([^/?#]+)/);
+  if (!m) return undefined;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
+function postIdFromPushUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const m = String(url).match(/\/p\/([^/?#]+)/);
+  if (!m) return undefined;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
+function listingIdFromPushUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const m = String(url).match(/\/m\/([^/?#]+)/);
   if (!m) return undefined;
   try {
     return decodeURIComponent(m[1]);
@@ -474,12 +526,30 @@ export function parsePushNav(data: unknown): PushNavTarget {
     const fromUrl = path.startsWith('pet/') ? path.slice(4) : (isValidPetUsername(path) ? path : '');
     return { kind: 'pet', petId: d.petUsername || fromUrl || d.petId };
   }
-  if (d.type === 'location' || d.url === '/actividad') {
+  if (d.type === 'location') {
     return { kind: 'activity', petId: d.petId, shareId: d.shareId };
   }
+  if ((d.type === 'follow_pet' || d.type === 'pet_following') && d.petId) {
+    return { kind: 'pet', petId: d.petId };
+  }
   const alertId = d.alertId || alertIdFromPushUrl(d.url);
-  if (d.type === 'alert_renew' || alertId) {
+  if (d.type === 'alert_renew' || d.type === 'alert_comment' || alertId) {
     if (alertId) return { kind: 'alert', alertId };
+  }
+  const postId = d.postId || postIdFromPushUrl(d.url);
+  if (d.type === 'comment' || d.type === 'post_comment' || d.type === 'like' || postId) {
+    if (postId) return { kind: 'post', postId };
+  }
+  const listingId = d.listingId || listingIdFromPushUrl(d.url);
+  if (d.type === 'listing_comment' || listingId) {
+    if (listingId) return { kind: 'listing', listingId };
+  }
+  if (d.type === 'follow_user' && d.userId) return { kind: 'user', userId: d.userId };
+  if ((d.type === 'follow_page' || d.type === 'page_following') && d.profileId) {
+    return { kind: 'page', profileId: d.profileId };
+  }
+  if (d.url === '/actividad') {
+    return { kind: 'activity', petId: d.petId, shareId: d.shareId };
   }
   return { kind: 'none' };
 }
@@ -508,6 +578,10 @@ export function pushNavDestination(
   | { name: 'ReelViewer'; params: { reelId: string } }
   | { name: 'AlertDetail'; params: { alertId: string } }
   | { name: 'PetTransferRequest'; params: { requestId: string } }
+  | { name: 'PostDetail'; params: { postId: string } }
+  | { name: 'ListingDetail'; params: { listingId: string } }
+  | { name: 'UserProfile'; params: { userId: string } }
+  | { name: 'PublicProfile'; params: { profileId: string } }
   | null {
   const nav = parsePushNav(data);
   if (nav.kind === 'pet_transfer' && nav.requestId) {
@@ -524,6 +598,18 @@ export function pushNavDestination(
   }
   if (nav.kind === 'alert' && nav.alertId) {
     return { name: 'AlertDetail', params: { alertId: nav.alertId } };
+  }
+  if (nav.kind === 'post' && nav.postId) {
+    return { name: 'PostDetail', params: { postId: nav.postId } };
+  }
+  if (nav.kind === 'listing' && nav.listingId) {
+    return { name: 'ListingDetail', params: { listingId: nav.listingId } };
+  }
+  if (nav.kind === 'user' && nav.userId) {
+    return { name: 'UserProfile', params: { userId: nav.userId } };
+  }
+  if (nav.kind === 'page' && nav.profileId) {
+    return { name: 'PublicProfile', params: { profileId: nav.profileId } };
   }
   return null;
 }
