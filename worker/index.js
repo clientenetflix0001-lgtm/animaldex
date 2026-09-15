@@ -63,6 +63,8 @@ import {
   tokensToDisableFromReceipts,
   tokensToDisableFromTickets,
 } from '../lib/pushPolicy.ts';
+import { PUSH_KIND } from '../lib/pushCenter.ts';
+import { actorDisplayName, flushDuePushBatches, ingestPushEvent } from './pushBatches.js';
 import {
   POST_PET_IDENTITY_ERROR,
   POST_PET_NOT_OWNED_ERROR,
@@ -1918,6 +1920,7 @@ async function handleDb(request, env) {
     await ensureAlertsSchema(env);
     await ensurePetTagsPublicCode(env);
     await ensureListingsContactSchema(env);
+    flushDuePushBatches(env, notifyUserPush, now).catch(() => {});
 
     const publicReel = await handlePublicReelAction(env, body, json, clean, request, authUser);
     if (publicReel) return publicReel;
@@ -2946,6 +2949,22 @@ async function handleDb(request, env) {
       if (body.value) await d1(env, 'INSERT OR IGNORE INTO likes (user_id, post_id, created_at) VALUES (?, ?, ?)', [userId, postId, now]);
       else await d1(env, 'DELETE FROM likes WHERE user_id = ? AND post_id = ?', [userId, postId]);
       const count = await d1(env, 'SELECT COUNT(*) AS n FROM likes WHERE post_id = ?', [postId]);
+      if (body.value) {
+        const posts = await d1(env, 'SELECT user_id FROM posts WHERE id = ?', [postId]);
+        const ownerId = posts[0]?.user_id;
+        if (ownerId) {
+          const actorName = await actorDisplayName(env, userId);
+          ingestPushEvent(env, notifyUserPush, {
+            kind: PUSH_KIND.LIKE,
+            actorId: userId,
+            actorName,
+            recipientId: ownerId,
+            targetId: postId,
+            idempotencyKey: `push:like:${postId}:${userId}:${now}`,
+            now,
+          }).catch(() => {});
+        }
+      }
       return json({ ok: true, likeCount: count[0].n });
     }
 
@@ -2966,6 +2985,51 @@ async function handleDb(request, env) {
       const targetId = clean(body.targetId, 80);
       if (body.value) await d1(env, 'INSERT OR IGNORE INTO follows (user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?)', [userId, targetType, targetId, now]);
       else await d1(env, 'DELETE FROM follows WHERE user_id = ? AND target_type = ? AND target_id = ?', [userId, targetType, targetId]);
+      if (body.value) {
+        const actorName = await actorDisplayName(env, userId);
+        if (targetType === 'user') {
+          ingestPushEvent(env, notifyUserPush, {
+            kind: PUSH_KIND.FOLLOW_USER,
+            actorId: userId,
+            actorName,
+            recipientId: targetId,
+            targetId,
+            idempotencyKey: `push:follow_user:${targetId}:${userId}:${now}`,
+            now,
+          }).catch(() => {});
+        } else if (targetType === 'pet') {
+          const pets = await d1(env, 'SELECT user_id, name FROM pets WHERE id = ?', [targetId]);
+          if (pets[0]) {
+            ingestPushEvent(env, notifyUserPush, {
+              kind: PUSH_KIND.FOLLOW_PET,
+              actorId: userId,
+              actorName,
+              recipientId: pets[0].user_id,
+              targetId,
+              petName: pets[0].name,
+              petId: targetId,
+              subjectName: pets[0].name,
+              idempotencyKey: `push:follow_pet:${targetId}:${userId}:${now}`,
+              now,
+            }).catch(() => {});
+          }
+        } else if (targetType === 'profile') {
+          const pages = await d1(env, 'SELECT account_id, name FROM profiles WHERE id = ?', [targetId]);
+          if (pages[0]) {
+            ingestPushEvent(env, notifyUserPush, {
+              kind: PUSH_KIND.FOLLOW_PAGE,
+              actorId: userId,
+              actorName,
+              recipientId: pages[0].account_id,
+              targetId,
+              pageName: pages[0].name,
+              profileId: targetId,
+              idempotencyKey: `push:follow_page:${targetId}:${userId}:${now}`,
+              now,
+            }).catch(() => {});
+          }
+        }
+      }
       return json({ ok: true });
     }
 
@@ -2975,6 +3039,20 @@ async function handleDb(request, env) {
       if (!text) return json({ error: 'Comentario vacío' }, 400);
       const id = `c-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(env, 'INSERT INTO comments (id, post_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, postId, userId, text, now]);
+      const posts = await d1(env, 'SELECT user_id FROM posts WHERE id = ?', [postId]);
+      if (posts[0]) {
+        const actorName = await actorDisplayName(env, userId);
+        ingestPushEvent(env, notifyUserPush, {
+          kind: PUSH_KIND.POST_COMMENT,
+          actorId: userId,
+          actorName,
+          recipientId: posts[0].user_id,
+          targetId: postId,
+          preview: text,
+          idempotencyKey: `push:post_comment:${id}`,
+          now,
+        }).catch(() => {});
+      }
       return json({ ok: true, id, createdAt: now });
     }
 
@@ -3133,6 +3211,21 @@ async function handleDb(request, env) {
       if (!text) return json({ error: 'Comentario vacío' }, 400);
       const id = `ac-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(env, 'INSERT INTO alert_comments (id, alert_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, alertId, userId, text, now]);
+      const alerts = await d1(env, 'SELECT user_id, pet_name FROM alerts WHERE id = ?', [alertId]);
+      if (alerts[0]) {
+        const actorName = await actorDisplayName(env, userId);
+        ingestPushEvent(env, notifyUserPush, {
+          kind: PUSH_KIND.ALERT_COMMENT,
+          actorId: userId,
+          actorName,
+          recipientId: alerts[0].user_id,
+          targetId: alertId,
+          petName: alerts[0].pet_name,
+          preview: text,
+          idempotencyKey: `push:alert_comment:${id}`,
+          now,
+        }).catch(() => {});
+      }
       return json({ ok: true, id, createdAt: now });
     }
 
@@ -3250,6 +3343,20 @@ async function handleDb(request, env) {
       if (!text) return json({ error: 'Escribe tu consulta' }, 400);
       const id = `lc-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(env, 'INSERT INTO listing_comments (id, listing_id, user_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, listingId, userId, text, now]);
+      const listings = await d1(env, 'SELECT user_id, title FROM listings WHERE id = ?', [listingId]);
+      if (listings[0]) {
+        const actorName = await actorDisplayName(env, userId);
+        ingestPushEvent(env, notifyUserPush, {
+          kind: PUSH_KIND.LISTING_COMMENT,
+          actorId: userId,
+          actorName,
+          recipientId: listings[0].user_id,
+          targetId: listingId,
+          listingTitle: listings[0].title,
+          idempotencyKey: `push:listing_comment:${id}`,
+          now,
+        }).catch(() => {});
+      }
       return json({ ok: true, id, createdAt: now });
     }
 
@@ -3327,6 +3434,52 @@ async function handleDb(request, env) {
       const id = `post-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(env, 'INSERT INTO posts (id, user_id, pet_id, image, caption, created_at, author_profile_id, image_w, image_h, background_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, petId, image, caption, now, authorProfileId, imageWidth, imageHeight, backgroundId]);
       const rows = await d1(env, `${POST_SELECT} WHERE p.id = ?`, [id]);
+      if (petId) {
+        const pets = await d1(env, 'SELECT name FROM pets WHERE id = ?', [petId]);
+        const petName = pets[0]?.name || 'una mascota';
+        const followers = await d1(
+          env,
+          "SELECT user_id FROM follows WHERE target_type = 'pet' AND target_id = ? AND user_id != ?",
+          [petId, userId]
+        );
+        for (const fol of followers) {
+          ingestPushEvent(env, notifyUserPush, {
+            kind: PUSH_KIND.PET_FOLLOWING,
+            actorId: userId,
+            actorName: petName,
+            recipientId: fol.user_id,
+            targetId: petId,
+            petId,
+            petName,
+            subjectName: petName,
+            idempotencyKey: `push:pet_following:${fol.user_id}:${id}`,
+            now,
+          }).catch(() => {});
+        }
+      }
+      if (authorRow && (authorRow.type === 'business' || authorRow.type === 'protector')) {
+        const pages = await d1(env, 'SELECT name FROM profiles WHERE id = ?', [authorProfileId]);
+        const pageName = pages[0]?.name || 'Una página';
+        const followers = await d1(
+          env,
+          "SELECT user_id FROM follows WHERE target_type = 'profile' AND target_id = ? AND user_id != ?",
+          [authorProfileId, userId]
+        );
+        for (const fol of followers) {
+          ingestPushEvent(env, notifyUserPush, {
+            kind: PUSH_KIND.PAGE_FOLLOWING,
+            actorId: userId,
+            actorName: pageName,
+            recipientId: fol.user_id,
+            targetId: authorProfileId,
+            pageName,
+            profileId: authorProfileId,
+            subjectName: pageName,
+            idempotencyKey: `push:page_following:${fol.user_id}:${id}`,
+            now,
+          }).catch(() => {});
+        }
+      }
       return json({ ok: true, post: postRow(rows[0]) });
     }
 
@@ -4233,6 +4386,11 @@ export default {
       await processPushReceipts(env, nowMs);
     } catch (e) {
       console.log('push-receipts', e && e.message);
+    }
+    try {
+      await flushDuePushBatches(env, notifyUserPush, nowMs);
+    } catch (e) {
+      console.log('push-batches', e && e.message);
     }
     try {
       await runReelCleanup(env, nowMs);

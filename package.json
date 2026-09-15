@@ -56,6 +56,7 @@
     "test:grid": "node --experimental-strip-types --test tests/protectorGrid.test.ts",
     "test:time": "node --experimental-strip-types --test tests/compactTime.test.ts",
     "test:push": "node --experimental-strip-types --test tests/push.test.ts",
+    "test:push-center": "node --experimental-strip-types --test tests/pushCenter.test.ts",
     "test:links": "node --experimental-strip-types --test tests/appLinks.test.ts",
     "test:adoption": "node --experimental-strip-types --test tests/adoptionDiscovery.test.ts",
     "test:feed-media": "node --experimental-strip-types --test tests/feedMediaLayout.test.ts",
