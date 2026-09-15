@@ -63,7 +63,7 @@ import {
   tokensToDisableFromReceipts,
   tokensToDisableFromTickets,
 } from '../lib/pushPolicy.ts';
-import { PUSH_KIND } from '../lib/pushCenter.ts';
+import { PUSH_KIND, scheduledJobKind } from '../lib/pushCenter.ts';
 import { actorDisplayName, flushDuePushBatches, ingestPushEvent } from './pushBatches.js';
 import {
   POST_PET_IDENTITY_ERROR,
@@ -4372,6 +4372,15 @@ export default {
 
   async scheduled(event, env) {
     const nowMs = event && event.scheduledTime ? Number(event.scheduledTime) : Date.now();
+    // */5 * * * * → solo flush. 0 11 * * * → tareas diarias (y un flush extra).
+    if (scheduledJobKind(event && event.cron) === 'push_flush') {
+      try {
+        await flushDuePushBatches(env, notifyUserPush, nowMs);
+      } catch (e) {
+        console.log('push-batches', e && e.message);
+      }
+      return;
+    }
     try {
       await runPersonalPetBirthdays(env, nowMs);
     } catch (e) {

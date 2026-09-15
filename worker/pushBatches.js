@@ -16,32 +16,6 @@ import {
   uniqueAppend,
 } from '../lib/pushCenter.ts';
 
-export async function ensurePushBatchSchema(env) {
-  if (env._pushBatchesReady) return;
-  await env.DB.prepare(
-    `CREATE TABLE IF NOT EXISTS push_batches (
-      group_key TEXT PRIMARY KEY,
-      kind TEXT NOT NULL,
-      recipient_user_id TEXT NOT NULL,
-      target_id TEXT,
-      first_actor_id TEXT,
-      first_actor_name TEXT,
-      actor_ids TEXT NOT NULL DEFAULT '[]',
-      subject_names TEXT NOT NULL DEFAULT '[]',
-      extra TEXT,
-      first_push_sent INTEGER NOT NULL DEFAULT 0,
-      first_event_at INTEGER NOT NULL,
-      last_event_at INTEGER NOT NULL,
-      window_ends_at INTEGER NOT NULL,
-      flushed_at INTEGER
-    )`
-  ).run();
-  await env.DB.prepare(
-    'CREATE INDEX IF NOT EXISTS idx_push_batches_due ON push_batches (flushed_at, window_ends_at)'
-  ).run();
-  env._pushBatchesReady = true;
-}
-
 function parseJsonArray(raw) {
   try {
     const v = JSON.parse(raw || '[]');
@@ -154,7 +128,6 @@ function safeCopy(copy) {
 }
 
 export async function ingestPushEvent(env, notifyUserPush, input) {
-  await ensurePushBatchSchema(env);
   const now = input.now || Date.now();
   const groupKey = pushGroupKey(input.kind, input.recipientId, input.targetId);
   const open = await loadOpenBatch(env, groupKey, now);
@@ -267,7 +240,6 @@ export async function ingestPushEvent(env, notifyUserPush, input) {
 }
 
 export async function flushDuePushBatches(env, notifyUserPush, nowMs = Date.now()) {
-  await ensurePushBatchSchema(env);
   const due = await env.DB.prepare(
     `SELECT * FROM push_batches
      WHERE flushed_at IS NULL AND window_ends_at <= ?

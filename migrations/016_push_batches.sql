@@ -1,6 +1,7 @@
 -- Agrupación persistente de push. LOCAL ONLY.
 -- NO aplicar a D1 remoto / producción sin autorización explícita.
--- El Worker también crea esta tabla en runtime con CREATE TABLE IF NOT EXISTS.
+-- Única fuente del esquema: aplicar esta migración ANTES del deploy del Worker.
+-- El Worker ya no crea push_batches en runtime.
 
 CREATE TABLE IF NOT EXISTS push_batches (
   group_key TEXT PRIMARY KEY,

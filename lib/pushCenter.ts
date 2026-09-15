@@ -45,6 +45,29 @@ export const PUSH_BATCH_LIMITS = {
   FLUSH_PAGE: 20,
 } as const;
 
+/** Deben coincidir exactamente con wrangler.toml [triggers].crons */
+export const CRON_DAILY = '0 11 * * *';
+export const CRON_PUSH_FLUSH = '*/5 * * * *';
+
+export type ScheduledJobKind = 'daily' | 'push_flush';
+
+/** Cron de 5 minutos: solo flush. Diario: cumpleaños, renovación y cleanup. */
+export function scheduledJobKind(cron: string | null | undefined): ScheduledJobKind {
+  return String(cron || '').trim() === CRON_PUSH_FLUSH ? 'push_flush' : 'daily';
+}
+
+export function scheduledTasksForCron(cron: string | null | undefined): readonly string[] {
+  if (scheduledJobKind(cron) === 'push_flush') return ['flushDuePushBatches'];
+  return [
+    'runPersonalPetBirthdays',
+    'runAlertRenewalReminders',
+    'processPushReceipts',
+    'flushDuePushBatches',
+    'runReelCleanup',
+    'runStoryCleanup',
+  ];
+}
+
 export function pushBatchWindowMs(kind: PushKind): number {
   if (kind === PUSH_KIND.ALERT_COMMENT) return PUSH_BATCH_MINUTES.ALERT_COMMENT * 60_000;
   if (kind === PUSH_KIND.POST_COMMENT) return PUSH_BATCH_MINUTES.POST_COMMENT * 60_000;
