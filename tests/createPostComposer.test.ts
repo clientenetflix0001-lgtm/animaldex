@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  CREATE_POST_SCREEN_OPTIONS,
   CREATE_POST_SUCCESS_NAV,
   backgroundIdForCreatePost,
   endPublish,
@@ -97,24 +98,57 @@ describe('Nueva publicación — jerarquía', () => {
   });
 });
 
-describe('Nueva publicación — éxito, error y lock', () => {
-  it('7. éxito navega a Tabs/Inicio (Feed), no a la ruta Inicio suelta', () => {
-    assert.deepEqual(CREATE_POST_SUCCESS_NAV, { name: 'Tabs', params: { screen: 'Inicio' } });
-    const calls: unknown[] = [];
-    navigateAfterSuccessfulCreatePost({
-      navigate: (name, params) => {
-        calls.push({ name, params });
-      },
+describe('Nueva publicación — presentación y Feed montado', () => {
+  it('CreatePost se superpone sin slide lateral (modal + animation none)', () => {
+    assert.deepEqual(CREATE_POST_SCREEN_OPTIONS, {
+      headerShown: false,
+      presentation: 'modal',
+      animation: 'none',
     });
-    assert.deepEqual(calls, [{ name: 'Tabs', params: { screen: 'Inicio' } }]);
-    assert.match(createPost, /navigateAfterSuccessfulCreatePost\(navigation\)/);
-    assert.doesNotMatch(createPost, /navigation\.navigate\('Inicio'\)/);
+    assert.match(app, /options=\{CREATE_POST_SCREEN_OPTIONS\}/);
+    assert.doesNotMatch(app, /name="CreatePost"[\s\S]{0,180}slide_from_right/);
+    assert.doesNotMatch(CREATE_POST_SCREEN_OPTIONS.animation, /slide/);
   });
 
-  it('8. publicación creada entra al Feed por notifyPostCreated', () => {
+  it('Tabs permanece debajo y el cierre no resetea el nested navigator', () => {
+    assert.equal(CREATE_POST_SUCCESS_NAV.merge, true);
+    assert.match(app, /<Stack\.Screen name="Tabs"/);
     assert.match(createPost, /notifyPostCreated\(apiPostToPost\(post\)\)/);
-    assert.match(feed, /createdPosts/);
-    assert.match(feed, /consumeCreatedPosts\(\)/);
+    const notifyAt = createPost.indexOf('notifyPostCreated(apiPostToPost(post))');
+    const closeAt = createPost.indexOf('navigateAfterSuccessfulCreatePost(navigation)');
+    assert.ok(notifyAt > 0 && closeAt > notifyAt);
+  });
+});
+
+describe('Nueva publicación — éxito, error y lock', () => {
+  it('7. éxito vuelve al Feed existente (Tabs/Inicio merge), sin reset', () => {
+    assert.deepEqual(CREATE_POST_SUCCESS_NAV, {
+      name: 'Tabs',
+      params: { screen: 'Inicio' },
+      merge: true,
+    });
+    const calls: unknown[] = [];
+    navigateAfterSuccessfulCreatePost({
+      navigate: (route) => {
+        calls.push(route);
+      },
+    });
+    assert.deepEqual(calls, [CREATE_POST_SUCCESS_NAV]);
+    assert.match(createPost, /navigateAfterSuccessfulCreatePost\(navigation\)/);
+    assert.doesNotMatch(createPost, /navigation\.navigate\('Inicio'\)/);
+    assert.doesNotMatch(createPost, /CommonActions\.reset/);
+  });
+
+  it('8. publicación creada entra al Feed por notifyPostCreated sin reload', () => {
+    assert.match(createPost, /notifyPostCreated\(apiPostToPost\(post\)\)/);
+    const createdIdx = feed.indexOf('if (createdPosts.length === 0) return;');
+    assert.ok(createdIdx > 0);
+    const createdBlock = feed.slice(createdIdx, createdIdx + 700);
+    assert.match(createdBlock, /consumeCreatedPosts\(\)/);
+    assert.match(createdBlock, /\[\.\.\.fresh, \.\.\.prev\]/);
+    assert.match(createdBlock, /scrollToOffset\(\{ offset: 0, animated: true \}\)/);
+    assert.doesNotMatch(createdBlock, /loadReal/);
+    assert.doesNotMatch(createdBlock, /db\.feed\(/);
   });
 
   it('9. error no cierra ni limpia: catch solo alerta', () => {

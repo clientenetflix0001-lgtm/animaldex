@@ -1,8 +1,17 @@
-/** Flujo de éxito y paneles del compositor. No cambia el contrato de createPost. */
+/** Flujo de éxito, presentación y paneles del compositor. No cambia el contrato de createPost. */
 
+/** Tab Crear histórico: sin push lateral. Modal + none superpone Tabs/Feed montados. */
+export const CREATE_POST_SCREEN_OPTIONS = {
+  headerShown: false,
+  presentation: 'modal',
+  animation: 'none',
+} as const;
+
+/** merge: true evita resetear Tabs (mismo Feed, mismo scroll). */
 export const CREATE_POST_SUCCESS_NAV = {
   name: 'Tabs' as const,
   params: { screen: 'Inicio' as const },
+  merge: true as const,
 };
 
 export type CreatePostPanel = 'none' | 'photo' | 'background' | 'pet';
@@ -37,7 +46,7 @@ export function backgroundIdForCreatePost(hasPhoto: boolean, backgroundId: strin
 }
 
 export function navigateAfterSuccessfulCreatePost(navigation: {
-  navigate: (name: typeof CREATE_POST_SUCCESS_NAV.name, params: typeof CREATE_POST_SUCCESS_NAV.params) => void;
+  navigate: (route: typeof CREATE_POST_SUCCESS_NAV) => void;
 }): void {
-  navigation.navigate(CREATE_POST_SUCCESS_NAV.name, CREATE_POST_SUCCESS_NAV.params);
+  navigation.navigate(CREATE_POST_SUCCESS_NAV);
 }
