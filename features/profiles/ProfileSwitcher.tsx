@@ -34,9 +34,20 @@ export default function ProfileSwitcher({ compact }: Props) {
         accessibilityLabel="Seleccionar perfil o página"
       >
         <Image source={{ uri: thumb(avatar, 80) }} style={compact ? styles.avatarSm : styles.avatar} />
-        <Text style={compact ? styles.compactName : styles.triggerName} numberOfLines={1}>
-          {name}
-        </Text>
+        {compact ? (
+          <View style={styles.compactCopy}>
+            <Text style={styles.compactName} numberOfLines={1}>
+              {name}
+            </Text>
+            <Text style={styles.compactType} numberOfLines={1}>
+              {PROFILE_TYPE_LABEL[activeProfile?.type || 'personal']}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.triggerName} numberOfLines={1}>
+            {name}
+          </Text>
+        )}
         <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
       </Pressable>
 
@@ -105,20 +116,22 @@ const styles = StyleSheet.create({
   compact: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: radius.md,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
   },
+  compactCopy: { flex: 1, minWidth: 0 },
   avatar: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.border },
-  avatarSm: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.border },
+  avatarSm: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.border },
   triggerName: { fontSize: 13, fontWeight: '700', color: colors.text, maxWidth: 160 },
-  compactName: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text },
+  compactName: { fontSize: 15, fontWeight: '700', color: colors.text },
+  compactType: { fontSize: 12, fontWeight: '600', color: colors.textMuted, marginTop: 1 },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(45,32,22,0.35)' },
   sheet: {
     position: 'absolute',

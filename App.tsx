@@ -74,6 +74,7 @@ import {
   rememberIncomingAppLink,
 } from './lib/appLinks';
 import { getStateFromPublicPath, setLinkingHasUser, shouldAutoOpenPendingTag } from './lib/webLinking';
+import { CREATE_POST_SCREEN_OPTIONS } from './lib/createPostPublish';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -568,7 +569,7 @@ function RootNavigator() {
       <Stack.Screen
         name="CreatePost"
         component={CreatePostScreen}
-        options={{ headerShown: false }}
+        options={CREATE_POST_SCREEN_OPTIONS}
       />
       <Stack.Screen
         name="CreateReel"
