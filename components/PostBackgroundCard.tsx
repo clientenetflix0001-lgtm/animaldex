@@ -16,16 +16,9 @@ import {
 import { colors, radius } from '../lib/theme';
 import { CONTENT } from '../lib/responsive';
 import { feedBoxHeightForWidth } from '../lib/feedMediaLayout';
+import { PawPrintOverlay } from './PawPrintOverlay';
 
 const FEED_SEE_MORE_WIDTH = CONTENT.feed;
-
-const PAW_MARKS = [
-  { top: '8%', left: '10%', rotate: '-18deg', size: 34 },
-  { top: '18%', left: '72%', rotate: '22deg', size: 42 },
-  { top: '58%', left: '8%', rotate: '12deg', size: 38 },
-  { top: '68%', left: '70%', rotate: '-10deg', size: 46 },
-  { top: '40%', left: '42%', rotate: '8deg', size: 28 },
-] as const;
 
 function BackgroundFill({ bg }: { bg: PostBackground }) {
   if (bg.type === 'image' && bg.imageUrl) {
@@ -61,29 +54,6 @@ function BackgroundFill({ bg }: { bg: PostBackground }) {
   );
 }
 
-function PawPattern({ color }: { color: string }) {
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {PAW_MARKS.map((m, i) => (
-        <Text
-          key={i}
-          style={{
-            position: 'absolute',
-            top: m.top,
-            left: m.left,
-            fontSize: m.size,
-            opacity: 0.16,
-            color,
-            transform: [{ rotate: m.rotate }],
-          }}
-        >
-          🐾
-        </Text>
-      ))}
-    </View>
-  );
-}
-
 interface CardProps {
   backgroundId: string;
   text: string;
@@ -113,7 +83,7 @@ function PostBackgroundCardInner({
   return (
     <View style={aspectRatio ? [styles.cardFlex, { aspectRatio }] : styles.card}>
       <BackgroundFill bg={bg} />
-      {bg.pattern === 'paws' ? <PawPattern color={bg.textColor} /> : null}
+      <PawPrintOverlay color={bg.textColor} backgroundId={bg.id} />
       <View style={styles.textWrap} pointerEvents="none">
         <Text
           style={[
@@ -153,7 +123,7 @@ function PostBackgroundTileInner({ backgroundId, text, size }: TileProps) {
   return (
     <View style={{ width: size, height: size, borderRadius: radiusSm, overflow: 'hidden' }}>
       <BackgroundFill bg={bg} />
-      {bg.pattern === 'paws' ? <PawPattern color={bg.textColor} /> : null}
+      <PawPrintOverlay color={bg.textColor} backgroundId={bg.id} compact />
       <View style={styles.tilePad}>
         <Text style={[styles.tileText, { color: bg.textColor }]} numberOfLines={4}>
           {text.trim()}
@@ -177,7 +147,7 @@ function PostBackgroundChipInner({ backgroundId, selected, onPress }: ChipProps)
     <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}>
       <View style={styles.chipInner}>
         <BackgroundFill bg={bg} />
-        {bg.pattern === 'paws' ? <PawPattern color={bg.textColor} /> : null}
+        <PawPrintOverlay color={bg.textColor} backgroundId={bg.id} compact />
       </View>
     </Pressable>
   );

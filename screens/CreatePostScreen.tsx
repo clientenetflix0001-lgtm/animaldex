@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,16 @@ import {
   petsForPublishingIdentity,
   reconcileSelectedPetId,
 } from '../lib/petOwnership';
+import {
+  backgroundIdForCreatePost,
+  endPublish,
+  navigateAfterSuccessfulCreatePost,
+  shouldShowBackgroundPreview,
+  shouldShowPhotoPreview,
+  toggleCreatePostPanel,
+  tryBeginPublish,
+  type CreatePostPanel,
+} from '../lib/createPostPublish';
 
 export default function CreatePostScreen() {
   const navigation = useNavigation<any>();
@@ -49,9 +59,12 @@ export default function CreatePostScreen() {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [photoDimensions, setPhotoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [backgroundId, setBackgroundId] = useState(DEFAULT_POST_BACKGROUND_ID);
+  const [backgroundTouched, setBackgroundTouched] = useState(false);
+  const [panel, setPanel] = useState<CreatePostPanel>('none');
   const [uploading, setUploading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [uploadNote, setUploadNote] = useState('');
+  const publishLock = useRef(false);
 
   const pickerPets = useMemo(
     () =>
@@ -73,6 +86,8 @@ export default function CreatePostScreen() {
 
   const activePetId = reconcileSelectedPetId(selectedPet, pickerPets);
   const activePet = pickerPets.find((p) => p.id === activePetId);
+  const showPhoto = shouldShowPhotoPreview(photo, previewUri);
+  const showBackground = shouldShowBackgroundPreview(!!photo, backgroundTouched);
 
   const pickFromGallery = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -115,12 +130,42 @@ export default function CreatePostScreen() {
     }
   }, []);
 
+  const openPanel = useCallback(
+    (next: Exclude<CreatePostPanel, 'none'>) => {
+      setPanel((current) => toggleCreatePostPanel(current, next));
+    },
+    []
+  );
+
+  const onPressPhoto = useCallback(() => {
+    setPanel('photo');
+    if (!photo && !previewUri && !uploading) {
+      void pickFromGallery();
+    }
+  }, [photo, previewUri, uploading, pickFromGallery]);
+
+  const onPressBackground = useCallback(() => {
+    if (photo || previewUri) return;
+    openPanel('background');
+  }, [photo, previewUri, openPanel]);
+
+  const clearPhoto = useCallback(() => {
+    setPhoto(null);
+    setPreviewUri(null);
+    setPhotoDimensions(null);
+    setUploadNote('');
+    setBackgroundId((id) => id || DEFAULT_POST_BACKGROUND_ID);
+  }, []);
+
   const publish = useCallback(async () => {
+    if (!tryBeginPublish(publishLock, uploading)) return;
     if (!photo && caption.trim().length === 0) {
+      endPublish(publishLock);
       Alert.alert('Publicación vacía', 'Escribe un texto o agrega una foto 🐾');
       return;
     }
     if (!photo && !isAllowedBackgroundId(backgroundId)) {
+      endPublish(publishLock);
       Alert.alert('Elegí un fondo', 'Las publicaciones de texto necesitan un fondo prediseñado.');
       return;
     }
@@ -133,7 +178,7 @@ export default function CreatePostScreen() {
         activeProfileId,
         photo ? photoDimensions?.width ?? null : null,
         photo ? photoDimensions?.height ?? null : null,
-        photo ? null : backgroundId
+        backgroundIdForCreatePost(!!photo, backgroundId)
       );
       // Inserción incremental: el post aparece arriba del feed al instante,
       // sin recargar nada.
@@ -143,149 +188,117 @@ export default function CreatePostScreen() {
       setPreviewUri(null);
       setPhotoDimensions(null);
       setBackgroundId(DEFAULT_POST_BACKGROUND_ID);
+      setBackgroundTouched(false);
+      setPanel('none');
       setUploadNote('');
-      navigation.navigate('Inicio');
+      navigateAfterSuccessfulCreatePost(navigation);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'No se pudo publicar');
     } finally {
+      endPublish(publishLock);
       setPublishing(false);
     }
-  }, [activePetId, photo, photoDimensions, caption, backgroundId, navigation, notifyPostCreated, activeProfileId]);
+  }, [activePetId, photo, photoDimensions, caption, backgroundId, navigation, notifyPostCreated, activeProfileId, uploading]);
 
   const wrapStyle = desktopWeb ? styles.desktopWrap : styles.mobileWrap;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={wrapStyle}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
         <View style={styles.header}>
+          <Pressable
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Tabs'))}
+            hitSlop={10}
+            accessibilityLabel="Cerrar"
+          >
+            <Ionicons name="close" size={26} color={colors.text} />
+          </Pressable>
           <Text style={styles.title}>Nueva publicación</Text>
           <Pressable style={styles.publishBtn} onPress={publish} disabled={publishing || uploading}>
             {publishing ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <>
-                <Text style={styles.publishText}>Publicar</Text>
-                <Ionicons name="paw" size={15} color="#fff" />
-              </>
+              <Text style={styles.publishText}>Publicar</Text>
             )}
           </Pressable>
         </View>
 
-        <ScrollView
-          contentContainerStyle={{ paddingBottom: 40 }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
+        <KeyboardAvoidingView
+          behavior="padding"
+          enabled={Platform.OS !== 'web'}
+          style={{ flex: 1 }}
         >
-          <Text style={styles.sectionLabel}>Publicar como</Text>
-          <ProfileSwitcher compact />
+          <ScrollView
+            contentContainerStyle={{ paddingBottom: 40 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+          >
+            <ProfileSwitcher compact />
 
-          <Text style={styles.sectionLabel}>¿Quién protagoniza esta foto?</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.petPicker}>
-            <Pressable
-              style={[styles.petOption, !activePetId && styles.petOptionActive]}
-              onPress={() => setSelectedPet(null)}
-            >
-              <View style={[styles.petOptionImg, styles.noneAvatar]}>
-                <Ionicons name="person" size={18} color={colors.textMuted} />
-              </View>
-              <Text style={[styles.petOptionName, !activePetId && { color: colors.primary }]}>Ninguno</Text>
-              {!activePetId && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
-            </Pressable>
-            {pickerPets.map((p) => {
-              const active = p.id === activePetId;
-              return (
-                <Pressable
-                  key={p.id}
-                  style={[styles.petOption, active && styles.petOptionActive]}
-                  onPress={() => setSelectedPet(p.id)}
-                >
-                  <PetAvatar uri={p.avatarUrl} size={34} style={styles.petOptionImg} />
-                  <Text style={[styles.petOptionName, active && { color: colors.primary }]}>
-                    {p.name} {p.emoji}
-                  </Text>
-                  {active && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
-                </Pressable>
-              );
-            })}
-            {canAddPet ? (
+            <TextInput
+              style={styles.captionInput}
+              placeholder="¿Qué querés compartir?"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              value={caption}
+              onChangeText={setCaption}
+              maxLength={POST_CAPTION_MAX}
+            />
+            <View style={styles.metaRow}>
+              <Text style={styles.hint}>Contá algo, compartí una foto o elegí un fondo.</Text>
+              <Text style={styles.counter}>
+                {caption.length}/{POST_CAPTION_MAX}
+              </Text>
+            </View>
+
+            <View style={styles.actions}>
               <Pressable
-                style={styles.petOptionAdd}
-                onPress={() =>
-                  navigation.navigate(
-                    'AddPet',
-                    activeProfile?.type === 'protector' && activeProfile.id
-                      ? { profileId: activeProfile.id }
-                      : undefined
-                  )
-                }
+                style={[styles.actionBtn, (panel === 'photo' || showPhoto) && styles.actionBtnActive]}
+                onPress={onPressPhoto}
+                accessibilityLabel="Foto"
               >
-                <Ionicons name="add" size={20} color={colors.primary} />
-                <Text style={styles.petOptionAddText}>Nueva</Text>
+                <Ionicons name="camera-outline" size={22} color={colors.primary} />
+                <Text style={styles.actionText}>Foto</Text>
               </Pressable>
+              <Pressable
+                style={[styles.actionBtn, (panel === 'background' || showBackground) && styles.actionBtnActive]}
+                onPress={onPressBackground}
+                accessibilityLabel="Fondo"
+              >
+                <Ionicons name="color-palette-outline" size={22} color={colors.primary} />
+                <Text style={styles.actionText}>Fondo</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.actionBtn, (panel === 'pet' || !!activePetId) && styles.actionBtnActive]}
+                onPress={() => openPanel('pet')}
+                accessibilityLabel="Protagonista"
+              >
+                <Ionicons name="paw-outline" size={22} color={colors.primary} />
+                <Text style={styles.actionText}>Protagonista</Text>
+              </Pressable>
+            </View>
+
+            {showPhoto ? (
+              <>
+                <Pressable style={styles.preview} onPress={pickFromGallery}>
+                  <SelectedImagePreview uri={previewUri || photo!} loading={uploading} />
+                </Pressable>
+                {uploadNote !== '' && <Text style={styles.uploadNote}>{uploadNote}</Text>}
+                <View style={styles.photoActions}>
+                  <Pressable style={styles.changePhotoBtn} onPress={pickFromGallery}>
+                    <Ionicons name="swap-horizontal" size={15} color={colors.primary} />
+                    <Text style={styles.changePhotoText}>Cambiar foto</Text>
+                  </Pressable>
+                  <Pressable style={styles.changePhotoBtn} onPress={clearPhoto}>
+                    <Ionicons name="close-circle-outline" size={15} color={colors.primary} />
+                    <Text style={styles.changePhotoText}>Quitar foto</Text>
+                  </Pressable>
+                </View>
+              </>
             ) : null}
-          </ScrollView>
 
-          <Text style={styles.sectionLabel}>Foto (opcional)</Text>
-          {previewUri || photo ? (
-            <>
-              <Pressable style={styles.preview} onPress={pickFromGallery}>
-                <SelectedImagePreview uri={previewUri || photo!} loading={uploading} />
-              </Pressable>
-              {uploadNote !== '' && <Text style={styles.uploadNote}>{uploadNote}</Text>}
-              <View style={styles.photoActions}>
-                <Pressable style={styles.changePhotoBtn} onPress={pickFromGallery}>
-                  <Ionicons name="swap-horizontal" size={15} color={colors.primary} />
-                  <Text style={styles.changePhotoText}>Cambiar foto</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.changePhotoBtn}
-                  onPress={() => {
-                    setPhoto(null);
-                    setPreviewUri(null);
-                    setPhotoDimensions(null);
-                    setUploadNote('');
-                    setBackgroundId((id) => id || DEFAULT_POST_BACKGROUND_ID);
-                  }}
-                >
-                  <Ionicons name="close-circle-outline" size={15} color={colors.primary} />
-                  <Text style={styles.changePhotoText}>Quitar foto</Text>
-                </Pressable>
-              </View>
-            </>
-          ) : (
-            <>
-              <Pressable style={styles.addPhotoBtn} onPress={pickFromGallery} disabled={uploading}>
-                {uploading ? (
-                  <ActivityIndicator color={colors.primary} size="small" />
-                ) : (
-                  <Ionicons name="images-outline" size={18} color={colors.primary} />
-                )}
-                <Text style={styles.addPhotoText}>
-                  {uploading ? 'Subiendo a Cloudflare...' : 'Agregar foto'}
-                </Text>
-              </Pressable>
-
-              <Text style={styles.sectionLabel}>Fondo</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.bgPicker}
-              >
-                {getActivePostBackgrounds().map((bg) => (
-                  <PostBackgroundChip
-                    key={bg.id}
-                    backgroundId={bg.id}
-                    selected={bg.id === backgroundId}
-                    onPress={() => setBackgroundId(bg.id)}
-                  />
-                ))}
-              </ScrollView>
-
-              <Text style={styles.sectionLabel}>Vista previa</Text>
+            {showBackground ? (
               <View style={styles.bgPreviewWrap}>
                 <PostBackgroundCard
                   backgroundId={backgroundId}
@@ -293,22 +306,99 @@ export default function CreatePostScreen() {
                   placeholder={!caption.trim()}
                 />
               </View>
-            </>
-          )}
+            ) : null}
 
-          <Text style={styles.sectionLabel}>Texto</Text>
-          <TextInput
-            style={styles.captionInput}
-            placeholder={!activePet ? 'Escribí tu publicación. Podés publicar solo texto.' : `¿Qué está pasando, ${activePet.name}? Podés publicar solo texto.`}
-            placeholderTextColor={colors.textMuted}
-            multiline
-            value={caption}
-            onChangeText={setCaption}
-            maxLength={POST_CAPTION_MAX}
-          />
-          <Text style={styles.counter}>{caption.length}/{POST_CAPTION_MAX}</Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
+            {activePet && panel !== 'pet' ? (
+              <View style={styles.petChip}>
+                <PetAvatar uri={activePet.avatarUrl} size={28} style={styles.petChipImg} />
+                <Text style={styles.petChipName}>
+                  {activePet.name} {activePet.emoji}
+                </Text>
+              </View>
+            ) : null}
+
+            {panel === 'background' && !photo ? (
+              <View style={styles.expand}>
+                <View style={styles.expandHead}>
+                  <Text style={styles.expandTitle}>Elegí un fondo</Text>
+                  <Pressable onPress={() => setPanel('none')} hitSlop={8} accessibilityLabel="Cerrar fondos">
+                    <Ionicons name="close" size={20} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+                <View style={styles.bgGrid}>
+                  {getActivePostBackgrounds().map((bg) => (
+                    <PostBackgroundChip
+                      key={bg.id}
+                      backgroundId={bg.id}
+                      selected={bg.id === backgroundId && backgroundTouched}
+                      onPress={() => {
+                        setBackgroundId(bg.id);
+                        setBackgroundTouched(true);
+                      }}
+                    />
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {panel === 'pet' ? (
+              <View style={styles.expand}>
+                <Text style={styles.expandTitle}>¿Quién protagoniza esta publicación?</Text>
+                <Pressable
+                  style={[styles.petOption, !activePetId && styles.petOptionActive]}
+                  onPress={() => setSelectedPet(null)}
+                >
+                  <View style={[styles.petOptionImg, styles.noneAvatar]}>
+                    <Ionicons name="person" size={18} color={colors.textMuted} />
+                  </View>
+                  <Text style={[styles.petOptionName, !activePetId && { color: colors.primary }]}>Ninguno</Text>
+                  {!activePetId && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
+                </Pressable>
+                {pickerPets.map((p) => {
+                  const active = p.id === activePetId;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      style={[styles.petOption, active && styles.petOptionActive]}
+                      onPress={() => setSelectedPet(p.id)}
+                    >
+                      <PetAvatar uri={p.avatarUrl} size={34} style={styles.petOptionImg} />
+                      <Text style={[styles.petOptionName, active && { color: colors.primary }]}>
+                        {p.name} {p.emoji}
+                      </Text>
+                      {active && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
+                    </Pressable>
+                  );
+                })}
+                {canAddPet ? (
+                  <Pressable
+                    style={styles.petOptionAdd}
+                    onPress={() =>
+                      navigation.navigate(
+                        'AddPet',
+                        activeProfile?.type === 'protector' && activeProfile.id
+                          ? { profileId: activeProfile.id }
+                          : undefined
+                      )
+                    }
+                  >
+                    <Ionicons name="add" size={20} color={colors.primary} />
+                    <Text style={styles.petOptionAddText}>Nueva</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+
+            {panel === 'none' && !showPhoto && !showBackground && !activePetId ? (
+              <View style={styles.tip}>
+                <Text style={styles.tipEmoji}>💡</Text>
+                <Text style={styles.tipText}>
+                  Podés agregar una foto, un fondo o elegir una mascota como protagonista. No es obligatorio.
+                </Text>
+              </View>
+            ) : null}
+          </ScrollView>
+        </KeyboardAvoidingView>
       </View>
     </SafeAreaView>
   );
@@ -330,59 +420,66 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text },
+  title: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800', color: colors.text },
   publishBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     backgroundColor: colors.primary,
-    paddingHorizontal: 18,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: radius.full,
-    minWidth: 100,
+    minWidth: 88,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   publishText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '700',
+  captionInput: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    minHeight: 120,
+    fontSize: 16,
     color: colors.text,
+    textAlignVertical: 'top',
+  },
+  metaRow: {
+    marginHorizontal: spacing.lg,
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  hint: { flex: 1, fontSize: 12, color: colors.textMuted, lineHeight: 16 },
+  counter: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  actions: {
+    flexDirection: 'row',
     marginHorizontal: spacing.lg,
     marginTop: spacing.xl,
-    marginBottom: spacing.md,
-  },
-  petPicker: { paddingHorizontal: spacing.lg, gap: spacing.md },
-  petOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: spacing.sm,
+  },
+  actionBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     backgroundColor: colors.card,
-    borderRadius: radius.full,
-    paddingRight: 14,
-    paddingLeft: 6,
-    paddingVertical: 6,
+    borderRadius: radius.md,
     borderWidth: 1.5,
     borderColor: colors.border,
+    paddingVertical: 14,
   },
-  petOptionActive: { borderColor: colors.primary, backgroundColor: colors.primarysoft },
-  petOptionImg: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.border },
-  noneAvatar: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarysoft },
-  petOptionName: { fontWeight: '700', fontSize: 14, color: colors.text },
-  petOptionAdd: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: radius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderWidth: 1.5,
+  actionBtnActive: {
     borderColor: colors.primary,
-    borderStyle: 'dashed',
+    backgroundColor: colors.primarysoft,
   },
-  petOptionAddText: { fontWeight: '700', fontSize: 13, color: colors.primary },
+  actionText: { color: colors.text, fontWeight: '700', fontSize: 12 },
   preview: {
     marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
     borderRadius: radius.lg,
     overflow: 'hidden',
     ...shadow.card,
@@ -398,70 +495,98 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    alignSelf: 'flex-start',
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
   },
   changePhotoText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
   photoActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.lg,
-  },
-  addPhotoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     marginHorizontal: spacing.lg,
-    backgroundColor: colors.card,
-    borderRadius: radius.full,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
   },
-  addPhotoText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
-  bgPicker: { paddingHorizontal: spacing.lg, gap: spacing.sm, paddingBottom: 4 },
   bgPreviewWrap: {
     marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
     borderRadius: radius.lg,
     overflow: 'hidden',
     ...shadow.card,
   },
-  captionInput: {
+  expand: {
     marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
     backgroundColor: colors.card,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
-    minHeight: 100,
-    fontSize: 15,
-    color: colors.text,
-    textAlignVertical: 'top',
+    padding: spacing.md,
+    gap: spacing.sm,
   },
-  counter: {
-    textAlign: 'right',
+  expandHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  expandTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
+  bgGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  petChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.sm,
     marginHorizontal: spacing.lg,
-    marginTop: 6,
-    fontSize: 12,
-    color: colors.textMuted,
+    marginTop: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
-  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 },
-  emptyEmoji: { fontSize: 52 },
-  emptyTitle: { fontWeight: '900', fontSize: 20, color: colors.text },
-  emptyText: { color: colors.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  addPetBtn: {
+  petChipImg: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.border },
+  petChipName: { fontWeight: '700', fontSize: 13, color: colors.text },
+  petOption: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.bg,
     borderRadius: radius.full,
-    paddingHorizontal: 24,
-    paddingVertical: 13,
-    marginTop: spacing.lg,
+    paddingRight: 14,
+    paddingLeft: 6,
+    paddingVertical: 6,
+    borderWidth: 1.5,
+    borderColor: colors.border,
   },
-  addPetText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  refreshLink: { color: colors.secondary, fontWeight: '700', fontSize: 13, marginTop: spacing.md },
+  petOptionActive: { borderColor: colors.primary, backgroundColor: colors.primarysoft },
+  petOptionImg: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.border },
+  noneAvatar: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarysoft },
+  petOptionName: { flex: 1, fontWeight: '700', fontSize: 14, color: colors.text },
+  petOptionAdd: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: radius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+    alignSelf: 'flex-start',
+  },
+  petOptionAddText: { fontWeight: '700', fontSize: 13, color: colors.primary },
+  tip: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xl,
+    backgroundColor: '#FFF4E5',
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  tipEmoji: { fontSize: 16 },
+  tipText: { flex: 1, fontSize: 13, lineHeight: 18, color: colors.text, fontWeight: '600' },
 });
