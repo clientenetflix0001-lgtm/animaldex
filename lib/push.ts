@@ -186,6 +186,22 @@ function navigatePushDestination(dest: NonNullable<ReturnType<typeof pushNavDest
     navigationRef.navigate('AlertDetail', dest.params);
     return true;
   }
+  if (dest.name === 'PostDetail') {
+    navigationRef.navigate('PostDetail', dest.params);
+    return true;
+  }
+  if (dest.name === 'ListingDetail') {
+    navigationRef.navigate('ListingDetail', dest.params);
+    return true;
+  }
+  if (dest.name === 'UserProfile') {
+    navigationRef.navigate('UserProfile', dest.params);
+    return true;
+  }
+  if (dest.name === 'PublicProfile') {
+    navigationRef.navigate('PublicProfile', dest.params);
+    return true;
+  }
   if (dest.name === 'PetTransferRequest') {
     navigationRef.navigate('PetTransferRequest', dest.params);
     return true;
