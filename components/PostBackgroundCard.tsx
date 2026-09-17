@@ -17,6 +17,7 @@ import { colors, radius } from '../lib/theme';
 import { CONTENT } from '../lib/responsive';
 import { feedBoxHeightForWidth } from '../lib/feedMediaLayout';
 import { PawPrintOverlay } from './PawPrintOverlay';
+import { feedMediaPerfNoteBackgroundCard } from '../lib/feedMediaPerf';
 
 const FEED_SEE_MORE_WIDTH = CONTENT.feed;
 
@@ -80,6 +81,7 @@ function PostBackgroundCardInner({
   const fontSize = backgroundCardFontSize(display.length);
   const maxLines = backgroundCardMaxLines(display.length, needsSeeMore, cardHeight);
   const lineHeight = Math.round(fontSize * 1.32);
+  feedMediaPerfNoteBackgroundCard();
   return (
     <View style={aspectRatio ? [styles.cardFlex, { aspectRatio }] : styles.card}>
       <BackgroundFill bg={bg} />

@@ -1,5 +1,7 @@
 /** Layouts de huellas: un patrón vectorial reutilizable, no un asset por post. */
 
+export const PAWS_PER_LAYOUT = 5;
+
 export const PAW_LAYOUTS = [
   [
     { top: '7%', left: '8%', rotate: '-24deg', size: 22 },
@@ -28,4 +30,30 @@ export function pawLayoutIndexForBackgroundId(id: string): number {
   let n = 0;
   for (let i = 0; i < id.length; i++) n += id.charCodeAt(i) * (i + 1);
   return Math.abs(n) % PAW_LAYOUTS.length;
+}
+
+/** Container absoluto + un Ionicons por marca. */
+export function pawNativeViewsPerOverlay(): number {
+  return 1 + PAWS_PER_LAYOUT;
+}
+
+/**
+ * Costo comparado contra 35db31c: las huellas solo existían si
+ * `bg.pattern === 'paws'` (hoy 1 fondo). HEAD monta el overlay en todos.
+ */
+export function pawOverlayCost(backgrounds: readonly { pattern?: string }[]): {
+  historicalCardsWithPaws: number;
+  currentCardsWithPaws: number;
+  iconsPerCard: number;
+  extraIconsVsHistoricalIfAllVisible: number;
+} {
+  const historicalCardsWithPaws = backgrounds.filter((bg) => bg.pattern === 'paws').length;
+  const currentCardsWithPaws = backgrounds.length;
+  return {
+    historicalCardsWithPaws,
+    currentCardsWithPaws,
+    iconsPerCard: PAWS_PER_LAYOUT,
+    extraIconsVsHistoricalIfAllVisible:
+      (currentCardsWithPaws - historicalCardsWithPaws) * PAWS_PER_LAYOUT,
+  };
 }

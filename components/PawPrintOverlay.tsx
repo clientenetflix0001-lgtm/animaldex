@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PAW_LAYOUTS, pawLayoutIndexForBackgroundId } from '../lib/pawPrintLayout';
+import { feedMediaPerfNotePawOverlay } from '../lib/feedMediaPerf';
 
 function PawPrintOverlayInner({
   color,
@@ -13,6 +14,7 @@ function PawPrintOverlayInner({
   compact?: boolean;
 }) {
   const marks = PAW_LAYOUTS[pawLayoutIndexForBackgroundId(backgroundId)];
+  feedMediaPerfNotePawOverlay(marks.length);
   const scale = compact ? 0.4 : 1;
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
