@@ -129,6 +129,7 @@ import {
 } from '../lib/petTransfer.ts';
 import { handleGeo } from './geo.js';
 import { geoColumns, geoInsertFragment, geoUpdateFragment, normalizeIncomingPlace, placeIdRejected } from './geoWrite.js';
+import { locationReferenceInsertFragment } from './alertLocationWrite.js';
 
 // ---------- Helpers D1 ----------
 async function d1(env, sql, params = []) {
@@ -1571,6 +1572,7 @@ function alertRow(r, viewerLiked) {
     country: r.country || 'AR',
     lat: r.lat ?? null,
     lon: r.lon ?? null,
+    locationReference: r.location_reference || null,
     eventDate: r.event_date ?? null,
     createdAt: r.created_at,
     renewedAt,
@@ -3032,13 +3034,14 @@ async function handleDb(request, env) {
       if (placeIdRejected(body)) return json({ error: 'Esa ubicación no está en el catálogo' }, 400);
       const place = normalizeIncomingPlace(body);
       const geo = await geoInsertFragment(env, 'alerts', place);
+      const locRef = await locationReferenceInsertFragment(env, body.locationReference);
 
       const id = `alert-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(
         env,
-        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at, renewed_at, sex, author_profile_id, contact_whatsapp, contact_phone${geo.columns})
-         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${geo.placeholders})`,
-        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now, now, sex, authorProfileId, contactWhatsapp, contactPhone, ...geo.values]
+        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at, renewed_at, sex, author_profile_id, contact_whatsapp, contact_phone${geo.columns}${locRef.columns})
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${geo.placeholders}${locRef.placeholders})`,
+        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now, now, sex, authorProfileId, contactWhatsapp, contactPhone, ...geo.values, ...locRef.values]
       );
       const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [id]);
       const [alert] = await attachLikedFlags(env, rows, userId);

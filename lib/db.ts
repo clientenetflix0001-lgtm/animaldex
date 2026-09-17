@@ -235,6 +235,8 @@ export interface ApiAlert {
   country: string;
   lat: number | null;
   lon: number | null;
+  /** Barrio/calle/referencia. Texto descriptivo, no identidad GEO. */
+  locationReference?: string | null;
   eventDate: number | null;
   createdAt: number;
   renewedAt?: number | null;
@@ -715,6 +717,8 @@ export const db = {
     placeId?: string | null;
     admin1Code?: string | null;
     admin2Code?: string | null;
+    /** Barrio/calle/referencia. No es identidad GEO. */ 
+    locationReference?: string | null;
   }): Promise<{ alert: ApiAlert }> => call('/db', { action: 'createAlert', ...alert }),
   myAlerts: (tab: 'active' | 'resolved', before?: number, limit = 20): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
     call('/db', { action: 'myAlerts', tab, before, limit }),

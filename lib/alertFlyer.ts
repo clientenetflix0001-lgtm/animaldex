@@ -61,6 +61,7 @@ export interface AlertFlyerPublishPayload {
   authorProfileId?: string | null;
   contactWhatsapp?: string | null;
   contactPhone?: string | null;
+  locationReference?: string | null;
 }
 
 export interface AlertFlyerSession {
@@ -220,6 +221,7 @@ export function flyerFromApiAlert(alert: ApiAlert): AlertFlyer {
     breed: alert.breed,
     locality: alert.locality,
     province: alert.province,
+    locationReference: alert.locationReference,
     eventDate: alert.eventDate,
     createdAt: alert.createdAt,
     description: alert.description,

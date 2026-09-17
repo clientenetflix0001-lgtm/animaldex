@@ -2,12 +2,8 @@
  * Referencia manual de Crear Alerta (barrio/calle/punto).
  *
  * NO es identidad GEO. No entra al catálogo, no se geocodifica y no
- * reemplaza placeId / municipio / departamento.
- *
- * Persistencia D1: no hay columna equivalente (address, location_text,
- * neighborhood, etc.). Hasta una migración explícita el valor vive en
- * el formulario y, si hay flyer, en el texto de display. El payload
- * de createAlert sigue mandando locality/placeId limpios.
+ * reemplaza placeId / municipio / departamento. No filtra, no detecta
+ * y no decide push.
  */
 
 export const ALERT_LOCATION_REFERENCE_MAX = 120;
@@ -15,7 +11,7 @@ export const ALERT_LOCATION_REFERENCE_LABEL = 'Barrio, calle o referencia (opcio
 export const ALERT_LOCATION_REFERENCE_PLACEHOLDER =
   'Ej: B° Tres Cerritos, Av. Bicentenario o cerca de la plaza';
 
-/** Columna mínima si más adelante se autoriza persistir el dato. No migrar ahora. */
+export const ALERT_LOCATION_REFERENCE_COLUMN = 'location_reference';
 export const ALERT_LOCATION_REFERENCE_D1_COLUMN = 'location_reference TEXT';
 
 export function sanitizeAlertLocationReference(raw: string | null | undefined): string {
@@ -23,6 +19,10 @@ export function sanitizeAlertLocationReference(raw: string | null | undefined): 
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, ALERT_LOCATION_REFERENCE_MAX);
+}
+
+export function persistableAlertLocationReference(raw: string | null | undefined): string | null {
+  return sanitizeAlertLocationReference(raw) || null;
 }
 
 function present(value: unknown): string | undefined {
@@ -52,6 +52,18 @@ export function flyerLocationWithReference(
   if (!main) return undefined;
   const extra = sanitizeAlertLocationReference(reference);
   return extra ? `${main}\n${extra}` : main;
+}
+
+export function alertLocationDisplayLines(
+  locality?: string | null,
+  reference?: string | null
+): string[] {
+  const lines: string[] = [];
+  const loc = present(locality);
+  if (loc) lines.push(loc);
+  const extra = sanitizeAlertLocationReference(reference);
+  if (extra) lines.push(extra);
+  return lines;
 }
 
 export function alertGeoFieldsWithReference<T extends Record<string, unknown>>(input: {
@@ -84,6 +96,6 @@ export function alertGeoFieldsWithReference<T extends Record<string, unknown>>(i
     admin2Code: input.admin2Code ?? null,
     lat: input.lat ?? null,
     lon: input.lon ?? null,
-    locationReference: sanitizeAlertLocationReference(input.locationReference) || null,
+    locationReference: persistableAlertLocationReference(input.locationReference),
   };
 }

@@ -419,6 +419,8 @@ describe('escritura de la identidad territorial', () => {
     // Las columnas nuevas entran por fragmento, nunca hardcodeadas.
     assert.match(chunk, /\$\{geo\.columns\}/);
     assert.match(chunk, /\$\{geo\.placeholders\}/);
+    assert.match(chunk, /\$\{locRef\.columns\}/);
+    assert.match(chunk, /\$\{locRef\.placeholders\}/);
   });
 });
 
@@ -518,7 +520,11 @@ describe('esquema defensivo', () => {
         for (const col of GEO_WRITE_COLUMNS) db.exec(`ALTER TABLE alerts ADD COLUMN ${col} TEXT`);
       }
       const geo = await geoInsertFragment(fakeEnv(db), 'alerts', place);
-      const sql = template.replace('${geo.columns}', geo.columns).replace('${geo.placeholders}', geo.placeholders);
+      const sql = template
+        .replace('${geo.columns}', geo.columns)
+        .replace('${geo.placeholders}', geo.placeholders)
+        .replace('${locRef.columns}', '')
+        .replace('${locRef.placeholders}', '');
       const legacyValues = ['al-1', 'u-1', 'lost', 'Toby', 'perro', 'mestizo', 'se perdió', 'https://i/1.jpg',
         'Salta', 'Salta', 'AR', null, null, 1, 1, 1, null, null, null, null];
       db.prepare(sql).run(...legacyValues, ...(geo.values as string[]));

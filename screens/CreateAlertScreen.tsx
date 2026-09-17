@@ -282,6 +282,7 @@ export default function CreateAlertScreen() {
       authorProfileId: resolvedType === 'adoption' ? activeProfile?.id : undefined,
       contactWhatsapp: contactWhatsappNorm,
       contactPhone: contactPhoneNorm,
+      locationReference: reference || null,
     };
 
     if (flyerMode) {
