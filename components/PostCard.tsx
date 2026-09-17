@@ -20,7 +20,7 @@ import { isTextBackgroundPost } from '../lib/postBackgrounds';
 import { FEED_TEXT_BACKGROUND_ASPECT } from '../lib/feedMediaLayout';
 import { feedMediaPerfNoteLikeToggle, feedMediaPerfNotePostCardRender } from '../lib/feedMediaPerf';
 import { useNavigation } from '@react-navigation/native';
-import { colors, radius, shadow, spacing } from '../lib/theme';
+import { colors, FEED_POST_GAP, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import { openHumanProfile } from '../lib/publicHandles';
 import PetAvatar from './PetAvatar';
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     width: '100%',
-    marginBottom: spacing.xl,
+    marginBottom: FEED_POST_GAP,
     overflow: 'hidden',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,

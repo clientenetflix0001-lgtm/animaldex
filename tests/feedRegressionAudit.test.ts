@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { CREATE_POST_SCREEN_OPTIONS, CREATE_POST_SUCCESS_TAB } from '../lib/createPostPublish.ts';
 import { getActivePostBackgrounds } from '../lib/postBackgrounds.ts';
+import { colors, FEED_POST_GAP, spacing } from '../lib/theme.ts';
 import {
   LEGACY_IONICON_PAW_NODES,
   PAW_LAYOUTS,
@@ -83,6 +84,30 @@ describe('auditoría Feed / Crear / GEO', () => {
     assert.doesNotMatch(story, /presentation: 'modal'/);
     const reel = app.slice(app.indexOf('name="CreateReel"'), app.indexOf('name="CreateStory"'));
     assert.doesNotMatch(reel, /presentation: 'modal'/);
+  });
+
+  it('separación crema entre posts: una sola fuente de ~7dp', () => {
+    const theme = read('lib/theme.ts');
+    const postCard = read('components/PostCard.tsx');
+    const feed = read('screens/FeedScreen.tsx');
+    const cardBlock = postCard.slice(postCard.indexOf('card: {'), postCard.indexOf('header: {'));
+    assert.equal(FEED_POST_GAP, 7);
+    assert.ok(FEED_POST_GAP >= 6 && FEED_POST_GAP <= 8);
+    assert.equal(colors.bg, '#FFF9F2');
+    assert.ok(FEED_POST_GAP < spacing.xl);
+    assert.match(theme, /export const FEED_POST_GAP = 7/);
+    assert.match(cardBlock, /marginBottom: FEED_POST_GAP/);
+    assert.doesNotMatch(cardBlock, /marginTop/);
+    assert.doesNotMatch(cardBlock, /paddingVertical|paddingBottom|paddingTop/);
+    assert.equal((cardBlock.match(/marginBottom/g) || []).length, 1);
+    assert.doesNotMatch(feed, /ItemSeparatorComponent/);
+    const listBlock = feed.slice(feed.indexOf('<FlatList'), feed.indexOf('/>', feed.indexOf('<FlatList')) + 2);
+    assert.doesNotMatch(listBlock, /\bgap:/);
+    assert.doesNotMatch(listBlock, /ItemSeparator/);
+    assert.match(feed, /backgroundColor: colors\.bg/);
+    const overlay = read('components/PawPrintOverlay.tsx');
+    assert.equal((overlay.match(/<Image/g) || []).length, 1);
+    assert.doesNotMatch(overlay, /Ionicons/);
   });
 
   it('el camino del Feed no llama GEOREF remoto', () => {

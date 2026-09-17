@@ -21,6 +21,9 @@ export const spacing = {
   xxl: 32,
 };
 
+/** Franja crema entre publicaciones del Feed (~2 mm físicos ≈ 7 dp). */
+export const FEED_POST_GAP = 7;
+
 export const radius = {
   sm: 10,
   md: 16,
