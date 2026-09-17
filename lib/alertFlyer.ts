@@ -7,6 +7,7 @@ import {
 import type { ApiAlert } from './db.ts';
 import { isValidPetUsername } from './petHandles.ts';
 import { publicWebUrl } from './publicWeb.ts';
+import { flyerLocationWithReference } from './alertLocationReference.ts';
 
 export const FLYER_ASPECT = 9 / 16;
 export const FLYER_EXPORT_WIDTH = 1080;
@@ -110,9 +111,12 @@ function sexLabel(sex?: string | null): string | undefined {
   return undefined;
 }
 
-function locationLine(locality?: string | null, province?: string | null): string | undefined {
-  const parts = [present(locality), present(province)].filter(Boolean) as string[];
-  return parts.length ? parts.join(', ') : undefined;
+function locationLine(
+  locality?: string | null,
+  province?: string | null,
+  reference?: string | null
+): string | undefined {
+  return flyerLocationWithReference(locality, province, reference);
 }
 
 function dateLabel(ts?: number | null): string | undefined {
@@ -173,6 +177,7 @@ export function buildAlertFlyerData(input: {
   color?: string | null;
   locality?: string | null;
   province?: string | null;
+  locationReference?: string | null;
   eventDate?: number | null;
   createdAt?: number | null;
   description?: string | null;
@@ -196,7 +201,7 @@ export function buildAlertFlyerData(input: {
     sizeLabel: present(input.size),
     breed: present(input.breed),
     colorLabel: present(input.color),
-    location: locationLine(input.locality, input.province),
+    location: locationLine(input.locality, input.province, input.locationReference),
     dateLabel: dateLabel(input.eventDate) || dateLabel(input.createdAt),
     description: present(input.description),
     contact: contactLine(input.contactWhatsapp, input.contactPhone),
