@@ -1,6 +1,9 @@
-/** Layouts de huellas: un patrón vectorial reutilizable, no un asset por post. */
+/** Overlay de huellas: un PNG estático reutilizable, no un asset por post. */
 
 export const PAWS_PER_LAYOUT = 5;
+/** Ionicons era 1 View + 5 iconos. El overlay nuevo es 1 Image. */
+export const LEGACY_IONICON_PAW_NODES = 6;
+export const PAW_OVERLAY_DECORATIVE_NODES = 1;
 
 export const PAW_LAYOUTS = [
   [
@@ -32,28 +35,28 @@ export function pawLayoutIndexForBackgroundId(id: string): number {
   return Math.abs(n) % PAW_LAYOUTS.length;
 }
 
-/** Container absoluto + un Ionicons por marca. */
 export function pawNativeViewsPerOverlay(): number {
-  return 1 + PAWS_PER_LAYOUT;
+  return PAW_OVERLAY_DECORATIVE_NODES;
 }
 
 /**
- * Costo comparado contra 35db31c: las huellas solo existían si
- * `bg.pattern === 'paws'` (hoy 1 fondo). HEAD monta el overlay en todos.
+ * Costo comparado contra 35db31c (huellas solo en pattern paws) y contra
+ * el overlay de 5 Ionicons (5576d44).
  */
 export function pawOverlayCost(backgrounds: readonly { pattern?: string }[]): {
   historicalCardsWithPaws: number;
   currentCardsWithPaws: number;
-  iconsPerCard: number;
-  extraIconsVsHistoricalIfAllVisible: number;
+  ioniconNodesPerCard: number;
+  staticNodesPerCard: number;
+  extraIoniconNodesIfAllVisible: number;
 } {
   const historicalCardsWithPaws = backgrounds.filter((bg) => bg.pattern === 'paws').length;
   const currentCardsWithPaws = backgrounds.length;
   return {
     historicalCardsWithPaws,
     currentCardsWithPaws,
-    iconsPerCard: PAWS_PER_LAYOUT,
-    extraIconsVsHistoricalIfAllVisible:
-      (currentCardsWithPaws - historicalCardsWithPaws) * PAWS_PER_LAYOUT,
+    ioniconNodesPerCard: LEGACY_IONICON_PAW_NODES,
+    staticNodesPerCard: PAW_OVERLAY_DECORATIVE_NODES,
+    extraIoniconNodesIfAllVisible: (currentCardsWithPaws - historicalCardsWithPaws) * PAWS_PER_LAYOUT,
   };
 }

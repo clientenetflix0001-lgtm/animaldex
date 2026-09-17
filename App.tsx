@@ -17,7 +17,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 import ExploreScreen from './screens/ExploreScreen';
-import CreatePostScreen from './screens/CreatePostScreen';
 import CreateChooserScreen from './screens/CreateChooserScreen';
 import ActivityScreen from './screens/ActivityScreen';
 import UserProfileScreen from './screens/UserProfileScreen';
@@ -74,7 +73,6 @@ import {
   rememberIncomingAppLink,
 } from './lib/appLinks';
 import { getStateFromPublicPath, setLinkingHasUser, shouldAutoOpenPendingTag } from './lib/webLinking';
-import { CREATE_POST_SCREEN_OPTIONS } from './lib/createPostPublish';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -565,11 +563,6 @@ function RootNavigator() {
         name="ListingDetail"
         component={ListingDetailScreen}
         options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="CreatePost"
-        component={CreatePostScreen}
-        options={CREATE_POST_SCREEN_OPTIONS}
       />
       <Stack.Screen
         name="CreateReel"

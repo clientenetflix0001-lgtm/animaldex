@@ -223,7 +223,7 @@ describe('flyer UI wiring', () => {
     assert.match(mine, /!resolved \? \(/);
     assert.equal(createChooserDestination('flyer'), 'CreateFlyerDraft');
     assert.equal(createChooserOpensInCrearStack('flyer'), true);
-    assert.equal(createChooserOpensInCrearStack('post'), false);
+    assert.equal(createChooserOpensInCrearStack('post'), true);
     assert.deepEqual(createChooserParams('flyer'), { purpose: 'flyer' });
     assert.deepEqual(createChooserOpen('flyer'), { screen: 'CreateFlyerDraft', params: { purpose: 'flyer' } });
     assert.equal(createChooserDestination('post'), 'CreatePost');

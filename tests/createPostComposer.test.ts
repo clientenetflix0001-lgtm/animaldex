@@ -1,12 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
   CREATE_POST_SCREEN_OPTIONS,
-  CREATE_POST_SUCCESS_NAV,
+  CREATE_POST_SUCCESS_TAB,
   backgroundIdForCreatePost,
   endPublish,
   navigateAfterSuccessfulCreatePost,
@@ -23,7 +23,8 @@ import {
   isAllowedBackgroundId,
   resolvePostBackground,
 } from '../lib/postBackgrounds.ts';
-import { pawLayoutIndexForBackgroundId, PAW_LAYOUTS } from '../lib/pawPrintLayout.ts';
+import { pawLayoutIndexForBackgroundId, PAW_LAYOUTS, PAW_OVERLAY_DECORATIVE_NODES } from '../lib/pawPrintLayout.ts';
+import { createChooserOpensInCrearStack } from '../lib/createChooser.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -33,6 +34,7 @@ function src(rel: string): string {
 
 const createPost = src('screens/CreatePostScreen.tsx');
 const app = src('App.tsx');
+const tabStack = src('lib/tabProfileStack.tsx');
 const chooser = src('lib/createChooser.ts');
 const card = src('components/PostBackgroundCard.tsx');
 const overlay = src('components/PawPrintOverlay.tsx');
@@ -41,9 +43,12 @@ const feed = src('screens/FeedScreen.tsx');
 
 describe('Nueva publicación — jerarquía', () => {
   it('1. abrir Nueva publicación desde Crear sigue yendo a CreatePost', () => {
-    assert.match(app, /name="CreatePost"/);
-    assert.match(app, /component=\{CreatePostScreen\}/);
+    assert.match(tabStack, /name="CreatePost"/);
+    assert.match(tabStack, /component=\{CreatePostScreen\}/);
+    assert.doesNotMatch(app, /name="CreatePost"/);
     assert.match(chooser, /return 'CreatePost'/);
+    assert.equal(createChooserOpensInCrearStack('post'), true);
+    assert.equal(createChooserOpensInCrearStack('story'), false);
     assert.match(createPost, /export default function CreatePostScreen/);
     assert.match(createPost, /Nueva publicación/);
     assert.match(createPost, /accessibilityLabel="Cerrar"/);
@@ -99,19 +104,19 @@ describe('Nueva publicación — jerarquía', () => {
 });
 
 describe('Nueva publicación — presentación y Feed montado', () => {
-  it('CreatePost se superpone sin slide lateral (modal + animation none)', () => {
+  it('CreatePost abre en el tab Crear sin slide y sin modal de Root', () => {
     assert.deepEqual(CREATE_POST_SCREEN_OPTIONS, {
       headerShown: false,
-      presentation: 'modal',
       animation: 'none',
     });
-    assert.match(app, /options=\{CREATE_POST_SCREEN_OPTIONS\}/);
-    assert.doesNotMatch(app, /name="CreatePost"[\s\S]{0,180}slide_from_right/);
+    assert.equal('presentation' in CREATE_POST_SCREEN_OPTIONS, false);
+    assert.match(tabStack, /options=\{CREATE_POST_SCREEN_OPTIONS\}/);
+    assert.doesNotMatch(app, /CREATE_POST_SCREEN_OPTIONS/);
     assert.doesNotMatch(CREATE_POST_SCREEN_OPTIONS.animation, /slide/);
   });
 
-  it('Tabs permanece debajo y el cierre no resetea el nested navigator', () => {
-    assert.equal(CREATE_POST_SUCCESS_NAV.merge, true);
+  it('el Feed hermano permanece montado: éxito cambia a Inicio sin reset', () => {
+    assert.equal(CREATE_POST_SUCCESS_TAB, 'Inicio');
     assert.match(app, /<Stack\.Screen name="Tabs"/);
     assert.match(createPost, /notifyPostCreated\(apiPostToPost\(post\)\)/);
     const notifyAt = createPost.indexOf('notifyPostCreated(apiPostToPost(post))');
@@ -121,22 +126,19 @@ describe('Nueva publicación — presentación y Feed montado', () => {
 });
 
 describe('Nueva publicación — éxito, error y lock', () => {
-  it('7. éxito vuelve al Feed existente (Tabs/Inicio merge), sin reset', () => {
-    assert.deepEqual(CREATE_POST_SUCCESS_NAV, {
-      name: 'Tabs',
-      params: { screen: 'Inicio' },
-      merge: true,
-    });
+  it('7. éxito vuelve al Feed existente (tab Inicio), sin reset', () => {
     const calls: unknown[] = [];
     navigateAfterSuccessfulCreatePost({
-      navigate: (route) => {
-        calls.push(route);
-      },
+      popToTop: () => calls.push('popToTop'),
+      getParent: () => ({
+        navigate: (name: string) => calls.push(['tab', name]),
+      }),
+      navigate: (name: string) => calls.push(['self', name]),
     });
-    assert.deepEqual(calls, [CREATE_POST_SUCCESS_NAV]);
+    assert.deepEqual(calls, ['popToTop', ['tab', 'Inicio']]);
     assert.match(createPost, /navigateAfterSuccessfulCreatePost\(navigation\)/);
-    assert.doesNotMatch(createPost, /navigation\.navigate\('Inicio'\)/);
     assert.doesNotMatch(createPost, /CommonActions\.reset/);
+    assert.doesNotMatch(createPost, /presentation: 'modal'/);
   });
 
   it('8. publicación creada entra al Feed por notifyPostCreated sin reload', () => {
@@ -182,17 +184,20 @@ describe('Fondos — background_id y huellas', () => {
     assert.match(createPost, /backgroundIdForCreatePost\(!!photo, backgroundId\)/);
   });
 
-  it('12. todos los fondos activos decoran con huellas vectoriales, no emoji', () => {
+  it('12. todos los fondos activos decoran con un PNG de huellas, no 5 Ionicons', () => {
     const active = getActivePostBackgrounds();
     assert.ok(active.length >= 12);
     const indexes = new Set(active.map((bg) => pawLayoutIndexForBackgroundId(bg.id)));
     assert.equal(PAW_LAYOUTS.length, 3);
     assert.ok(indexes.size >= 2);
-    assert.match(card, /<PawPrintOverlay color=\{bg\.textColor\} backgroundId=\{bg\.id\}/);
+    assert.equal(PAW_OVERLAY_DECORATIVE_NODES, 1);
+    assert.equal(existsSync(join(root, 'assets/images/paw-print-overlay.png')), true);
+    assert.match(card, /<PawPrintOverlay color=\{bg\.textColor\}/);
     assert.doesNotMatch(card, /pattern === 'paws'/);
     assert.doesNotMatch(overlay, /🐾/);
-    assert.match(overlay, /name="paw"/);
-    assert.doesNotMatch(overlay, /require\(/);
+    assert.doesNotMatch(overlay, /Ionicons/);
+    assert.match(overlay, /paw-print-overlay\.png/);
+    assert.match(overlay, /recyclingKey="animaldex-paw-overlay"/);
   });
 
   it('13. posts antiguos siguen resolviendo background_id y foto', () => {

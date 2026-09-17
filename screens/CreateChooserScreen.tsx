@@ -19,20 +19,22 @@ export default function CreateChooserScreen() {
     (kind: CreateChooserKind) => {
       const { screen, params } = createChooserOpen(kind);
       if (createChooserOpensInCrearStack(kind)) {
-        void flyerDebug('FLYER_DEBUG_01_PRESS', {
-          route: 'TabRoot',
-          navigator: 'CrearStack',
-          dest: CREAR_FLYER_DRAFT_ROUTE,
-        });
-        void flyerDebug('FLYER_DEBUG_02_NAVIGATION', {
-          route: 'TabRoot',
-          navigator: 'CrearStack',
-          dest: screen,
-        });
+        if (kind === 'flyer') {
+          void flyerDebug('FLYER_DEBUG_01_PRESS', {
+            route: 'TabRoot',
+            navigator: 'CrearStack',
+            dest: CREAR_FLYER_DRAFT_ROUTE,
+          });
+          void flyerDebug('FLYER_DEBUG_02_NAVIGATION', {
+            route: 'TabRoot',
+            navigator: 'CrearStack',
+            dest: screen,
+          });
+        }
         navigation.navigate(screen, params);
         return;
       }
-      if (!pushRootScreen(screen as 'CreatePost' | 'CreateStory' | 'CreateReel', params as never)) {
+      if (!pushRootScreen(screen as 'CreateStory' | 'CreateReel', params as never)) {
         navigateRoot(navigation, screen, params);
       }
     },

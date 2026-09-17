@@ -1,12 +1,21 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CREATE_POST_SCREEN_OPTIONS, CREATE_POST_SUCCESS_NAV } from '../lib/createPostPublish.ts';
+import { CREATE_POST_SCREEN_OPTIONS, CREATE_POST_SUCCESS_TAB } from '../lib/createPostPublish.ts';
 import { getActivePostBackgrounds } from '../lib/postBackgrounds.ts';
-import { PAW_LAYOUTS, PAWS_PER_LAYOUT, pawNativeViewsPerOverlay, pawOverlayCost } from '../lib/pawPrintLayout.ts';
+import {
+  LEGACY_IONICON_PAW_NODES,
+  PAW_LAYOUTS,
+  PAW_OVERLAY_DECORATIVE_NODES,
+  PAWS_PER_LAYOUT,
+  pawNativeViewsPerOverlay,
+  pawOverlayCost,
+} from '../lib/pawPrintLayout.ts';
+import { shouldHideCrearTabBar } from '../lib/crearFlyerRoutes.ts';
+import { createChooserOpensInCrearStack } from '../lib/createChooser.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 function read(rel: string) {
@@ -14,21 +23,29 @@ function read(rel: string) {
 }
 
 describe('auditoría Feed / Crear / GEO', () => {
-  it('el costo de huellas creció de 1 fondo a todos los fondos activos', () => {
+  it('huellas: 1 Image reutilizable vs 6 nodos Ionicons, en todos los fondos', () => {
     const active = getActivePostBackgrounds();
     const cost = pawOverlayCost(active);
     assert.equal(PAWS_PER_LAYOUT, 5);
     for (const layout of PAW_LAYOUTS) assert.equal(layout.length, PAWS_PER_LAYOUT);
-    assert.equal(cost.iconsPerCard, 5);
+    assert.equal(cost.ioniconNodesPerCard, LEGACY_IONICON_PAW_NODES);
+    assert.equal(cost.staticNodesPerCard, 1);
     assert.equal(cost.historicalCardsWithPaws, 1);
     assert.equal(cost.currentCardsWithPaws, active.length);
     assert.ok(active.length >= 12);
-    assert.equal(cost.extraIconsVsHistoricalIfAllVisible, (active.length - 1) * 5);
-    assert.equal(pawNativeViewsPerOverlay(), 6);
+    assert.equal(pawNativeViewsPerOverlay(), PAW_OVERLAY_DECORATIVE_NODES);
+    assert.ok(cost.ioniconNodesPerCard >= 6);
+    assert.ok(cost.staticNodesPerCard * 6 <= cost.ioniconNodesPerCard);
+    assert.equal(existsSync(join(root, 'assets/images/paw-print-overlay.png')), true);
     const card = read('components/PostBackgroundCard.tsx');
-    assert.match(card, /<PawPrintOverlay color=\{bg\.textColor\} backgroundId=\{bg\.id\}/);
+    const overlay = read('components/PawPrintOverlay.tsx');
+    assert.match(card, /<PawPrintOverlay color=\{bg\.textColor\}/);
+    assert.match(card, /export const PostBackgroundCard = memo\(/);
+    assert.match(overlay, /export const PawPrintOverlay = memo\(/);
+    assert.doesNotMatch(card, /backgroundId=\{bg\.id\}/);
     assert.doesNotMatch(card, /pattern === 'paws'/);
-    assert.match(read('components/PawPrintOverlay.tsx'), /name="paw"/);
+    assert.doesNotMatch(overlay, /Ionicons/);
+    assert.match(overlay, /paw-print-overlay\.png/);
     assert.match(read('lib/feedMediaPerf.ts'), /pawOverlayRenders/);
   });
 
@@ -43,15 +60,19 @@ describe('auditoría Feed / Crear / GEO', () => {
     assert.doesNotMatch(created.slice(0, 700), /fetchHomeFeedBuckets/);
   });
 
-  it('CreatePost modal no se copia a CreateAlert ni al navigator raíz', () => {
+  it('CreatePost vive en CrearStack y no aplica modal al Root Stack', () => {
     const app = read('App.tsx');
+    const tabStack = read('lib/tabProfileStack.tsx');
     const rootNav = app.slice(app.indexOf('<Stack.Navigator>'), app.indexOf('// En Android, initialWindowMetrics'));
     assert.doesNotMatch(rootNav.slice(0, 80), /screenOptions=\{/);
-    assert.equal(CREATE_POST_SCREEN_OPTIONS.presentation, 'modal');
     assert.equal(CREATE_POST_SCREEN_OPTIONS.animation, 'none');
-    assert.equal(CREATE_POST_SUCCESS_NAV.merge, true);
-    const postBlock = app.slice(app.indexOf('name="CreatePost"'), app.indexOf('name="CreateReel"'));
-    assert.match(postBlock, /CREATE_POST_SCREEN_OPTIONS/);
+    assert.equal('presentation' in CREATE_POST_SCREEN_OPTIONS, false);
+    assert.equal(CREATE_POST_SUCCESS_TAB, 'Inicio');
+    assert.equal(createChooserOpensInCrearStack('post'), true);
+    assert.equal(shouldHideCrearTabBar('Crear', 'CreatePost'), true);
+    assert.match(tabStack, /name="CreatePost"/);
+    assert.match(tabStack, /CREATE_POST_SCREEN_OPTIONS/);
+    assert.doesNotMatch(app, /name="CreatePost"/);
     const alertBlock = app.slice(app.indexOf('name="CreateAlert"'), app.indexOf('name="MyAlerts"'));
     assert.doesNotMatch(alertBlock, /presentation: 'modal'/);
     assert.doesNotMatch(alertBlock, /animation: 'none'/);

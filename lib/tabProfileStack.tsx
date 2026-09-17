@@ -7,8 +7,10 @@ import PublicProfileScreen from '../screens/PublicProfileScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import AdoptionDiscoveryScreen from '../screens/AdoptionDiscoveryScreen';
 import { CreateFlyerDraftScreen, CreateFlyerPreviewScreen } from '../screens/CreateFlyerScreens';
+import CreatePostScreen from '../screens/CreatePostScreen';
 import type { TabParamList, TabProfileStackParamList } from './types';
 import { colors } from './theme';
+import { CREATE_POST_SCREEN_OPTIONS } from './createPostPublish';
 
 const Stack = createNativeStackNavigator<TabProfileStackParamList>();
 
@@ -49,6 +51,11 @@ export function createTabProfileStack(Root: React.ComponentType) {
           name="AdoptionDiscovery"
           component={AdoptionDiscoveryScreen}
           options={{ contentStyle: { backgroundColor: '#000' } }}
+        />
+        <Stack.Screen
+          name="CreatePost"
+          component={CreatePostScreen}
+          options={CREATE_POST_SCREEN_OPTIONS}
         />
         <Stack.Screen
           name="CreateFlyerDraft"

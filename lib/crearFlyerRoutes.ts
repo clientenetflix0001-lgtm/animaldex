@@ -13,7 +13,7 @@ export function shouldHideCrearTabBar(
   tabName: string | undefined,
   nestedName: string | undefined
 ): boolean {
-  return tabName === 'Crear' && (nestedName === CREAR_FLYER_DRAFT_ROUTE || nestedName === CREAR_FLYER_PREVIEW_ROUTE);
+  return tabName === 'Crear' && (nestedName === CREAR_FLYER_DRAFT_ROUTE || nestedName === CREAR_FLYER_PREVIEW_ROUTE || nestedName === 'CreatePost');
 }
 
 export function isCrearFlyerRoute(name: string | undefined): boolean {
