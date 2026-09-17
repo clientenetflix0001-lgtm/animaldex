@@ -328,12 +328,14 @@ export interface ApiTag {
 
 export interface ApiNotification {
   id: string;
-  type: 'like' | 'comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday' | 'reel_like' | 'reel_comment' | 'pet_transfer_requested' | 'pet_transfer_accepted' | 'pet_transfer_rejected';
+  type: 'like' | 'comment' | 'listing_comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday' | 'reel_like' | 'reel_comment' | 'pet_transfer_requested' | 'pet_transfer_accepted' | 'pet_transfer_rejected';
   actorId: string | null;
   actorName: string;
   actorUsername: string;
   actorAvatar: string | null;
   postId?: string;
+  listingId?: string;
+  listingTitle?: string | null;
   reelId?: string;
   postImage?: string | null;
   petId?: string;
