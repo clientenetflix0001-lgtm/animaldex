@@ -49,6 +49,12 @@ import { useProfiles } from '../features/profiles';
 import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib/adoptionContact';
 import { SelectedImagePreview } from '../components/SelectedImagePreview';
 import { GALLERY_IMAGE_PICKER_OPTIONS } from '../lib/galleryImagePicker';
+import {
+  ALERT_LOCATION_REFERENCE_LABEL,
+  ALERT_LOCATION_REFERENCE_MAX,
+  ALERT_LOCATION_REFERENCE_PLACEHOLDER,
+  sanitizeAlertLocationReference,
+} from '../lib/alertLocationReference';
 
 function alertSpeciesFromPet(species: string | null | undefined): string {
   const id = String(species || '').trim().toLowerCase();
@@ -104,6 +110,7 @@ export default function CreateAlertScreen() {
   const [place, setPlace] = useState<GeoPlace | null>(null);
   const [locating, setLocating] = useState(true);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [locationReference, setLocationReference] = useState('');
 
   const [dateText, setDateText] = useState(todayDateString());
 
@@ -254,6 +261,7 @@ export default function CreateAlertScreen() {
     }
 
     const eventDate = dateText.trim() ? dateStringToTimestamp(dateText.trim()) ?? undefined : undefined;
+    const reference = sanitizeAlertLocationReference(locationReference);
     const payload = {
       type: resolvedType,
       species,
@@ -274,6 +282,7 @@ export default function CreateAlertScreen() {
       authorProfileId: resolvedType === 'adoption' ? activeProfile?.id : undefined,
       contactWhatsapp: contactWhatsappNorm,
       contactPhone: contactPhoneNorm,
+      locationReference: reference || null,
     };
 
     if (flyerMode) {
@@ -292,6 +301,7 @@ export default function CreateAlertScreen() {
           color: color.trim() || undefined,
           locality,
           province,
+          locationReference: reference || undefined,
           eventDate,
           description: payload.description || undefined,
           contactWhatsapp: contactWhatsappNorm,
@@ -328,7 +338,7 @@ export default function CreateAlertScreen() {
     } finally {
       setSaving(false);
     }
-  }, [image, description, locality, province, lat, lon, place, primary, seenKind, species, petName, sex, breed, color, ageLabel, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode, activePetId, flyerPetUsername, routeName]);
+  }, [image, description, locality, province, lat, lon, place, locationReference, primary, seenKind, species, petName, sex, breed, color, ageLabel, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode, activePetId, flyerPetUsername, routeName]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -561,6 +571,21 @@ export default function CreateAlertScreen() {
               <Text style={styles.changeLocText}>Cambiar</Text>
             </Pressable>
           )}
+
+          <Text style={styles.label}>{ALERT_LOCATION_REFERENCE_LABEL}</Text>
+          <TextInput
+            style={styles.input}
+            value={locationReference}
+            onChangeText={setLocationReference}
+            placeholder={ALERT_LOCATION_REFERENCE_PLACEHOLDER}
+            placeholderTextColor={colors.textMuted}
+            maxLength={ALERT_LOCATION_REFERENCE_MAX}
+            autoCorrect={false}
+            autoCapitalize="sentences"
+          />
+          <Text style={styles.help}>
+            Complementa el municipio. No cambia filtros ni el catálogo GEO.
+          </Text>
 
           {/* Fecha del hecho */}
           <Text style={styles.label}>Fecha *</Text>

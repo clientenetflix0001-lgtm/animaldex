@@ -17,6 +17,7 @@ import { colors, radius } from '../lib/theme';
 import { CONTENT } from '../lib/responsive';
 import { feedBoxHeightForWidth } from '../lib/feedMediaLayout';
 import { PawPrintOverlay } from './PawPrintOverlay';
+import { feedMediaPerfNoteBackgroundCard } from '../lib/feedMediaPerf';
 
 const FEED_SEE_MORE_WIDTH = CONTENT.feed;
 
@@ -80,10 +81,11 @@ function PostBackgroundCardInner({
   const fontSize = backgroundCardFontSize(display.length);
   const maxLines = backgroundCardMaxLines(display.length, needsSeeMore, cardHeight);
   const lineHeight = Math.round(fontSize * 1.32);
+  feedMediaPerfNoteBackgroundCard();
   return (
     <View style={aspectRatio ? [styles.cardFlex, { aspectRatio }] : styles.card}>
       <BackgroundFill bg={bg} />
-      <PawPrintOverlay color={bg.textColor} backgroundId={bg.id} />
+      <PawPrintOverlay color={bg.textColor} />
       <View style={styles.textWrap} pointerEvents="none">
         <Text
           style={[
@@ -123,7 +125,7 @@ function PostBackgroundTileInner({ backgroundId, text, size }: TileProps) {
   return (
     <View style={{ width: size, height: size, borderRadius: radiusSm, overflow: 'hidden' }}>
       <BackgroundFill bg={bg} />
-      <PawPrintOverlay color={bg.textColor} backgroundId={bg.id} compact />
+      <PawPrintOverlay color={bg.textColor} compact />
       <View style={styles.tilePad}>
         <Text style={[styles.tileText, { color: bg.textColor }]} numberOfLines={4}>
           {text.trim()}
@@ -147,7 +149,7 @@ function PostBackgroundChipInner({ backgroundId, selected, onPress }: ChipProps)
     <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}>
       <View style={styles.chipInner}>
         <BackgroundFill bg={bg} />
-        <PawPrintOverlay color={bg.textColor} backgroundId={bg.id} compact />
+        <PawPrintOverlay color={bg.textColor} compact />
       </View>
     </Pressable>
   );

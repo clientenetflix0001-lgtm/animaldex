@@ -213,7 +213,7 @@ describe('13–16. App Links, +, Mercado y Alertas', () => {
     assert.equal(createChooserDestination('story'), 'CreateStory');
     assert.equal(createChooserDestination('reel'), 'CreateReel');
     assert.match(app, /CreateChooserScreen/);
-    assert.match(app, /name="CreatePost"/);
+    assert.match(read('lib/tabProfileStack.tsx'), /name="CreatePost"/);
     assert.match(app, /name="Mercado" component=\{MercadoStack\}/);
     assert.match(app, /name="Alertas" component=\{AlertasStack\}/);
     assert.match(packageJson, /"expo-video"/);

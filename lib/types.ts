@@ -9,6 +9,7 @@ export type TabProfileStackParamList = {
   AdoptionDiscovery: undefined;
   CreateFlyerDraft: { purpose?: 'flyer' } | undefined;
   CreateFlyerPreview: { from?: import('./alertFlyer').AlertFlyerSource } | undefined;
+  CreatePost: undefined;
 };
 
 export type TabParamList = {
@@ -48,7 +49,6 @@ export type RootStackParamList = {
   MarketFavorites: undefined;
   PublicProfile: { profileId?: string; username?: string };
   AdoptionDiscovery: undefined;
-  CreatePost: undefined;
   CreateReel: undefined;
   CreateStory: undefined;
   StoryViewer: {

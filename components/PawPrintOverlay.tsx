@@ -1,37 +1,28 @@
 import React, { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { PAW_LAYOUTS, pawLayoutIndexForBackgroundId } from '../lib/pawPrintLayout';
+import { StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
+import { feedMediaPerfNotePawOverlay } from '../lib/feedMediaPerf';
+import { PAW_OVERLAY_DECORATIVE_NODES } from '../lib/pawPrintLayout';
+
+const PAW_OVERLAY = require('../assets/images/paw-print-overlay.png');
 
 function PawPrintOverlayInner({
   color,
-  backgroundId,
   compact,
 }: {
   color: string;
-  backgroundId: string;
   compact?: boolean;
 }) {
-  const marks = PAW_LAYOUTS[pawLayoutIndexForBackgroundId(backgroundId)];
-  const scale = compact ? 0.4 : 1;
+  feedMediaPerfNotePawOverlay(PAW_OVERLAY_DECORATIVE_NODES);
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {marks.map((m, i) => (
-        <Ionicons
-          key={i}
-          name="paw"
-          size={Math.max(8, Math.round(m.size * scale))}
-          color={color}
-          style={{
-            position: 'absolute',
-            top: m.top,
-            left: m.left,
-            opacity: compact ? 0.16 : 0.13,
-            transform: [{ rotate: m.rotate }],
-          }}
-        />
-      ))}
-    </View>
+    <Image
+      source={PAW_OVERLAY}
+      style={[StyleSheet.absoluteFill, { tintColor: color, opacity: compact ? 0.16 : 0.13 }]}
+      contentFit="cover"
+      recyclingKey="animaldex-paw-overlay"
+      transition={0}
+      pointerEvents="none"
+    />
   );
 }
 

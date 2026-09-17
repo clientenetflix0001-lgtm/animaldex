@@ -45,14 +45,15 @@ describe('Crear: Publicación | Reel', () => {
     assert.equal(createChooserDestination('story'), 'CreateStory');
     assert.equal(createChooserDestination('reel'), 'CreateReel');
     const app = read('App.tsx');
+    const tabStack = read('lib/tabProfileStack.tsx');
     const chooser = read('screens/CreateChooserScreen.tsx');
     assert.match(app, /CreateChooserScreen/);
-    assert.match(app, /name="CreatePost"/);
-    assert.match(app, /component=\{CreatePostScreen\}/);
+    assert.match(tabStack, /name="CreatePost"/);
+    assert.match(tabStack, /component=\{CreatePostScreen\}/);
     assert.match(chooser, /open\('post'\)/);
     assert.match(chooser, /open\('story'\)/);
     assert.match(chooser, /open\('reel'\)/);
-    assert.match(chooser, /createChooserDestination\(kind\)/);
+    assert.match(chooser, /createChooserOpen\(kind\)/);
     assert.doesNotMatch(chooser, /CreatePostScreen/);
   });
 

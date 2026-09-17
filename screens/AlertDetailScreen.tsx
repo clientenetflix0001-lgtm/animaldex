@@ -170,7 +170,12 @@ export default function AlertDetailScreen() {
           <Text style={styles.petName}>{alertContextLine(alert)}</Text>
           <View style={styles.locRow}>
             <Ionicons name="location" size={12} color={colors.textMuted} />
-            <Text style={styles.locText}>{alert.locality}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.locText}>{alert.locality}</Text>
+              {alert.locationReference ? (
+                <Text style={styles.locText}>{alert.locationReference}</Text>
+              ) : null}
+            </View>
           </View>
           {alertFoundSafeNote(alert) ? (
             <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text>
