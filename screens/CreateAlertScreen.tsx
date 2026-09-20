@@ -46,7 +46,14 @@ import { petsForPublishingIdentity, reconcileSelectedPetId } from '../lib/petOwn
 import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { useProfiles } from '../features/profiles';
-import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib/adoptionContact';
+import { ADOPTION_CONTACT_REQUIRED } from '../lib/adoptionContact';
+import {
+  parsePersonalAlertContact,
+  personalAlertContactError,
+  personalAlertContactHelp,
+  personalAlertContactLabel,
+  shouldCollectPersonalAlertContact,
+} from '../lib/alertFlyerContact';
 import { SelectedImagePreview } from '../components/SelectedImagePreview';
 import { GALLERY_IMAGE_PICKER_OPTIONS } from '../lib/galleryImagePicker';
 import {
@@ -116,7 +123,12 @@ export default function CreateAlertScreen() {
 
   const type: AlertType | null = alertTypeFromCreatePrimary(primary, seenKind);
   const isProtectorAdoption = type === 'adoption' && activeProfile?.type === 'protector';
-  const needsPersonalContact = type === 'adoption' && !isProtectorAdoption;
+  const needsPersonalContact = shouldCollectPersonalAlertContact({
+    type,
+    primary,
+    flyerMode,
+    isProtector: isProtectorAdoption,
+  });
   const showSex = type === 'adoption' || flyerMode;
 
   const pickerPets = useMemo(
@@ -250,10 +262,16 @@ export default function CreateAlertScreen() {
     const protector = resolvedType === 'adoption' && activeProfile?.type === 'protector';
     let contactWhatsappNorm: string | null | undefined;
     let contactPhoneNorm: string | null | undefined;
-    if (resolvedType === 'adoption' && !protector) {
-      const parsed = parseProtectorAdoptionContact('protector', contactWhatsapp, contactPhone);
+    const collectContact = shouldCollectPersonalAlertContact({
+      type: resolvedType,
+      primary,
+      flyerMode,
+      isProtector: protector,
+    });
+    if (collectContact) {
+      const parsed = parsePersonalAlertContact(contactWhatsapp, contactPhone);
       if (!parsed.ok) {
-        Alert.alert('Falta un contacto', parsed.error || ADOPTION_CONTACT_REQUIRED);
+        Alert.alert('Falta un contacto', personalAlertContactError(parsed) || ADOPTION_CONTACT_REQUIRED);
         return;
       }
       contactWhatsappNorm = parsed.whatsapp;
@@ -517,8 +535,8 @@ export default function CreateAlertScreen() {
               ) : null}
               {needsPersonalContact ? (
                 <>
-                  <Text style={styles.label}>Contacto para adopción *</Text>
-                  <Text style={styles.help}>Agregá al menos un WhatsApp o teléfono. No se muestra en el feed.</Text>
+                  <Text style={styles.label}>{personalAlertContactLabel(type)}</Text>
+                  <Text style={styles.help}>{personalAlertContactHelp(type)}</Text>
                   <TextInput
                     style={styles.input}
                     value={contactWhatsapp}
