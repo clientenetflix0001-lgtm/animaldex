@@ -86,8 +86,21 @@ describe('flyer WhatsApp perdido / encontrado / adopción', () => {
 
   it('6–7. perdido y encontrado muestran teléfono en el flyer final', () => {
     const canvas = read('components/AlertFlyerCanvas.tsx');
-    assert.match(canvas, /flyer\.contact \?/);
-    assert.match(canvas, /☎ \{flyer\.contact\}/);
+    const preview = read('screens/AlertFlyerPreviewScreen.tsx');
+    const share = read('lib/alertFlyerShare.ts');
+    const create = read('screens/CreateAlertScreen.tsx');
+    const contactBlock = canvas.slice(canvas.indexOf('{flyer.contact ?'), canvas.indexOf('flyer.petPublicUrl'));
+    assert.match(contactBlock, /<Text style=\{styles\.contactLine\}/);
+    assert.match(contactBlock, /☎ \{flyer\.contact\}/);
+    assert.doesNotMatch(contactBlock, /opacity:\s*0/);
+    assert.match(canvas, /contactLine: \{[\s\S]*?flexShrink: 0[\s\S]*?fontSize: 11[\s\S]*?color: '#2D2016'/);
+    assert.match(preview, /<AlertFlyerCanvas flyer=\{session\.flyer\} \/>/);
+    assert.match(preview, /ref=\{flyerRef\}/);
+    assert.match(preview, /shareFlyerCanvas\(flyerRef\.current, session\.flyer/);
+    assert.match(share, /captureRef\(view,/);
+    assert.match(share, /width: FLYER_EXPORT_WIDTH/);
+    assert.match(share, /height: FLYER_EXPORT_HEIGHT/);
+    assert.match(create, /flyer: buildAlertFlyerData\(\{[\s\S]*contactWhatsapp: contactWhatsappNorm/);
     const lost = buildAlertFlyerData({
       type: 'lost',
       locality: 'Salta Capital',
@@ -98,8 +111,16 @@ describe('flyer WhatsApp perdido / encontrado / adopción', () => {
       locality: 'Salta Capital',
       contactWhatsapp: '+5493875559999',
     });
+    const sighting = buildAlertFlyerData({
+      type: 'sighting',
+      locality: 'Salta Capital',
+      contactWhatsapp: '+5493875559999',
+    });
     assert.equal(lost.contact, '+5493875559999');
     assert.equal(found.contact, '+5493875559999');
+    assert.equal(sighting.contact, '+5493875559999');
+    assert.equal(`☎ ${lost.contact}`, '☎ +5493875559999');
+    assert.equal(`☎ ${found.contact}`, '☎ +5493875559999');
   });
 
   it('8. adopción no tiene regresión en flyer ni en alerta', () => {
