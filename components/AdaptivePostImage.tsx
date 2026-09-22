@@ -1,9 +1,9 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { View, StyleSheet, Modal, Pressable, Platform, StatusBar } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { large } from '../lib/images';
-import { colors } from '../lib/theme';
+import { useAppTheme, type ThemeColors } from '../lib/theme';
 import { feedMediaBoxStyle } from '../lib/feedMediaLayout';
 import { feedMediaPerfNoteMediaBox } from '../lib/feedMediaPerf';
 
@@ -40,6 +40,8 @@ export function AdaptivePostImage({
   allowFullScreen = true,
   onDoubleTap,
 }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [modalVisible, setModalVisible] = useState(false);
   const lastTapRef = useRef(0);
   const singleTapTimerRef = useRef<any>(null);
@@ -127,7 +129,8 @@ export function AdaptivePostImage({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   container: {
     width: '100%',
     backgroundColor: colors.border,
@@ -166,3 +169,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+}

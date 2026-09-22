@@ -1,9 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, PanResponder } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ReelTextOverlay } from '../lib/reelOverlays';
 import { REEL_OVERLAY_SAFE, REEL_OVERLAY_TEXT_MAX, sanitizeOverlayText } from '../lib/reelOverlays';
-import { colors, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius } from '../lib/theme';
 
 const COLORS = ['#FFFFFF', '#2D2016', '#FF6B4A', '#2EC4B6', '#FFB800'];
 const SIZES = [18, 22, 28];
@@ -17,6 +17,8 @@ type Props = {
 };
 
 export function ReelTextEditor({ overlay, boxW, boxH, onChange, onRemove }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [editing, setEditing] = useState(!overlay.text);
   const [draft, setDraft] = useState(overlay.text);
   const start = useRef({ x: overlay.x, y: overlay.y });
@@ -126,7 +128,8 @@ export function ReelTextEditor({ overlay, boxW, boxH, onChange, onRemove }: Prop
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   float: { position: 'absolute', width: 160, alignItems: 'center' },
   sheet: {
     position: 'absolute',
@@ -148,3 +151,4 @@ const styles = StyleSheet.create({
   ok: { backgroundColor: colors.primary, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 },
   okT: { color: '#fff', fontWeight: '800' },
 });
+}

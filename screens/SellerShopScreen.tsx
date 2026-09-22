@@ -5,7 +5,7 @@
 // perfil comercial: no existe una tabla de "tiendas" separada, se
 // construye a partir de su perfil de usuario + sus publicaciones +
 // las reseñas que recibió como vendedor.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,7 @@ import { useStore } from '../lib/store';
 import { ListingCard } from '../components/ListingCard';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { formatTime } from '../lib/data';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -36,6 +36,8 @@ type Rt = RouteProp<RootStackParamList, 'SellerShop'>;
 type ShopTab = 'products' | 'services' | 'reviews';
 
 export default function SellerShopScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
   const { userId: targetUserId } = route.params;
@@ -327,7 +329,8 @@ export default function SellerShopScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 },
   notFoundEmoji: { fontSize: 48 },
@@ -389,3 +392,4 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 36 },
   emptyText: { fontSize: 13, color: colors.textMuted },
 });
+}

@@ -31,6 +31,8 @@ export const lightColors = {
   cardBackground: '#FFFFFF',
   icon: '#2D2016',
   accent: '#FF6B4A',
+  dangerSoft: '#FFE8EC',
+  warningSoft: '#FFF4E5',
 } as const;
 
 /** Oscuro cálido. Naranja, WhatsApp y teléfono se conservan. */
@@ -55,6 +57,8 @@ export const darkColors = {
   cardBackground: '#221C18',
   icon: '#F4EDE6',
   accent: '#FF6B4A',
+  dangerSoft: '#3A1E24',
+  warningSoft: '#3A2E1C',
 } as const;
 
 export type ThemeColors = { [K in keyof typeof lightColors]: string };
@@ -123,6 +127,7 @@ export const CONTACT_THEME = {
 export const NATIVE_AAB_REASONS = [
   'expo-notifications small icon asset',
   'userInterfaceStyle automatic',
+  'expo-system-ui Android appearance',
 ] as const;
 
 export const OTA_SAFE_CHANGES = [

@@ -1,19 +1,21 @@
 // ============================================================
 // Animaldex — Favoritos del Mercado
 // ============================================================
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiListing } from '../lib/db';
 import { ListingCard } from '../components/ListingCard';
-import { colors, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function MarketFavoritesScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const [listings, setListings] = useState<ApiListing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,10 +80,12 @@ export default function MarketFavoritesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   emptyState: { alignItems: 'center', paddingTop: 80, paddingHorizontal: spacing.xl, gap: 4 },
   emptyEmoji: { fontSize: 44 },
   emptyTitle: { fontSize: 16, fontWeight: '800', color: colors.text, marginTop: 4 },
   emptyText: { fontSize: 13, color: colors.textMuted, textAlign: 'center' },
 });
+}

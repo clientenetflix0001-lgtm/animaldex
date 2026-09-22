@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -6,7 +6,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiPet, ApiPetTransferRequest, ApiTransferUser } from '../lib/db';
 import { useStore } from '../lib/store';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import PetAvatar from '../components/PetAvatar';
 import { RootStackParamList } from '../lib/types';
 import {
@@ -20,6 +20,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'PetTransferRequest'>;
 
 export default function PetTransferRequestScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
   const { user, refreshMyPets } = useStore();
@@ -144,7 +146,8 @@ export default function PetTransferRequestScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
@@ -190,3 +193,4 @@ const styles = StyleSheet.create({
   primaryText: { fontWeight: '800', color: '#fff' },
   error: { fontWeight: '700', color: colors.heart, textAlign: 'center' },
 });
+}

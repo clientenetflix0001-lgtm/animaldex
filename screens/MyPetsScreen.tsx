@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useStore } from '../lib/store';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import WantToAdoptButton from '../components/WantToAdoptButton';
 import PetStatusAvatar from '../components/PetStatusAvatar';
 import {
@@ -21,6 +21,8 @@ const GRID_GAP = spacing.md;
 const GRID_PAD = spacing.lg;
 
 export default function MyPetsScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
   const { myPets, refreshMyPets } = useStore();
@@ -102,7 +104,8 @@ export default function MyPetsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   list: { paddingBottom: spacing.xxl, gap: GRID_GAP },
   row: { gap: GRID_GAP, paddingHorizontal: GRID_PAD },
@@ -142,3 +145,4 @@ const styles = StyleSheet.create({
   handle: { fontWeight: '700', fontSize: 13, color: colors.text, textAlign: 'center' },
   age: { fontSize: 12, color: colors.textMuted, marginTop: 2, textAlign: 'center' },
 });
+}

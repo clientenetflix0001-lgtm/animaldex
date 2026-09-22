@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useStore } from '../lib/store';
 import { db } from '../lib/db';
-import { colors, spacing, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius } from '../lib/theme';
 import { ProfileSwitcher, useProfiles } from '../features/profiles';
 import { petsForPublishingIdentity, reconcileSelectedPetId } from '../lib/petOwnership';
 import PetAvatar from '../components/PetAvatar';
@@ -129,6 +129,8 @@ function phaseLabelOf(phase: Phase, error: string): string {
 }
 
 export default function CreateReelScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { myPets, user } = useStore();
   const { activeProfileId, activeProfile, profiles } = useProfiles();
@@ -579,7 +581,8 @@ export default function CreateReelScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
@@ -689,3 +692,4 @@ const styles = StyleSheet.create({
   },
   counter: { alignSelf: 'flex-end', color: colors.textMuted, marginTop: 4, fontSize: 12 },
 });
+}

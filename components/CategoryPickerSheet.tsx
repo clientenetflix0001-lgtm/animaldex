@@ -1,12 +1,12 @@
 // ============================================================
 // Animaldex — "Ver todas" las categorías del Mercado
 // ============================================================
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, FlatList } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { MARKET_CATEGORIES, categoriesFor } from '../lib/market';
 import { ListingKind } from '../lib/market';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 
 interface Props {
   visible: boolean;
@@ -17,6 +17,8 @@ interface Props {
 }
 
 export function CategoryPickerSheet({ visible, kind, selected, onClose, onSelect }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const categories = categoriesFor(kind);
 
   return (
@@ -70,7 +72,8 @@ export function CategoryPickerSheet({ visible, kind, selected, onClose, onSelect
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
     backgroundColor: colors.card,
@@ -113,3 +116,4 @@ const styles = StyleSheet.create({
   itemLabel: { fontSize: 12, fontWeight: '700', color: colors.text },
   itemLabelActive: { color: colors.primary },
 });
+}

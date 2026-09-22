@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useStore } from '../lib/store';
 import { db } from '../lib/db';
 import { uploadImage } from '../lib/api';
-import { colors, spacing, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius } from '../lib/theme';
 import { ProfileSwitcher, useProfiles } from '../features/profiles';
 import { petsForPublishingIdentity, reconcileSelectedPetId } from '../lib/petOwnership';
 import {
@@ -54,6 +54,8 @@ async function loadTrimNative() {
 }
 
 export default function CreateStoryScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { myPets } = useStore();
   const { activeProfileId, activeProfile, profiles } = useProfiles();
@@ -336,7 +338,8 @@ export default function CreateStoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   top: {
     flexDirection: 'row',
@@ -402,3 +405,4 @@ const styles = StyleSheet.create({
   },
   note: { color: colors.textMuted, fontSize: 12 },
 });
+}

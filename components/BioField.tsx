@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, TextInput, type StyleProp, type TextStyle } from 'react-native';
 import {
   BIO_WORD_LIMIT_ERROR,
@@ -6,7 +6,7 @@ import {
   isBioWithinWordLimit,
   MAX_BIO_WORDS,
 } from '../lib/bio';
-import { colors } from '../lib/theme';
+import { useAppTheme, type ThemeColors } from '../lib/theme';
 
 type Props = {
   value: string;
@@ -16,6 +16,8 @@ type Props = {
 };
 
 export default function BioField({ value, onChangeText, placeholder, style }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const words = countBioWords(value);
   const over = !isBioWithinWordLimit(value);
   return (
@@ -37,8 +39,10 @@ export default function BioField({ value, onChangeText, placeholder, style }: Pr
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   counter: { marginTop: 6, fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   over: { color: colors.primary },
   error: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.primary },
 });
+}

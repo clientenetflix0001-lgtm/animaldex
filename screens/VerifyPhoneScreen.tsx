@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,11 +15,13 @@ import { useNavigation } from '@react-navigation/native';
 import { sendVerificationCode, verifyCode } from '../lib/api';
 import { normalizePhone } from '../lib/phone';
 import { useStore } from '../lib/store';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 
 type Step = 'phone' | 'code' | 'done';
 
 export default function VerifyPhoneScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { setVerifiedPhone } = useStore();
 
@@ -178,7 +180,8 @@ export default function VerifyPhoneScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   body: { flex: 1, alignItems: 'center', padding: spacing.xl, paddingTop: 48 },
   iconCircle: {
@@ -232,10 +235,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: spacing.lg,
-    backgroundColor: '#FFE8EC',
+    backgroundColor: colors.dangerSoft,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
   },
   errorText: { color: colors.heart, fontSize: 13, fontWeight: '600' },
 });
+}

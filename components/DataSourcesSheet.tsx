@@ -6,11 +6,11 @@
 // que las tres cosas están acá y no sólo en el pie del selector.
 // ============================================================
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { geoCatalogMeta } from '../lib/geoplace/catalog.ts';
-import { colors, radius, shadow, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius, shadow, spacing } from '../lib/theme';
 
 interface Props {
   visible: boolean;
@@ -18,6 +18,8 @@ interface Props {
 }
 
 export function DataSourcesSheet({ visible, onClose }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const meta = geoCatalogMeta();
   const open = (url: string) => () => {
     Linking.openURL(url).catch(() => {});
@@ -59,7 +61,8 @@ export function DataSourcesSheet({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
     backgroundColor: colors.card,
@@ -93,3 +96,4 @@ const styles = StyleSheet.create({
   linkText: { fontSize: 13, fontWeight: '700', color: colors.primary },
   meta: { fontSize: 11, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 16 },
 });
+}

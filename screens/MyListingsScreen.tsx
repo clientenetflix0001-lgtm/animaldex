@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -22,12 +22,14 @@ import {
 } from '../lib/listingLifecycle';
 import { alertListTime } from '../lib/alerts';
 import { thumb } from '../lib/images';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function MyListingsScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const [items, setItems] = useState<ApiListing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,7 +167,8 @@ export default function MyListingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   card: {
     backgroundColor: colors.card,
@@ -203,3 +206,4 @@ const styles = StyleSheet.create({
   soldTag: { marginTop: 10, fontWeight: '800', fontSize: 12, color: colors.textMuted },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 40 },
 });
+}

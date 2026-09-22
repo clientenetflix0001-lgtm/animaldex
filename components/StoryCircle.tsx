@@ -1,9 +1,9 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors } from '../lib/theme';
+import { useAppTheme, type ThemeColors } from '../lib/theme';
 import { STORY_SEEN_RING, STORY_UNSEEN_GRADIENT, type StoryRingVariant } from '../lib/stories';
 import { thumb } from '../lib/images';
 import { HomeModulePressable } from './HomeHorizontalList';
@@ -19,6 +19,8 @@ type Props = {
 };
 
 function StoryCircle({ label, thumbUrl, emoji, ring, isSelf, onPress, onAdd }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const size = 64;
   const outer = size + 6;
   return (
@@ -78,7 +80,8 @@ function Inner({
 
 export default memo(StoryCircle);
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   item: { alignItems: 'center', width: 72, position: 'relative' },
   ring: { alignItems: 'center', justifyContent: 'center' },
   seenRing: { backgroundColor: STORY_SEEN_RING },
@@ -123,3 +126,4 @@ const styles = StyleSheet.create({
   },
   name: { fontSize: 11, color: colors.text, marginTop: 5, fontWeight: '600', textAlign: 'center' },
 });
+}

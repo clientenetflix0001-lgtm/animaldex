@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { HomeModulePressable } from './HomeHorizontalList';
 import { Image } from 'expo-image';
@@ -13,7 +13,7 @@ import {
   reelViewerParamsFromGrid,
   type ReelGridScope,
 } from '../lib/reelGrid';
-import { colors, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius } from '../lib/theme';
 
 export function ReelGridTile({
   reel,
@@ -28,6 +28,8 @@ export function ReelGridTile({
   onPress: () => void;
   preventPressOnSwipe?: boolean;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const thumbUri = getMuxThumbnail(reel.playbackId, { width: 240, height: 426 });
   const label = isOwner ? ownerGridLabel(reel.status) : null;
   const tileH = Math.round((size * 16) / 9);
@@ -132,7 +134,8 @@ export function openReelFromGrid(
   }));
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   tile: {
     borderRadius: radius.sm,
     overflow: 'hidden',
@@ -148,3 +151,4 @@ const styles = StyleSheet.create({
   },
   overlayT: { color: '#fff', fontWeight: '800', fontSize: 12 },
 });
+}
