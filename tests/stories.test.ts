@@ -899,7 +899,8 @@ describe('Samsung: media, responder y comentarios', () => {
   it('StatusBar light y comentarios con patrón QR overlay', () => {
     assert.match(viewer, /StatusBar style="light"/);
     assert.match(viewer, /setBarStyle\('light-content'/);
-    assert.match(viewer, /setBarStyle\('dark-content'/);
+    assert.match(viewer, /scheme === 'dark' \? 'light-content' : 'dark-content'/);
+    assert.doesNotMatch(viewer, /setBackgroundColor\('#ffffff'/);
     assert.match(comments, /useSafeAreaInsets/);
     assert.match(comments, /storyCommentsComposerPadding/);
     assert.match(comments, /behavior="padding"/);
