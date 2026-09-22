@@ -165,8 +165,68 @@ export function userContactSource(user: {
     contactWhatsapp: user.contactWhatsapp || null,
     contactPhone: user.contactPhone || null,
     petContactVisible: user.petContactVisible,
-    verified: user.verified === true || (!!user.verifiedPhone && user.verified !== false),
+    // verified_phone es OTP de identidad, no insignia de cuenta.
+    verified: user.verified === true,
   };
+}
+
+/** Animaldex todavía no tiene verified de cuenta. No inferir desde verified_phone. */
+export const ACCOUNT_VERIFIED_AVAILABLE = false;
+
+export function isAccountVerified(source: { verified?: boolean | null } | null | undefined): boolean {
+  return ACCOUNT_VERIFIED_AVAILABLE && source?.verified === true;
+}
+
+/** Payload público: números solo si hay consentimiento. verified nunca por OTP. */
+export function publicOwnerContactPayload(source: PetContactSource | null | undefined): PublicPetOwnerContact | null {
+  const resolved = resolvePublicPetOwnerContact(
+    source ? { ...source, verified: isAccountVerified(source) } : source
+  );
+  if (!resolved) return null;
+  return {
+    ...resolved,
+    verified: false,
+    whatsapp: isPetContactVisible(source?.petContactVisible) ? resolved.whatsapp : null,
+    phone: isPetContactVisible(source?.petContactVisible) ? resolved.phone : null,
+  };
+}
+
+export function publicPetProfileShelter<T extends { phone?: string | null; adoptionWhatsapp?: string | null; adoptionPhone?: string | null }>(
+  page: T | null | undefined
+): (Omit<T, 'adoptionWhatsapp' | 'adoptionPhone'> & { phone: string }) | null {
+  if (!page) return null;
+  const { adoptionWhatsapp: _wa, adoptionPhone: _ph, ...rest } = page;
+  return { ...rest, phone: '' };
+}
+
+export function publicPayloadContainsStoredPhone(payload: unknown, stored: string | null | undefined): boolean {
+  const raw = String(stored || '').trim();
+  if (!raw) return false;
+  const json = JSON.stringify(payload);
+  if (json.includes(raw)) return true;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length < 8) return false;
+  return json.replace(/\D/g, '').includes(digits);
+}
+
+export function publicPetProfileContactJson(input: {
+  petProfileId?: string | null;
+  page?: Parameters<typeof pageContactSource>[0];
+  user?: Parameters<typeof userContactSource>[0];
+}): { ownerContact: PublicPetOwnerContact | null; shelter: { phone: string } | null } {
+  const source = contactSourceForPet(input);
+  const ownerContact = publicOwnerContactPayload(source);
+  const shelter =
+    input.petProfileId && input.page
+      ? publicPetProfileShelter({
+          id: input.page.id || null,
+          username: input.page.username || null,
+          phone: input.page.phone || '',
+          adoptionWhatsapp: input.page.adoptionWhatsapp || null,
+          adoptionPhone: input.page.adoptionPhone || null,
+        })
+      : null;
+  return { ownerContact, shelter };
 }
 
 export function contactSourceForPet(input: {

@@ -75,13 +75,12 @@ describe('contacto público del propietario', () => {
     assert.deepEqual(publicContactButtons(contact), { showWhatsapp: true, showPhone: true });
   });
 
-  it('5. verified → check real', () => {
+  it('5. verified_phone no es insignia de cuenta', () => {
     const contact = resolvePublicPetOwnerContact(
       userContactSource({ username: 'noelia', verifiedPhone: '+5493875550000' })
     );
-    assert.equal(contact?.verified, true);
-    assert.match(petProfile, /checkmark-circle/);
-    assert.match(petProfile, /realOwner\?\.verified/);
+    assert.equal(contact?.verified, false);
+    assert.doesNotMatch(petProfile, /realOwner\?\.verified/);
   });
 
   it('6. no verified → sin check', () => {
@@ -147,7 +146,7 @@ describe('contacto público del propietario', () => {
     const start = worker.indexOf("if (action === 'petProfile')");
     const block = worker.slice(start, start + 2200);
     assert.match(block, /ownerContact/);
-    assert.match(block, /resolvePublicPetOwnerContact/);
+    assert.match(block, /publicOwnerContactPayload/);
     assert.doesNotMatch(worker, /action === 'feed'[\s\S]{0,800}contact_whatsapp/);
   });
 });

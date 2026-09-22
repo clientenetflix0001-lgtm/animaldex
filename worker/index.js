@@ -78,6 +78,7 @@ import {
   lostBreedMatchActivityCopy,
   lostBreedMatchGroupKey,
   lostBreedMatchIdempotencyKey,
+  lostBreedMatchLocationKey,
   lostBreedMatchPushIdempotencyKey,
   pickLostBreedMatchTargets,
   breedDisplayFromId,
@@ -85,7 +86,8 @@ import {
 import {
   contactSourceForPet,
   parseOwnerContactFields,
-  resolvePublicPetOwnerContact,
+  publicOwnerContactPayload,
+  publicPetProfileShelter,
 } from '../lib/petOwnerContact.ts';
 import {
   POST_PET_IDENTITY_ERROR,
@@ -1697,12 +1699,14 @@ async function recordLostBreedMatches(env, notifyUserPush, input) {
     });
     const actorName = actorPublicName(input.actor);
     const copy = lostBreedMatchActivityCopy({ actorUsername: actorName, breedId: found.breedId });
+    const locationKey = lostBreedMatchLocationKey(lost, found);
     const metadata = JSON.stringify({
       foundAlertId: found.id,
       lostAlertId: lost.id,
       breedId: found.breedId,
       placeId: found.placeId || lost.placeId || null,
       locality: found.locality || lost.locality || null,
+      locationKey,
       actorUsername: actorName,
       actorId: input.actor && input.actor.id,
     });
@@ -1721,7 +1725,8 @@ async function recordLostBreedMatches(env, notifyUserPush, input) {
         recipientUserId: recipientId,
         lostAlertId: lost.id,
         breedId: found.breedId,
-        placeId: found.placeId || lost.placeId || null,
+        lost,
+        found,
       }),
       actorId: input.actor && input.actor.id,
       actorName,
@@ -2398,7 +2403,7 @@ async function handleDb(request, env, ctx) {
             }
           : null,
       });
-      const ownerContact = resolvePublicPetOwnerContact(source);
+      const ownerContact = publicOwnerContactPayload(source);
       return json({
         ok: true,
         pet: petRow(pet),
@@ -2408,10 +2413,10 @@ async function handleDb(request, env, ctx) {
               username: ownerRow.username,
               name: ownerRow.name,
               avatarUrl: ownerRow.avatar_url || null,
-              verified: !!ownerRow.verified_phone,
+              verified: false,
             }
           : null,
-        shelter: shelterRows[0] ? profileRow(shelterRows[0]) : null,
+        shelter: shelterRows[0] ? publicPetProfileShelter(profileRow(shelterRows[0])) : null,
         ownerContact,
         stats: { posts: postCount[0].n, followers: followerCount[0].n },
       });
@@ -4325,6 +4330,7 @@ async function handleDb(request, env, ctx) {
               breedId: meta.breedId || '',
               placeId: meta.placeId || null,
               locality: meta.locality || null,
+              locationKey: meta.locationKey || null,
               createdAt: r.created_at,
             };
           })

@@ -1,4 +1,4 @@
-import { localitiesMatch } from './feedGeo.ts';
+import { localitiesMatch, normalizeLocality } from './feedGeo.ts';
 import { breedBelongsToSpecies, breedById, breedDisplayLabel, breedPluralLabel } from './breeds.ts';
 
 export { breedDisplayLabel as breedDisplayFromId };
@@ -29,14 +29,53 @@ export function isActiveLostAlert(alert: MatchableAlert | null | undefined): boo
   return true;
 }
 
+const UNSTABLE_LOCATION_TOKENS = new Set(['', 'undefined', 'null', '[object object]', 'none']);
+
+/** Solo IDs string/number estables. Rechaza objects, null, undefined. */
+export function stablePlaceId(value: unknown): string | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const s = String(value).trim();
+  if (!s || UNSTABLE_LOCATION_TOKENS.has(s.toLowerCase())) return null;
+  if (s.toLowerCase().includes('[object ')) return null;
+  return s;
+}
+
+export function stableLocalityKey(value: unknown): string | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const n = normalizeLocality(String(value));
+  if (!n || UNSTABLE_LOCATION_TOKENS.has(n) || n.includes('[object')) return null;
+  return n;
+}
+
+/**
+ * Token estable para group_key.
+ * place:{id} si lost tiene placeId (todas las coincidencias de esa alerta).
+ * Si lost no tiene placeId: locality:{normalized}.
+ * Nunca undefined/null/[object Object].
+ */
+export function lostBreedMatchLocationKey(
+  lost: { placeId?: unknown; locality?: unknown } | null | undefined,
+  found?: { placeId?: unknown; locality?: unknown } | null
+): string {
+  const placeLost = stablePlaceId(lost?.placeId);
+  const placeFound = stablePlaceId(found?.placeId);
+  if (placeLost && placeFound && placeLost === placeFound) return `place:${placeLost}`;
+  if (placeLost) return `place:${placeLost}`;
+  const loc = stableLocalityKey(lost?.locality) || stableLocalityKey(found?.locality);
+  return loc ? `locality:${loc}` : 'locality:unknown';
+}
+
 export function localitiesCompatible(
   a: { locality?: string | null; placeId?: string | null } | null | undefined,
   b: { locality?: string | null; placeId?: string | null } | null | undefined
 ): boolean {
-  const placeA = String(a?.placeId || '').trim();
-  const placeB = String(b?.placeId || '').trim();
+  const placeA = stablePlaceId(a?.placeId);
+  const placeB = stablePlaceId(b?.placeId);
   if (placeA && placeB) return placeA === placeB;
-  return localitiesMatch(a?.locality, b?.locality);
+  return localitiesMatch(
+    typeof a?.locality === 'string' || typeof a?.locality === 'number' ? String(a.locality) : null,
+    typeof b?.locality === 'string' || typeof b?.locality === 'number' ? String(b.locality) : null
+  );
 }
 
 export function lostFoundBreedMatch(lost: MatchableAlert, found: MatchableAlert): boolean {
@@ -58,9 +97,17 @@ export function lostBreedMatchGroupKey(input: {
   lostAlertId: string;
   breedId: string;
   placeId?: string | null;
+  locality?: string | null;
+  lost?: { placeId?: unknown; locality?: unknown };
+  found?: { placeId?: unknown; locality?: unknown };
 }): string {
-  const place = String(input.placeId || '').trim() || 'none';
-  return `lost_breed_match:${input.recipientUserId}:${input.lostAlertId}:${input.breedId}:${place}`;
+  const locationKey = input.lost
+    ? lostBreedMatchLocationKey(input.lost, input.found)
+    : lostBreedMatchLocationKey(
+        { placeId: input.placeId, locality: input.locality },
+        input.found || null
+      );
+  return `lost_breed_match:${input.recipientUserId}:${input.lostAlertId}:${input.breedId}:${locationKey}`;
 }
 
 export function lostBreedMatchIdempotencyKey(input: {
@@ -177,6 +224,7 @@ export type LostBreedMatchEvent = {
   breedId: string;
   placeId?: string | null;
   locality?: string | null;
+  locationKey?: string | null;
   createdAt: number;
 };
 
@@ -189,7 +237,10 @@ export function groupLostBreedMatchEvents(events: LostBreedMatchEvent[]): Array<
   >();
   const ordered: string[] = [];
   for (const event of events) {
-    const key = `${event.lostAlertId}:${event.breedId}:${event.placeId || 'none'}`;
+    const locationKey =
+      event.locationKey ||
+      lostBreedMatchLocationKey({ placeId: event.placeId, locality: event.locality });
+    const key = `${event.lostAlertId}:${event.breedId}:${locationKey}`;
     const current = groups.get(key);
     if (!current) {
       groups.set(key, {

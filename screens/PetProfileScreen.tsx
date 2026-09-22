@@ -535,7 +535,7 @@ export default function PetProfileScreen() {
               <Text style={styles.ownerName} numberOfLines={1}>
                 {shelter ? shelter.username : ownerUsername}
               </Text>
-              {!!(ownerContact?.verified || (!shelter && realOwner?.verified)) && (
+              {!!ownerContact?.verified && (
                 <Ionicons name="checkmark-circle" size={16} color="#22C55E" />
               )}
             </View>

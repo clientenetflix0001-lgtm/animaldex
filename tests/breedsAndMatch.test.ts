@@ -149,7 +149,7 @@ describe('match lost ↔ found', () => {
     assert.equal(many.body, 'lucasfuentes y 6 personas más reportaron Caniches encontrados cerca de tu zona.');
     assert.equal(
       lostBreedMatchGroupKey({ recipientUserId: 'u1', lostAlertId: 'lost-1', breedId: 'poodle', placeId: 'AR:georef:66028050' }),
-      'lost_breed_match:u1:lost-1:poodle:AR:georef:66028050'
+      'lost_breed_match:u1:lost-1:poodle:place:AR:georef:66028050'
     );
   });
 
