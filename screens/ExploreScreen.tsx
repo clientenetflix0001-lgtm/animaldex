@@ -19,7 +19,7 @@ import { postNavParams } from '../lib/share';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { LoadingFooter } from '../components/LoadingFooter';
 import { PostGridMedia } from '../components/PostBackgroundCard';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import PetAvatar from '../components/PetAvatar';
@@ -55,6 +55,8 @@ const FILTER_EMOJI: Record<string, string> = {
 };
 
 export default function ExploreScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { width } = useWindowDimensions();
   const { desktopWeb, sidebarWidth, bp } = useBreakpoint();
@@ -282,7 +284,8 @@ export default function ExploreScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   mobileWrap: { flex: 1 },
   desktopWrap: {
@@ -340,3 +343,4 @@ const styles = StyleSheet.create({
   emptyTitle: { fontWeight: '800', fontSize: 17, color: colors.text },
   emptyText: { color: colors.textMuted, fontSize: 14 },
 });
+}

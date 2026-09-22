@@ -586,7 +586,7 @@ function makeStyles(colors: ThemeColors) {
     gap: spacing.sm,
     marginHorizontal: spacing.lg,
     marginTop: spacing.xl,
-    backgroundColor: '#FFF4E5',
+    backgroundColor: colors.warningSoft,
     borderRadius: radius.md,
     padding: spacing.md,
   },

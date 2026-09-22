@@ -8,7 +8,7 @@
 // - Manejo de permisos con estados claros (pedir / denegado / ajustes).
 // - Resolución inteligente del contenido escaneado: perfiles de
 //   mascota/usuario, publicaciones, enlaces externos o texto plano.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -37,7 +37,7 @@ import Animated, {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../lib/types';
-import { colors, radius, spacing, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius, spacing, shadow } from '../lib/theme';
 import { resolveScannedValue, scanKindLabel, ScanResolution } from '../lib/qr';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -51,6 +51,8 @@ const ZOOM_STEPS = [
 ];
 
 export default function QRScannerScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
@@ -315,7 +317,8 @@ export default function QRScannerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   centerBlack: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
 
@@ -528,3 +531,4 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
 });
+}

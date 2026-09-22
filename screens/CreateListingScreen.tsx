@@ -1,7 +1,7 @@
 // ============================================================
 // Animaldex — Vender (crear producto o servicio)
 // ============================================================
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,7 @@ import {
   MODALITY_OPTIONS,
   ListingKind,
 } from '../lib/market';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { parseListingContact, LISTING_CONTACT_REQUIRED } from '../lib/listingContact';
 import { useStore } from '../lib/store';
@@ -42,6 +42,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const MAX_IMAGES = 6;
 
 export default function CreateListingScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { verifiedPhone } = useStore();
 
@@ -446,7 +448,8 @@ export default function CreateListingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   chooseWrap: { flex: 1, padding: spacing.xl, gap: spacing.md, justifyContent: 'center' },
   chooseTitle: { fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'center', marginBottom: spacing.lg },
@@ -564,3 +567,4 @@ const styles = StyleSheet.create({
   },
   saveText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });
+}

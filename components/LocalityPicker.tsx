@@ -23,7 +23,7 @@ import {
   LocalityEntry,
 } from '../lib/localities';
 import { detectCurrentLocality } from '../lib/geo';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 
 interface Props {
   visible: boolean;
@@ -44,6 +44,8 @@ export function LocalityPicker({
   title = 'Elegir localidad',
   allowUseCurrentLocation = true,
 }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [query, setQuery] = useState('');
   const [locating, setLocating] = useState(false);
 
@@ -159,7 +161,8 @@ export function LocalityPicker({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
     backgroundColor: colors.card,
@@ -219,3 +222,4 @@ const styles = StyleSheet.create({
   itemLocality: { fontSize: 14, fontWeight: '700', color: colors.text },
   itemProvince: { fontSize: 12, color: colors.textMuted },
 });
+}

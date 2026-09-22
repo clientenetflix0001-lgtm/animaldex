@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { colors, spacing, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius } from '../lib/theme';
 import {
   dismissPushPrompt,
   getPushPermissionStatus,
@@ -12,6 +12,8 @@ import {
 import { shouldShowPushPrompt } from '../lib/pushPrompt';
 
 export default function PushPermissionBanner({ hasPets }: { hasPets: boolean }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [visible, setVisible] = useState(false);
 
   useFocusEffect(
@@ -76,7 +78,8 @@ export default function PushPermissionBanner({ hasPets }: { hasPets: boolean }) 
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   card: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
@@ -105,3 +108,4 @@ const styles = StyleSheet.create({
   },
   secondaryText: { color: colors.textMuted, fontWeight: '700', fontSize: 13 },
 });
+}

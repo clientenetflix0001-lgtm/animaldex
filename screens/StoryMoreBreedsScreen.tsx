@@ -1,13 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { db } from '../lib/db';
-import { colors, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing } from '../lib/theme';
 import { speciesEmoji } from '../lib/stories';
 
 export default function StoryMoreBreedsScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const [rows, setRows] = useState<Array<{ species: string; breedKey: string; breedLabel: string; count: number }>>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +60,8 @@ export default function StoryMoreBreedsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   top: {
     flexDirection: 'row',
@@ -82,3 +85,4 @@ const styles = StyleSheet.create({
   meta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 24 },
 });
+}

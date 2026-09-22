@@ -1,4 +1,4 @@
-import React, { memo, useEffect, type ReactNode } from 'react';
+import React, { memo, useEffect, type ReactNode, useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
@@ -8,7 +8,7 @@ import {
   petStatusRingColors,
   petStatusRingOuterSize,
 } from '../lib/petStatusRing';
-import { colors } from '../lib/theme';
+import { useAppTheme, type ThemeColors } from '../lib/theme';
 import PetAvatar from './PetAvatar';
 
 type Props = {
@@ -19,6 +19,8 @@ type Props = {
 };
 
 function PetStatusAvatar({ uri, size, status, children }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const palette = petStatusRingColors(status);
   const outer = palette ? petStatusRingOuterSize(size) : size;
   const rotation = useSharedValue(0);
@@ -92,7 +94,8 @@ function PetStatusAvatar({ uri, size, status, children }: Props) {
 
 export default memo(PetStatusAvatar);
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   ringDisk: {
     position: 'absolute',
     overflow: 'hidden',
@@ -110,3 +113,4 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
 });
+}

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius, spacing } from '../lib/theme';
 import { MONTHS, daysInMonth } from '../lib/birthDate';
 
 type Field = 'day' | 'month' | 'year' | null;
@@ -16,6 +16,8 @@ export default function BirthDatePicker({
   day: number | null;
   onChange: (next: { year: number | null; month: number | null; day: number | null }) => void;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [open, setOpen] = useState<Field>(null);
   const now = new Date();
   const years = useMemo(() => {
@@ -108,7 +110,8 @@ export default function BirthDatePicker({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   row: { flexDirection: 'row', gap: spacing.sm },
   box: {
     flex: 1,
@@ -144,3 +147,4 @@ const styles = StyleSheet.create({
   optionText: { fontSize: 16, color: colors.text, fontWeight: '600' },
   optionTextOn: { color: colors.primary, fontWeight: '800' },
 });
+}

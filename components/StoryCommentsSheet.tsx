@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { db, type ApiComment } from '../lib/db';
-import { colors, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing } from '../lib/theme';
 import { STORY_EXPIRED_MESSAGE, STORY_NOT_VET_DISCLAIMER } from '../lib/stories';
 import { storyCommentsComposerPadding } from '../lib/storyViewerUi';
 import { thumb, userFallbackAvatar } from '../lib/images';
@@ -28,6 +28,8 @@ type Props = {
 };
 
 export default function StoryCommentsSheet({ storyId, visible, canComment, onClose, onExpired }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const composerPad = storyCommentsComposerPadding(insets);
   const [comments, setComments] = useState<ApiComment[]>([]);
@@ -148,10 +150,11 @@ export default function StoryCommentsSheet({ storyId, visible, canComment, onClo
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10, elevation: 16 },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingBottom: 20,
@@ -186,3 +189,4 @@ const styles = StyleSheet.create({
   send: { padding: 8 },
   guest: { textAlign: 'center', color: colors.textMuted, marginTop: 8 },
 });
+}

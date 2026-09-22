@@ -1,8 +1,8 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { View, StyleSheet, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors } from '../lib/theme';
+import { useAppTheme, type ThemeColors } from '../lib/theme';
 import { thumb } from '../lib/images';
 import { petPhotoUri } from '../lib/petAvatar';
 
@@ -37,6 +37,8 @@ function PetAvatarInner({
   transition = 250,
   contentFit = 'cover',
 }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const photo = petPhotoUri(uri);
   const dim = size != null ? { width: size, height: size } : undefined;
   const r = radius ?? (size != null ? size / 2 : undefined);
@@ -67,7 +69,8 @@ function PetAvatarInner({
 
 export default memo(PetAvatarInner);
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   photo: {
     backgroundColor: colors.border,
   },
@@ -78,3 +81,4 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 });
+}

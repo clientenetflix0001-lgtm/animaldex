@@ -52,6 +52,7 @@ import { thumb, userFallbackAvatar } from '../lib/images';
 import StoryProgress from '../components/StoryProgress';
 import StoryCommentsSheet from '../components/StoryCommentsSheet';
 import PetAvatar from '../components/PetAvatar';
+import { useAppTheme } from '../lib/theme';
 
 function StoryVideo({ uri, paused }: { uri: string; paused: boolean }) {
   const player = useVideoPlayer(uri, (p) => {
@@ -89,6 +90,7 @@ function StoryVideo({ uri, paused }: { uri: string; paused: boolean }) {
 }
 
 export default function StoryViewerScreen() {
+  const { scheme } = useAppTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
@@ -257,11 +259,11 @@ export default function StoryViewerScreen() {
     RNStatusBar.setBackgroundColor('transparent', true);
     RNStatusBar.setTranslucent(true);
     return () => {
-      RNStatusBar.setBarStyle('dark-content', true);
-      RNStatusBar.setBackgroundColor('#ffffff', true);
+      RNStatusBar.setBarStyle(scheme === 'dark' ? 'light-content' : 'dark-content', true);
+      RNStatusBar.setBackgroundColor('transparent', true);
       RNStatusBar.setTranslucent(true);
     };
-  }, []);
+  }, [scheme]);
 
   useFocusEffect(
     useCallback(() => {

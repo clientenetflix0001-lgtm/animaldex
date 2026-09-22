@@ -5,7 +5,7 @@
 // Permite generar nuevos links de invitación (?qr=<code>), ver su
 // código QR listo para imprimir, copiarlo/compartirlo, y ver el estado
 // de todas las chapitas generadas (disponible / asignada a qué mascota).
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiTag } from '../lib/db';
 import { useStore } from '../lib/store';
 import { TAG_CODE_INVALID, TAG_CODE_REQUIRED, buildTagUrl, parseManualTagCode, qrImageUrl } from '../lib/tags';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import PetAvatar from '../components/PetAvatar';
 import { RootStackParamList } from '../lib/types';
 
@@ -36,6 +36,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const ADMIN_USERNAME = 'lucasfuentes';
 
 export default function AdminTagsScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { user } = useStore();
   const [tags, setTags] = useState<ApiTag[]>([]);
@@ -237,7 +239,8 @@ export default function AdminTagsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingHorizontal: spacing.xl },
   restrictedTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
@@ -335,3 +338,4 @@ const styles = StyleSheet.create({
   },
   rowIconBtn: { padding: 6 },
 });
+}

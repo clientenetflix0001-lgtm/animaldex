@@ -1,17 +1,19 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PETS, petAvatar, Pet } from '../lib/data';
 import { thumb } from '../lib/images';
-import { colors, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing } from '../lib/theme';
 
 interface Props {
   onOpenPet: (petId: string) => void;
 }
 
 export function StoriesBar({ onOpenPet }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.wrap}>
       <FlatList
@@ -54,7 +56,8 @@ export function StoriesBar({ onOpenPet }: Props) {
 
 const SIZE = 64;
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   wrap: { paddingVertical: spacing.md },
   list: { paddingHorizontal: spacing.lg, gap: spacing.lg },
   item: { alignItems: 'center', width: SIZE + 8 },
@@ -94,3 +97,4 @@ const styles = StyleSheet.create({
   },
   name: { fontSize: 11, color: colors.text, marginTop: 5, fontWeight: '600' },
 });
+}

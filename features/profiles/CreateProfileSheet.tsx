@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -13,7 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, radius, spacing } from '../../lib/theme';
+import { useAppTheme, type ThemeColors, radius, spacing } from '../../lib/theme';
 import { useProfiles } from './ProfileContext';
 import { limitMessage, type ProfileType, type PublicProfile } from './profileTypes';
 import BioField from '../../components/BioField';
@@ -30,6 +30,8 @@ interface Props {
 }
 
 export default function CreateProfileSheet({ visible, onClose, onCreated, initialType, lockType }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { canCreate, createProfile } = useProfiles();
   const [step, setStep] = useState<'pick' | 'form'>('pick');
   const [type, setType] = useState<Exclude<ProfileType, 'personal'> | null>(null);
@@ -224,7 +226,8 @@ export default function CreateProfileSheet({ visible, onClose, onCreated, initia
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(45,32,22,0.35)' },
   sheetWrap: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
@@ -286,3 +289,4 @@ const styles = StyleSheet.create({
   },
   saveText: { color: '#fff', fontWeight: '800' },
 });
+}

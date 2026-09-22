@@ -26,7 +26,7 @@ import {
   transferablePages,
 } from '../lib/petTransfer';
 import { thumb, userFallbackAvatar } from '../lib/images';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import type { PublicProfile } from '../features/profiles/profileTypes';
 import { PROFILE_TYPE_BADGE } from '../features/profiles/profileTypes';
 
@@ -54,6 +54,8 @@ export default function TransferPetSheet({
   onClose,
   onTransferred,
 }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const sheetPad = transferSheetBottomPadding(insets);
   const scrollPad = transferSheetScrollPadding();
@@ -293,7 +295,8 @@ export default function TransferPetSheet({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   avoid: { flex: 1, justifyContent: 'flex-end' },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -390,3 +393,4 @@ const styles = StyleSheet.create({
   },
   error: { color: colors.heart, fontWeight: '700', marginTop: spacing.md },
 });
+}

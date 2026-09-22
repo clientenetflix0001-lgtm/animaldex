@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { db } from '../lib/db';
 import { uploadImage } from '../lib/api';
 import { useStore } from '../lib/store';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
 import BirthDatePicker from '../components/BirthDatePicker';
@@ -50,6 +50,8 @@ import {
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function AddPetScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'AddPet'>>();
   const tagCode = route.params?.tagCode;
@@ -547,7 +549,8 @@ export default function AddPetScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: {
     padding: spacing.xl,
@@ -641,3 +644,4 @@ const styles = StyleSheet.create({
   },
   saveText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });
+}

@@ -40,7 +40,7 @@ import {
 } from '../lib/reels';
 import { appendUniqueReels, type ReelGridScope } from '../lib/reelGrid';
 import { forgetLocalReel, listLocalReels, shouldForgetLocalReelStatus } from '../lib/reelSession';
-import { colors } from '../lib/theme';
+import { useAppTheme, type ThemeColors } from '../lib/theme';
 import { Image } from 'expo-image';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { formatTime } from '../lib/data';
@@ -56,6 +56,8 @@ export default function ReelsScreen({
   initialIndex?: number;
   scope?: ReelGridScope;
 } = {}) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { user } = useStore();
   const tabFocused = useIsFocused();
@@ -494,7 +496,8 @@ export default function ReelsScreen({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   emptyTitle: { color: '#fff', fontWeight: '800', fontSize: 20, textAlign: 'center' },
@@ -539,3 +542,4 @@ const styles = StyleSheet.create({
   composer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   input: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, color: colors.text },
 });
+}
