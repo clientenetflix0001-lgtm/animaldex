@@ -49,7 +49,7 @@ describe('web root animaldex.com', () => {
     assert.equal(authed.routes[1].name, 'PetProfile');
     assert.equal(authed.routes[1].params.petId, 'toby.pet');
     assert.equal(resolveAppLink('https://animaldex.com/pet/abc')?.screen, 'PetProfile');
-    assert.equal(resolveAppLink('https://animaldex.com/?qr=AAA123')?.screen, 'Tabs');
+    assert.equal(resolveAppLink('https://animaldex.com/?qr=AAA123')?.screen, 'TagWelcome');
     assert.match(app, /getStateFromPublicPath/);
     assert.match(app, /WebUrlSync/);
     assert.match(pages, /index\.html/);

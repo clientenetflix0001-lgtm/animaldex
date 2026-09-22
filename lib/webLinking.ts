@@ -61,10 +61,21 @@ export function shouldAutoOpenPendingTag(opts: {
   return true;
 }
 
+function tagWelcomeState(code: string) {
+  const tag = { name: 'TagWelcome', params: { code } };
+  return linkingHasUser ? { routes: [{ name: 'Tabs' }, tag] } : { routes: [tag] };
+}
+
 export function getStateFromPublicPath(path: string, options?: object) {
   if (isPublicLegalPath(path)) {
     return null;
   }
+
+  const tagCode = extractTagCode(path);
+  if (tagCode) {
+    return tagWelcomeState(tagCode);
+  }
+
   if (isWebRootPath(path)) {
     return webHomeState(linkingHasUser);
   }
@@ -74,6 +85,9 @@ export function getStateFromPublicPath(path: string, options?: object) {
     : `${PUBLIC_WEB_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`;
   const target = resolveAppLink(href);
 
+  if (target?.screen === 'TagWelcome') {
+    return tagWelcomeState(target.params.code);
+  }
   if (target?.screen === 'PetProfile') {
     const pet = { name: 'PetProfile', params: target.params };
     return linkingHasUser ? { routes: [{ name: 'Tabs' }, pet] } : { routes: [pet] };

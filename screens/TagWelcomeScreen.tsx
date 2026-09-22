@@ -1,16 +1,14 @@
 // ============================================================
 // Animaldex — Pantalla de bienvenida al escanear una chapita QR
 // ============================================================
-// Solo se muestra cuando el usuario YA está autenticado (si no lo
-// estaba, el flujo pasa primero por AuthScreen, que muestra un banner
-// avisando que hay una chapita pendiente, y llega aquí automáticamente
-// después de iniciar sesión/registrarse).
+// Chapita YA vinculada: el visitante (con o sin sesión) ve el perfil
+// público. Claim / registro de chapita sin vincular exige login.
 //
 // Comportamiento:
-// - Chapita ya asignada a una mascota → redirige directo a su perfil.
-// - Chapita nueva/sin asignar → muestra el mensaje de bienvenida y
-//   lleva al formulario de registro de mascota (que al guardar,
-//   vincula automáticamente esta chapita).
+// - claimed + mascota → PetProfile (anónimo permitido).
+// - unclaimed + invitado → Auth, conservando el código pendiente.
+// - unclaimed + sesión → bienvenida y registro de mascota.
+// - inválida → estado controlado, sin pantalla blanca.
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Pressable, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,10 +17,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db } from '../lib/db';
+import { useStore } from '../lib/store';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { CreateProfileSheet, useProfiles, type PublicProfile } from '../features/profiles';
+import { guestTagWelcomeHome, publicTagTargetFromStatus, TAG_UNAVAILABLE_TITLE } from '../lib/tagPublicResolve';
 import {
   addPetParamsForPageQr,
   addPetParamsForPersonalQr,
@@ -38,6 +38,7 @@ export default function TagWelcomeScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'TagWelcome'>>();
   const { code } = route.params;
+  const { user, setPendingTagCode } = useStore();
   const { profiles } = useProfiles();
 
   const [state, setState] = useState<'loading' | 'unclaimed' | 'claimed' | 'invalid' | 'error'>('loading');
@@ -51,23 +52,28 @@ export default function TagWelcomeScreen() {
     setState('loading');
     try {
       const res = await db.tagStatus(code);
-      if (!res.exists) {
+      const target = publicTagTargetFromStatus(code, res);
+      if (target.kind === 'unavailable') {
         setState('invalid');
         return;
       }
-      if (res.status === 'claimed' && res.pet) {
+      if (target.kind === 'pet') {
         setState('claimed');
-        // Pequeña pausa para que se note el mensaje antes de redirigir.
         setTimeout(() => {
-          navigation.replace('PetProfile', { petId: res.pet!.id, fromQr: true });
+          navigation.replace('PetProfile', { petId: target.petId, fromQr: true });
         }, 700);
+        return;
+      }
+      if (!user) {
+        setPendingTagCode(code);
+        navigation.replace('Auth', { mode: 'login' });
         return;
       }
       setState('unclaimed');
     } catch {
       setState('error');
     }
-  }, [code, navigation]);
+  }, [code, navigation, user, setPendingTagCode]);
 
   useEffect(() => {
     check();
@@ -118,12 +124,15 @@ export default function TagWelcomeScreen() {
           <View style={styles.iconWrapMuted}>
             <Ionicons name="alert-circle-outline" size={40} color={colors.textMuted} />
           </View>
-          <Text style={[styles.title, centeredParentTextWrap]}>Código no válido</Text>
+          <Text style={[styles.title, centeredParentTextWrap]}>{TAG_UNAVAILABLE_TITLE}</Text>
           <Text style={[styles.subtitle, centeredParentTextWrap]}>
             Esta chapita QR (#{code}) no existe en Animaldex. Verifica el enlace o contacta a quien te la entregó.
           </Text>
-          <Pressable style={styles.primaryBtn} onPress={() => navigation.replace('Tabs')}>
-            <Text style={styles.primaryBtnText}>Ir al inicio</Text>
+          <Pressable
+            style={styles.primaryBtn}
+            onPress={() => navigation.replace(guestTagWelcomeHome(!!user))}
+          >
+            <Text style={styles.primaryBtnText}>{user ? 'Ir al inicio' : 'Entendido'}</Text>
           </Pressable>
         </View>
       </SafeAreaView>

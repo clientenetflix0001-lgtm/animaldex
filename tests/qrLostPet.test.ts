@@ -67,7 +67,7 @@ describe('QR perdido: cuándo mostrar el modal', () => {
   it('6. QR inexistente → flujo actual', () => {
     assert.equal(qrTagShouldPromptLost({ exists: false }), false);
     assert.match(welcome, /setState\('invalid'\)/);
-    assert.match(welcome, /Código no válido/);
+    assert.match(welcome, /TAG_UNAVAILABLE_TITLE/);
     assert.doesNotMatch(welcome, /state === 'invalid'[\s\S]{0,400}fromQr/);
   });
 
@@ -167,7 +167,8 @@ describe('QR perdido: ubicación y origen', () => {
 
   it('22. navegación QR intacta', () => {
     assert.match(welcome, /db\.tagStatus\(code\)/);
-    assert.match(welcome, /res\.status === 'claimed' && res\.pet/);
+    assert.match(welcome, /publicTagTargetFromStatus/);
+    assert.match(welcome, /target.kind === 'pet'/);
     assert.match(scanner, /r\.kind === 'tag'\) navigation\.replace\('TagWelcome', \{ code: r\.code \}\)/);
     assert.match(types, /PetProfile: \{ petId: string; fromQr\?: boolean \}/);
     assert.match(types, /TagWelcome: \{ code: string \}/);
