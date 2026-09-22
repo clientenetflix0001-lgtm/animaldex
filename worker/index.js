@@ -65,6 +65,30 @@ import {
 } from '../lib/pushPolicy.ts';
 import { PUSH_KIND, listingCommentActivityItem, schedulePushCenterWork, scheduledJobKind } from '../lib/pushCenter.ts';
 import { actorDisplayName, flushDuePushBatches, ingestPushEvent } from './pushBatches.js';
+import { breedIdInsertFragment } from './alertBreedWrite.js';
+import {
+  readProfileContactVisible,
+  readUserContact,
+  updateProfilePetContactVisible,
+  updateUserPetContact,
+} from './contactWrite.js';
+import {
+  actorPublicName,
+  groupLostBreedMatchEvents,
+  lostBreedMatchActivityCopy,
+  lostBreedMatchGroupKey,
+  lostBreedMatchIdempotencyKey,
+  lostBreedMatchLocationKey,
+  lostBreedMatchPushIdempotencyKey,
+  pickLostBreedMatchTargets,
+  breedDisplayFromId,
+} from '../lib/lostBreedMatch.ts';
+import {
+  contactSourceForPet,
+  parseOwnerContactFields,
+  publicOwnerContactPayload,
+  publicPetProfileShelter,
+} from '../lib/petOwnerContact.ts';
 import {
   POST_PET_IDENTITY_ERROR,
   POST_PET_NOT_OWNED_ERROR,
@@ -246,6 +270,7 @@ function profileRow(r, opts = {}) {
     locality: r.locality || null,
     phone: r.phone || '',
     createdAt: r.created_at,
+    petContactVisible: readProfileContactVisible(r),
   };
   if (opts.includeAdoptionContact) {
     row.adoptionWhatsapp = r.adoption_whatsapp || null;
@@ -1118,6 +1143,7 @@ async function findUsersByPhone(env, phoneOrRaw) {
 }
 
 function publicUser(u) {
+  const contact = readUserContact(u);
   return {
     id: u.id,
     username: u.username,
@@ -1129,6 +1155,9 @@ function publicUser(u) {
     email: u.email || null,
     emailVerified: !!u.email_verified_at,
     createdAt: u.created_at,
+    contactWhatsapp: contact.contactWhatsapp,
+    contactPhone: contact.contactPhone,
+    petContactVisible: contact.petContactVisible,
   };
 }
 
@@ -1297,6 +1326,20 @@ async function handleAuth(request, env) {
         `UPDATE users SET name = COALESCE(NULLIF(?, ''), name), bio = ?, location = ?, avatar_url = COALESCE(?, avatar_url)${geo.sql} WHERE id = ?`,
         [name, bio, location, avatarUrl, ...geo.values, userId]
       );
+      if (body.contactWhatsapp !== undefined || body.contactPhone !== undefined || body.petContactVisible !== undefined) {
+        const parsed = parseOwnerContactFields(
+          body.contactWhatsapp !== undefined ? body.contactWhatsapp : undefined,
+          body.contactPhone !== undefined ? body.contactPhone : undefined
+        );
+        if (!parsed.ok) return json({ error: parsed.error }, 400);
+        const current = await d1(env, 'SELECT * FROM users WHERE id = ?', [userId]);
+        const prev = readUserContact(current[0]);
+        await updateUserPetContact(env, userId, {
+          whatsapp: body.contactWhatsapp !== undefined ? parsed.whatsapp : prev.contactWhatsapp,
+          phone: body.contactPhone !== undefined ? parsed.phone : prev.contactPhone,
+          visible: body.petContactVisible !== undefined ? !!body.petContactVisible : prev.petContactVisible,
+        });
+      }
       const rows = await d1(env, 'SELECT * FROM users WHERE id = ?', [userId]);
       return json({ ok: true, user: publicUser(rows[0]) });
     }
@@ -1567,6 +1610,8 @@ function alertRow(r, viewerLiked) {
     petName: r.pet_name || null,
     species: r.species,
     breed: r.breed || '',
+    breedId: r.breed_id || null,
+    placeId: r.place_id || null,
     description: r.description || '',
     image: r.image,
     locality: r.locality,
@@ -1610,6 +1655,97 @@ async function attachLikedFlags(env, rows, viewerId) {
   const liked = await d1(env, `SELECT alert_id FROM alert_likes WHERE user_id = ? AND alert_id IN (${ph})`, [viewerId, ...ids]);
   const likedSet = new Set(liked.map((l) => l.alert_id));
   return rows.map((r) => alertRow(r, likedSet.has(r.id)));
+}
+
+async function recordLostBreedMatches(env, notifyUserPush, input) {
+  const found = input.found;
+  if (!found || found.type !== 'found' || !found.breedId) return { matched: 0 };
+  let lostRows = [];
+  try {
+    lostRows = await d1(
+      env,
+      `SELECT id, user_id, type, status, resolved_at, species, breed_id, locality, place_id
+       FROM alerts
+       WHERE type = 'lost'
+         AND (status IS NULL OR status = 'active')
+         AND resolved_at IS NULL
+         AND species = ?
+         AND breed_id = ?`,
+      [found.species, found.breedId]
+    );
+  } catch (_) {
+    return { matched: 0 };
+  }
+  const lostAlerts = lostRows.map((r) => ({
+    id: r.id,
+    userId: r.user_id,
+    type: r.type,
+    status: r.status,
+    resolvedAt: r.resolved_at,
+    species: r.species,
+    breedId: r.breed_id,
+    locality: r.locality,
+    placeId: r.place_id,
+  }));
+  const targets = pickLostBreedMatchTargets(found, lostAlerts, input.actor && input.actor.id);
+  await ensureActivityEventsSchema(env);
+  let matched = 0;
+  for (const lost of targets) {
+    const recipientId = lost.userId;
+    const key = lostBreedMatchIdempotencyKey({
+      foundAlertId: found.id,
+      lostAlertId: lost.id,
+      recipientUserId: recipientId,
+    });
+    const actorName = actorPublicName(input.actor);
+    const copy = lostBreedMatchActivityCopy({ actorUsername: actorName, breedId: found.breedId });
+    const locationKey = lostBreedMatchLocationKey(lost, found);
+    const metadata = JSON.stringify({
+      foundAlertId: found.id,
+      lostAlertId: lost.id,
+      breedId: found.breedId,
+      placeId: found.placeId || lost.placeId || null,
+      locality: found.locality || lost.locality || null,
+      locationKey,
+      actorUsername: actorName,
+      actorId: input.actor && input.actor.id,
+    });
+    const inserted = await env.DB.prepare(
+      `INSERT OR IGNORE INTO activity_events
+        (id, type, user_id, pet_id, idempotency_key, title, body, metadata, created_at)
+       VALUES (?, 'lost_breed_match', ?, NULL, ?, ?, ?, ?, ?)`
+    )
+      .bind(key, recipientId, key, copy.title, copy.body, metadata, input.now)
+      .run();
+    if (!inserted || !inserted.meta || inserted.meta.changes < 1) continue;
+    matched += 1;
+    await ingestPushEvent(env, notifyUserPush, {
+      kind: PUSH_KIND.LOST_BREED_MATCH,
+      groupKey: lostBreedMatchGroupKey({
+        recipientUserId: recipientId,
+        lostAlertId: lost.id,
+        breedId: found.breedId,
+        lost,
+        found,
+      }),
+      actorId: input.actor && input.actor.id,
+      actorName,
+      recipientId,
+      targetId: found.id,
+      foundAlertId: found.id,
+      lostAlertId: lost.id,
+      breedId: found.breedId,
+      placeId: found.placeId || lost.placeId || null,
+      locality: found.locality || lost.locality || null,
+      idempotencyKey: lostBreedMatchPushIdempotencyKey({
+        foundAlertId: found.id,
+        lostAlertId: lost.id,
+        recipientUserId: recipientId,
+      }),
+      now: input.now,
+    });
+  }
+  return { matched };
 }
 
 // ============================================================
@@ -2242,18 +2378,46 @@ async function handleDb(request, env, ctx) {
       if (!pets[0]) return json({ error: 'Mascota no encontrada' }, 404);
       const pet = pets[0];
       const [owners, postCount, followerCount, shelterRows] = await Promise.all([
-        d1(env, 'SELECT id, username, name, avatar_url FROM users WHERE id = ?', [pet.user_id]),
+        d1(env, 'SELECT * FROM users WHERE id = ?', [pet.user_id]),
         d1(env, 'SELECT COUNT(*) AS n FROM posts WHERE pet_id = ?', [pet.id]),
         d1(env, "SELECT COUNT(*) AS n FROM follows WHERE target_type = 'pet' AND target_id = ?", [pet.id]),
         pet.profile_id
           ? d1(env, "SELECT * FROM profiles WHERE id = ? AND type = 'protector'", [pet.profile_id])
           : Promise.resolve([]),
       ]);
+      const ownerRow = owners[0] || null;
+      const shelter = shelterRows[0] ? profileRow(shelterRows[0], { includeAdoptionContact: true }) : null;
+      const source = contactSourceForPet({
+        petProfileId: pet.profile_id,
+        page: shelter,
+        user: ownerRow
+          ? {
+              id: ownerRow.id,
+              username: ownerRow.username,
+              name: ownerRow.name,
+              avatarUrl: ownerRow.avatar_url || null,
+              contactWhatsapp: ownerRow.contact_whatsapp,
+              contactPhone: ownerRow.contact_phone,
+              petContactVisible: ownerRow.pet_contact_visible,
+              verifiedPhone: ownerRow.verified_phone,
+            }
+          : null,
+      });
+      const ownerContact = publicOwnerContactPayload(source);
       return json({
         ok: true,
         pet: petRow(pet),
-        owner: owners[0] ? { id: owners[0].id, username: owners[0].username, name: owners[0].name, avatarUrl: owners[0].avatar_url || null } : null,
-        shelter: shelterRows[0] ? profileRow(shelterRows[0]) : null,
+        owner: ownerRow
+          ? {
+              id: ownerRow.id,
+              username: ownerRow.username,
+              name: ownerRow.name,
+              avatarUrl: ownerRow.avatar_url || null,
+              verified: false,
+            }
+          : null,
+        shelter: shelterRows[0] ? publicPetProfileShelter(profileRow(shelterRows[0])) : null,
+        ownerContact,
         stats: { posts: postCount[0].n, followers: followerCount[0].n },
       });
     }
@@ -2463,15 +2627,20 @@ async function handleDb(request, env, ctx) {
       const before = Number(body.before) || now + 1000;
       const limit = Math.min(Number(body.limit) || 10, 30);
       const viewerId = await authUser(request, env, body);
+      const matchType = clean(body.type, 20);
+      const matchBreedId = clean(body.breedId, 40);
+      const extraSql = `${matchType === 'found' ? " AND a.type = 'found'" : ''}${matchBreedId ? ' AND a.breed_id = ?' : ''}`;
+      const extraValues = matchBreedId ? [matchBreedId] : [];
       const rows = await d1(
         env,
         `${ALERT_SELECT} WHERE ${territorial.sql}
            AND (a.status IS NULL OR a.status = 'active')
            AND a.resolved_at IS NULL
            AND COALESCE(a.renewed_at, a.created_at) < ?
+           ${extraSql}
          ORDER BY COALESCE(a.renewed_at, a.created_at) DESC
          LIMIT ?`,
-        [...territorial.values, before, limit + 1]
+        [...territorial.values, before, ...extraValues, limit + 1]
       );
       const hasMore = rows.length > limit;
       const page = hasMore ? rows.slice(0, limit) : rows;
@@ -3113,16 +3282,34 @@ async function handleDb(request, env, ctx) {
       const place = normalizeIncomingPlace(body);
       const geo = await geoInsertFragment(env, 'alerts', place);
       const locRef = await locationReferenceInsertFragment(env, body.locationReference);
+      const breedFrag = await breedIdInsertFragment(env, body.breedId != null ? body.breedId : null, species);
+      const breedId = breedFrag.breedId;
 
       const id = `alert-${now}-${Math.random().toString(36).slice(2, 8)}`;
       await d1(
         env,
-        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at, renewed_at, sex, author_profile_id, contact_whatsapp, contact_phone${geo.columns}${locRef.columns})
-         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${geo.placeholders}${locRef.placeholders})`,
-        [id, userId, type, petName || null, species, breed, description, image, locality, province || null, country, lat, lon, eventDate, now, now, sex, authorProfileId, contactWhatsapp, contactPhone, ...geo.values, ...locRef.values]
+        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, lat, lon, event_date, created_at, renewed_at, sex, author_profile_id, contact_whatsapp, contact_phone${geo.columns}${locRef.columns}${breedFrag.columns})
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${geo.placeholders}${locRef.placeholders}${breedFrag.placeholders})`,
+        [id, userId, type, petName || null, species, breedFrag.breedId ? (breed || breedDisplayFromId(breedFrag.breedId)) : breed, description, image, locality, province || null, country, lat, lon, eventDate, now, now, sex, authorProfileId, contactWhatsapp, contactPhone, ...geo.values, ...locRef.values, ...breedFrag.values]
       );
       const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [id]);
       const [alert] = await attachLikedFlags(env, rows, userId);
+      if (type === 'found' && breedId) {
+        const actors = await d1(env, 'SELECT username, name FROM users WHERE id = ?', [userId]);
+        schedulePushCenterWork(ctx, recordLostBreedMatches(env, notifyUserPush, {
+          found: {
+            id,
+            userId,
+            type: 'found',
+            species,
+            breedId,
+            locality,
+            placeId: place && place.placeId,
+          },
+          actor: { id: userId, username: actors[0]?.username, name: actors[0]?.name },
+          now,
+        }));
+      }
       return json({ ok: true, alert });
     }
 
@@ -3489,7 +3676,7 @@ async function handleDb(request, env, ctx) {
     if (action === 'listProfiles') {
       await ensurePersonalProfile(env, userId);
       const rows = await d1(env, 'SELECT * FROM profiles WHERE account_id = ? ORDER BY created_at ASC', [userId]);
-      return json({ ok: true, profiles: rows.map((r) => profileRow(r)) });
+      return json({ ok: true, profiles: rows.map((r) => profileRow(r, { includeAdoptionContact: true })) });
     }
 
     if (action === 'createProfile') {
@@ -3585,6 +3772,9 @@ async function handleDb(request, env, ctx) {
         `UPDATE profiles SET name = ?, username = ?, bio = ?, location = ?, locality = ?, phone = ?, avatar_url = COALESCE(?, avatar_url), adoption_whatsapp = ?, adoption_phone = ?${geo.sql} WHERE id = ?`,
         [name, username, bio, location, locality, phone, avatar, contact.whatsapp, contact.phone, ...geo.values, profileId]
       );
+      if (body.petContactVisible !== undefined) {
+        await updateProfilePetContactVisible(env, profileId, !!body.petContactVisible);
+      }
       const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId]);
       return json({ ok: true, profile: profileRow(rows[0], { includeAdoptionContact: true }) });
     }
@@ -4073,7 +4263,7 @@ async function handleDb(request, env, ctx) {
            WHERE ls.owner_id = ? ORDER BY ls.created_at DESC LIMIT 20`, [userId]),
         d1(env, `SELECT id, type, user_id, pet_id, title, body, metadata, created_at
            FROM activity_events
-           WHERE user_id = ? AND type IN ('birthday', 'pet_transfer_requested', 'pet_transfer_accepted', 'pet_transfer_rejected')
+           WHERE user_id = ? AND type IN ('birthday', 'pet_transfer_requested', 'pet_transfer_accepted', 'pet_transfer_rejected', 'lost_breed_match')
            ORDER BY created_at DESC LIMIT 20`, [userId]),
         d1(env, `SELECT c.created_at, c.text, u.id AS actor_id, u.username, u.name AS actor_name, u.avatar_url,
                 l.id AS listing_id, l.title AS listing_title, l.images AS listing_images
@@ -4128,6 +4318,43 @@ async function handleDb(request, env, ctx) {
             createdAt: r.created_at,
           };
         }),
+        ...groupLostBreedMatchEvents(
+          birthdays.filter((r) => r.type === 'lost_breed_match').map((r) => {
+            let meta = {};
+            try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { meta = {}; }
+            return {
+              id: r.id,
+              actorUsername: meta.actorUsername || '',
+              foundAlertId: meta.foundAlertId || '',
+              lostAlertId: meta.lostAlertId || '',
+              breedId: meta.breedId || '',
+              placeId: meta.placeId || null,
+              locality: meta.locality || null,
+              locationKey: meta.locationKey || null,
+              createdAt: r.created_at,
+            };
+          })
+        ).map((g) => {
+          const copy = lostBreedMatchActivityCopy({
+            actorUsername: g.actorUsername,
+            extraCount: g.extraCount,
+            breedId: g.breedId,
+          });
+          return {
+            id: g.id,
+            type: 'lost_breed_match',
+            actorId: null,
+            actorName: g.actorUsername,
+            actorUsername: g.actorUsername,
+            actorAvatar: null,
+            alertId: g.foundAlertIds.length <= 1 ? g.foundAlertId : null,
+            title: copy.title,
+            text: copy.body,
+            breedId: g.breedId,
+            extraCount: g.extraCount,
+            createdAt: g.createdAt,
+          };
+        }),
         ...birthdays.filter((r) => String(r.type || '').startsWith('pet_transfer_')).map((r) => {
           let meta = {};
           try { meta = r.metadata ? JSON.parse(r.metadata) : {}; } catch (_) { meta = {}; }
@@ -4168,6 +4395,37 @@ async function handleDb(request, env, ctx) {
       if (taken[0] && taken[0].id !== userId) return json({ error: 'Ese teléfono ya está en uso' }, 409);
       await d1(env, 'UPDATE users SET verified_phone = ? WHERE id = ?', [phone, userId]);
       return json({ ok: true, phone });
+    }
+
+    if (action === 'updatePetContact') {
+      const profileId = clean(body.profileId, 80);
+      const parsed = parseOwnerContactFields(body.contactWhatsapp, body.contactPhone);
+      if (!parsed.ok) return json({ error: parsed.error }, 400);
+      if (body.requireContact && !parsed.whatsapp && !parsed.phone) {
+        return json({ error: 'Agregá un WhatsApp o un teléfono.' }, 400);
+      }
+      const visible = !!body.petContactVisible;
+      if (profileId) {
+        const owned = await d1(env, 'SELECT * FROM profiles WHERE id = ? AND account_id = ?', [profileId, userId]);
+        if (!owned[0]) return json({ error: 'Esa página no es tuya' }, 403);
+        const nextWhatsapp = body.contactWhatsapp !== undefined ? parsed.whatsapp : owned[0].adoption_whatsapp;
+        const nextPhone = body.contactPhone !== undefined ? parsed.phone : (owned[0].adoption_phone || owned[0].phone);
+        await d1(
+          env,
+          'UPDATE profiles SET adoption_whatsapp = COALESCE(?, adoption_whatsapp), adoption_phone = COALESCE(?, adoption_phone), phone = COALESCE(?, phone) WHERE id = ?',
+          [nextWhatsapp, nextPhone, nextPhone, profileId]
+        ).catch(() => {});
+        await updateProfilePetContactVisible(env, profileId, visible);
+        const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId]);
+        return json({ ok: true, profile: profileRow(rows[0], { includeAdoptionContact: true }) });
+      }
+      await updateUserPetContact(env, userId, {
+        whatsapp: parsed.whatsapp,
+        phone: parsed.phone,
+        visible,
+      });
+      const rows = await d1(env, 'SELECT * FROM users WHERE id = ?', [userId]);
+      return json({ ok: true, user: publicUser(rows[0]) });
     }
 
     if (action === 'registerImage') {

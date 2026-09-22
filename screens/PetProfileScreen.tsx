@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -50,6 +51,14 @@ import type { ApiReel, ApiPetTransferRequest, ApiTransferUser } from '../lib/db'
 import TransferPetSheet from '../components/TransferPetSheet';
 import { pendingBannerCopy } from '../lib/petTransfer';
 import { useProfiles } from '../features/profiles';
+import {
+  PHONE_ORANGE,
+  WHATSAPP_GREEN,
+  publicContactButtons,
+  telUrl,
+  whatsappConversationUrl,
+  type PublicPetOwnerContact,
+} from '../lib/petOwnerContact';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'PetProfile'>;
@@ -68,8 +77,9 @@ export default function PetProfileScreen() {
   const demoPet = useMemo(() => PETS.find((p) => p.id === petId), [petId]);
 
   const [realPet, setRealPet] = useState<ApiPet | null>(null);
-  const [realOwner, setRealOwner] = useState<{ id: string; username: string; name: string; avatarUrl: string | null } | null>(null);
+  const [realOwner, setRealOwner] = useState<{ id: string; username: string; name: string; avatarUrl: string | null; verified?: boolean } | null>(null);
   const [shelter, setShelter] = useState<PublicProfile | null>(null);
+  const [ownerContact, setOwnerContact] = useState<PublicPetOwnerContact | null>(null);
   const [realStats, setRealStats] = useState<{ posts: number; followers: number } | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,6 +105,7 @@ export default function PetProfileScreen() {
         setRealPet(prof.pet);
         setRealOwner(prof.owner);
         setShelter(prof.shelter || null);
+        setOwnerContact(prof.ownerContact || null);
         setRealStats(prof.stats);
         setPosts(petPosts.posts.map(apiPostToPost));
       } catch {}
@@ -109,6 +120,7 @@ export default function PetProfileScreen() {
       setRealPet(prof.pet);
       setRealOwner(prof.owner);
       setShelter(prof.shelter || null);
+      setOwnerContact(prof.ownerContact || null);
       setRealStats(prof.stats);
       setPosts(petPosts.posts.map(apiPostToPost));
     } catch {}
@@ -498,42 +510,70 @@ export default function PetProfileScreen() {
         }}
       />
 
-      {/* Owner / refugio */}
-      {shelter ? (
+      {/* Owner / página — tarjeta compacta */}
+      {shelter || ownerId ? (
         <Pressable
           style={styles.ownerCard}
-          onPress={() => navigation.navigate('PublicProfile', { username: shelter.username, profileId: shelter.id })}
+          onPress={() => {
+            if (shelter) {
+              navigation.navigate('PublicProfile', { username: shelter.username, profileId: shelter.id });
+              return;
+            }
+            if (!ownerId) return;
+            demoPet
+              ? navigation.navigate('UserProfile', { userId: ownerId })
+              : openHumanProfile(navigation, { username: ownerUsername, userId: ownerId });
+          }}
         >
           <Image
-            source={{ uri: thumb(shelter.avatar || userFallbackAvatar(shelter.username), 100) }}
+            source={{ uri: thumb(shelter ? shelter.avatar || userFallbackAvatar(shelter.username) : ownerAvatar, 100) }}
             style={styles.ownerAvatar}
             transition={200}
           />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.ownerLabel}>Bienestar Animal de {name}</Text>
-            <Text style={styles.ownerName}>
-              {shelter.name} · {shelter.username}
-            </Text>
+          <View style={styles.ownerIdentity}>
+            <View style={styles.ownerNameRow}>
+              <Text style={styles.ownerName} numberOfLines={1}>
+                {shelter ? shelter.username : ownerUsername}
+              </Text>
+              {!!ownerContact?.verified && (
+                <Ionicons name="checkmark-circle" size={16} color="#22C55E" />
+              )}
+            </View>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-        </Pressable>
-      ) : ownerId ? (
-        <Pressable
-          style={styles.ownerCard}
-          onPress={() =>
-            demoPet
-              ? navigation.navigate('UserProfile', { userId: ownerId })
-              : openHumanProfile(navigation, { username: ownerUsername, userId: ownerId })
-          }
-        >
-          <Image source={{ uri: thumb(ownerAvatar, 100) }} style={styles.ownerAvatar} transition={200} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.ownerLabel}>Humano de {name}</Text>
-            <Text style={styles.ownerName}>
-              {ownerName} · {ownerUsername}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          {(() => {
+            const buttons = publicContactButtons(ownerContact);
+            const wa = whatsappConversationUrl(ownerContact?.whatsapp);
+            const phone = telUrl(ownerContact?.phone);
+            return (
+              <View style={styles.ownerActions}>
+                {buttons.showWhatsapp && wa ? (
+                  <Pressable
+                    style={[styles.contactBtn, { backgroundColor: WHATSAPP_GREEN }]}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      Linking.openURL(wa);
+                    }}
+                    accessibilityLabel="WhatsApp"
+                  >
+                    <Ionicons name="logo-whatsapp" size={16} color="#fff" />
+                  </Pressable>
+                ) : null}
+                {buttons.showPhone && phone ? (
+                  <Pressable
+                    style={[styles.contactBtn, { backgroundColor: PHONE_ORANGE }]}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      Linking.openURL(phone);
+                    }}
+                    accessibilityLabel="Teléfono"
+                  >
+                    <Ionicons name="call" size={15} color="#fff" />
+                  </Pressable>
+                ) : null}
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </View>
+            );
+          })()}
         </Pressable>
       ) : null}
 
@@ -788,18 +828,29 @@ const styles = StyleSheet.create({
   ownerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
     backgroundColor: colors.card,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
     borderRadius: radius.md,
-    padding: spacing.md,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: colors.border,
+    minHeight: 52,
   },
-  ownerAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.border },
-  ownerLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 },
-  ownerName: { fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 2 },
+  ownerAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.border },
+  ownerIdentity: { flex: 1, minWidth: 0 },
+  ownerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ownerName: { fontSize: 14, fontWeight: '800', color: colors.text, flexShrink: 1 },
+  ownerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  contactBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   locationBtn: {
     flexDirection: 'row',
     alignItems: 'center',

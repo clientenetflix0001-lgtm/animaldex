@@ -15,6 +15,7 @@ import {
   pushPrefKey,
   uniqueAppend,
 } from '../lib/pushCenter.ts';
+import { lostBreedMatchNavData } from '../lib/lostBreedMatch.ts';
 
 function parseJsonArray(raw) {
   try {
@@ -89,7 +90,14 @@ async function mergeIntoBatch(env, open, input) {
     input.subjectName || '',
     PUSH_BATCH_LIMITS.MAX_SUBJECTS
   );
-  const extra = { ...parseExtra(open.row.extra), ...(input.extra || {}) };
+  const prev = parseExtra(open.row.extra);
+  const incoming = input.extra || {};
+  const foundAlertIds = uniqueAppend(
+    Array.isArray(prev.foundAlertIds) ? prev.foundAlertIds.map(String) : [],
+    incoming.foundAlertId || incoming.targetId || '',
+    PUSH_BATCH_LIMITS.MAX_SUBJECTS
+  );
+  const extra = { ...prev, ...incoming, foundAlertIds };
   await env.DB.prepare(
     `UPDATE push_batches SET actor_ids = ?, subject_names = ?, extra = ?, last_event_at = ?
      WHERE group_key = ? AND flushed_at IS NULL`
@@ -99,6 +107,22 @@ async function mergeIntoBatch(env, open, input) {
 }
 
 function navData(kind, extra, targetId) {
+  if (kind === PUSH_KIND.LOST_BREED_MATCH) {
+    const foundIds = Array.isArray(extra.foundAlertIds) && extra.foundAlertIds.length
+      ? extra.foundAlertIds
+      : extra.foundAlertId
+        ? [extra.foundAlertId]
+        : targetId
+          ? [targetId]
+          : [];
+    return lostBreedMatchNavData({
+      foundAlertIds: foundIds.map(String),
+      lostAlertId: extra.lostAlertId || targetId,
+      breedId: extra.breedId || '',
+      placeId: extra.placeId || null,
+      locality: extra.locality || null,
+    });
+  }
   if (kind === PUSH_KIND.ALERT_COMMENT) {
     return { type: 'alert_comment', alertId: targetId, url: `/a/${encodeURIComponent(targetId)}` };
   }
@@ -129,7 +153,7 @@ function safeCopy(copy) {
 
 export async function ingestPushEvent(env, notifyUserPush, input) {
   const now = input.now || Date.now();
-  const groupKey = pushGroupKey(input.kind, input.recipientId, input.targetId);
+  const groupKey = input.groupKey || pushGroupKey(input.kind, input.recipientId, input.targetId);
   const open = await loadOpenBatch(env, groupKey, now);
   const decision = decidePushDelivery({
     kind: input.kind,
@@ -148,6 +172,12 @@ export async function ingestPushEvent(env, notifyUserPush, input) {
     petId: input.petId || input.targetId || null,
     profileId: input.profileId || null,
     actorId: input.actorId || null,
+    breedId: input.breedId || null,
+    lostAlertId: input.lostAlertId || null,
+    foundAlertId: input.foundAlertId || input.targetId || null,
+    foundAlertIds: input.foundAlertId || input.targetId ? [input.foundAlertId || input.targetId] : [],
+    placeId: input.placeId || null,
+    locality: input.locality || null,
   };
 
   if (decision.action === 'immediate') {

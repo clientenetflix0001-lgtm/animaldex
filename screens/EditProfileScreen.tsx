@@ -17,6 +17,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, db } from '../lib/db';
+import { PET_CONTACT_VISIBLE_HELP, PET_CONTACT_VISIBLE_LABEL } from '../lib/petOwnerContact';
 import { uploadImage } from '../lib/api';
 import { useStore } from '../lib/store';
 import { userFallbackAvatar } from '../lib/images';
@@ -43,6 +44,9 @@ export default function EditProfileScreen() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [contactWhatsapp, setContactWhatsapp] = useState(user?.contactWhatsapp ?? '');
+  const [contactPhone, setContactPhone] = useState(user?.contactPhone ?? '');
+  const [petContactVisible, setPetContactVisible] = useState(!!user?.petContactVisible);
 
   const pickAvatar = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -102,6 +106,9 @@ export default function EditProfileScreen() {
         placeId: place?.placeId,
         admin1Code: place?.admin1Code,
         admin2Code: place?.admin2Code,
+        contactWhatsapp: contactWhatsapp.trim() || null,
+        contactPhone: contactPhone.trim() || null,
+        petContactVisible,
       });
       await refreshUser();
       navigation.goBack();
@@ -110,7 +117,7 @@ export default function EditProfileScreen() {
     } finally {
       setSaving(false);
     }
-  }, [name, username, bio, location, place, avatarUrl, refreshUser, navigation]);
+  }, [name, username, bio, location, place, avatarUrl, contactWhatsapp, contactPhone, petContactVisible, refreshUser, navigation]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -176,6 +183,36 @@ export default function EditProfileScreen() {
           </Pressable>
           <Text style={styles.hint}>Se elige de la lista oficial de localidades.</Text>
 
+          <Text style={styles.label}>WhatsApp</Text>
+          <TextInput
+            style={styles.input}
+            value={contactWhatsapp}
+            onChangeText={setContactWhatsapp}
+            keyboardType="phone-pad"
+            placeholder="WhatsApp"
+            placeholderTextColor={colors.textMuted}
+          />
+          <Text style={styles.label}>Teléfono</Text>
+          <TextInput
+            style={styles.input}
+            value={contactPhone}
+            onChangeText={setContactPhone}
+            keyboardType="phone-pad"
+            placeholder="Teléfono"
+            placeholderTextColor={colors.textMuted}
+          />
+          <Pressable style={styles.checkRow} onPress={() => setPetContactVisible((v) => !v)}>
+            <Ionicons
+              name={petContactVisible ? 'checkbox' : 'square-outline'}
+              size={20}
+              color={petContactVisible ? colors.secondary : colors.textMuted}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.checkLabel}>{PET_CONTACT_VISIBLE_LABEL}</Text>
+              <Text style={styles.hint}>{PET_CONTACT_VISIBLE_HELP}</Text>
+            </View>
+          </Pressable>
+
           <Pressable style={styles.saveBtn} onPress={save} disabled={saving || uploading || !isBioWithinWordLimit(bio)}>
             {saving ? (
               <ActivityIndicator color="#fff" />
@@ -226,6 +263,8 @@ const styles = StyleSheet.create({
   },
   avatarHint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.sm },
   hint: { fontSize: 12, color: colors.textMuted, marginTop: 6 },
+  checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: spacing.lg },
+  checkLabel: { fontWeight: '700', fontSize: 14, color: colors.text },
   label: { fontWeight: '700', fontSize: 14, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.sm },
   input: {
     backgroundColor: colors.card,

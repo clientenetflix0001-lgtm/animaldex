@@ -24,6 +24,7 @@ import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
 import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
 import { ADOPTION_CONTACT_REQUIRED, parseProtectorAdoptionContact } from '../lib/adoptionContact';
+import { PAGE_PET_CONTACT_VISIBLE_HELP, PAGE_PET_CONTACT_VISIBLE_LABEL } from '../lib/petOwnerContact';
 import { PlacePicker } from '../components/PlacePicker';
 import type { GeoPlace } from '../lib/geoplace/types.ts';
 import type { ProfileType } from '../features/profiles/profileTypes';
@@ -52,6 +53,7 @@ export default function EditPublicProfileScreen() {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [petContactVisible, setPetContactVisible] = useState(false);
 
   useEffect(() => {
     db.publicProfile({ profileId })
@@ -65,6 +67,7 @@ export default function EditPublicProfileScreen() {
         setPhone(profile.phone || '');
         setAdoptionWhatsapp(profile.adoptionWhatsapp || '');
         setAdoptionPhone(profile.adoptionPhone || '');
+        setPetContactVisible(!!profile.petContactVisible);
         setAvatarUrl(profile.avatar);
       })
       .catch((e) => Alert.alert('Error', e?.message || 'No se pudo cargar la página'))
@@ -142,6 +145,7 @@ export default function EditPublicProfileScreen() {
         avatar: avatarUrl,
         adoptionWhatsapp: profileType === 'protector' ? adoptionWhatsapp.trim() : undefined,
         adoptionPhone: profileType === 'protector' ? adoptionPhone.trim() : undefined,
+        petContactVisible,
         // Solo se envía si el usuario eligió la localidad en esta sesión:
         // `undefined` deja el valor existente intacto.
         placeId: place?.placeId,
@@ -155,7 +159,7 @@ export default function EditPublicProfileScreen() {
     } finally {
       setSaving(false);
     }
-  }, [profileId, name, username, bio, location, locality, place, profileType, phone, adoptionWhatsapp, adoptionPhone, avatarUrl, refreshProfiles, navigation]);
+  }, [profileId, name, username, bio, location, locality, place, profileType, phone, adoptionWhatsapp, adoptionPhone, petContactVisible, avatarUrl, refreshProfiles, navigation]);
 
   if (loading) {
     return (
@@ -266,6 +270,17 @@ export default function EditPublicProfileScreen() {
                 placeholder="Número de teléfono"
                 placeholderTextColor={colors.textMuted}
               />
+              <Pressable style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 16 }} onPress={() => setPetContactVisible((v) => !v)}>
+                <Ionicons
+                  name={petContactVisible ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={petContactVisible ? colors.secondary : colors.textMuted}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '700', color: colors.text }}>{PAGE_PET_CONTACT_VISIBLE_LABEL}</Text>
+                  <Text style={styles.help}>{PAGE_PET_CONTACT_VISIBLE_HELP}</Text>
+                </View>
+              </Pressable>
               <Text style={styles.label}>Localidad</Text>
               <Pressable style={styles.locationBox} onPress={() => setPickerVisible(true)}>
                 <Ionicons name="location" size={18} color={colors.primary} />

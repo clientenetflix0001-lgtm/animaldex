@@ -15,6 +15,7 @@ export interface PublicProfile {
   /** Solo owner / listProfiles. No va en APIs públicas generales. */
   adoptionWhatsapp?: string | null;
   adoptionPhone?: string | null;
+  petContactVisible?: boolean;
   createdAt: number;
 }
 

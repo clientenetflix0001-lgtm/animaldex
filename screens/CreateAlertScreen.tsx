@@ -56,6 +56,8 @@ import {
 } from '../lib/alertFlyerContact';
 import { SelectedImagePreview } from '../components/SelectedImagePreview';
 import { GALLERY_IMAGE_PICKER_OPTIONS } from '../lib/galleryImagePicker';
+import BreedPicker from '../components/BreedPicker';
+import { breedDisplayLabel } from '../lib/breeds';
 import {
   ALERT_LOCATION_REFERENCE_LABEL,
   ALERT_LOCATION_REFERENCE_MAX,
@@ -96,6 +98,7 @@ export default function CreateAlertScreen() {
   const [petName, setPetName] = useState('');
   const [sex, setSex] = useState<'macho' | 'hembra' | null>(null);
   const [breed, setBreed] = useState('');
+  const [breedId, setBreedId] = useState<string | null>(null);
   const [color, setColor] = useState('');
   const [ageLabel, setAgeLabel] = useState('');
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
@@ -285,7 +288,8 @@ export default function CreateAlertScreen() {
       species,
       petName: petName.trim() || undefined,
       sex: resolvedType === 'adoption' || flyerMode ? sex : undefined,
-      breed: breed.trim() || undefined,
+      breed: breedId ? breedDisplayLabel(breedId) || breed.trim() || undefined : breed.trim() || undefined,
+      breedId,
       description: description.trim(),
       image,
       locality,
@@ -356,7 +360,7 @@ export default function CreateAlertScreen() {
     } finally {
       setSaving(false);
     }
-  }, [image, description, locality, province, lat, lon, place, locationReference, primary, seenKind, species, petName, sex, breed, color, ageLabel, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode, activePetId, flyerPetUsername, routeName]);
+  }, [image, description, locality, province, lat, lon, place, locationReference, primary, seenKind, species, petName, sex, breed, breedId, color, ageLabel, dateText, navigation, activeProfile, contactWhatsapp, contactPhone, flyerMode, activePetId, flyerPetUsername, routeName]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -482,17 +486,21 @@ export default function CreateAlertScreen() {
             maxLength={40}
           />
 
+          {type === 'lost' || type === 'found' || type === 'sighting' || flyerMode ? (
+            <BreedPicker
+              species={species}
+              breedId={breedId}
+              onSelect={(id) => {
+                setBreedId(id);
+                setBreed(id ? breedDisplayLabel(id) : '');
+              }}
+              allowUnknown={type !== 'lost'}
+              label={type === 'found' || type === 'sighting' ? 'Raza (si la reconocés)' : 'Raza'}
+            />
+          ) : null}
+
           {flyerMode ? (
             <>
-              <Text style={styles.label}>Raza (opcional)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Labrador, mestizo..."
-                placeholderTextColor={colors.textMuted}
-                value={breed}
-                onChangeText={setBreed}
-                maxLength={40}
-              />
               <Text style={styles.label}>Color (opcional)</Text>
               <TextInput
                 style={styles.input}

@@ -16,6 +16,7 @@ import { openHumanProfile } from '../lib/publicHandles';
 import { useStore } from '../lib/store';
 import PushPermissionBanner from '../components/PushPermissionBanner';
 import { locationActivityCopy } from '../lib/pushPolicy';
+import { setPendingAlertsMatchFilter } from '../lib/pendingAlertsMatchFilter';
 import PetAvatar from '../components/PetAvatar';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -35,6 +36,7 @@ const ICONS: Record<string, { name: keyof typeof Ionicons.glyphMap; bg: string }
   pet_transfer_requested: { name: 'swap-horizontal', bg: colors.secondary },
   pet_transfer_accepted: { name: 'checkmark-circle', bg: colors.secondary },
   pet_transfer_rejected: { name: 'close-circle', bg: colors.heart },
+  lost_breed_match: { name: 'paw', bg: colors.primary },
 };
 
 type Row =
@@ -102,6 +104,8 @@ export default function ActivityScreen() {
       case 'pet_transfer_accepted':
       case 'pet_transfer_rejected':
         return n.title || n.text || 'Solicitud de transferencia';
+      case 'lost_breed_match':
+        return n.title || n.text || 'Posible coincidencia con tu mascota';
       default:
         return 'interactuó contigo';
     }
@@ -137,6 +141,13 @@ export default function ActivityScreen() {
               navigation.navigate('PetProfile', { petId: n.petUsername || n.petId });
             } else if (n.type === 'follow_pet' && n.petId) {
               navigation.navigate('PetProfile', { petId: n.petId });
+            } else if (n.type === 'lost_breed_match' && n.alertId) {
+              navigation.navigate('AlertDetail', { alertId: n.alertId });
+            } else if (n.type === 'lost_breed_match') {
+              if (n.breedId) {
+                setPendingAlertsMatchFilter({ type: 'found', breedId: n.breedId });
+              }
+              navigation.navigate('Alertas' as never);
             } else if (n.type === 'listing_comment' && n.listingId) {
               navigation.navigate('ListingDetail', { listingId: n.listingId });
             } else if (n.reelId) {
