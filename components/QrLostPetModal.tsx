@@ -1,8 +1,8 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { qrLostPetMessage, qrLostPetQuestion, qrLostPetTitle } from '../lib/qrLostPet';
 import { centeredParentTextWrap } from '../lib/centeredText';
 
@@ -15,6 +15,8 @@ type Props = {
 };
 
 function QrLostPetModal({ visible, petName, sending, onClose, onSendLocation }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
@@ -66,7 +68,8 @@ function QrLostPetModal({ visible, petName, sending, onClose, onSendLocation }: 
 
 export default memo(QrLostPetModal);
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(45,32,22,0.35)',
@@ -140,3 +143,4 @@ const styles = StyleSheet.create({
   },
   cancelText: { color: colors.textMuted, fontWeight: '700', fontSize: 15 },
 });
+}

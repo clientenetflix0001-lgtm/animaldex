@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { AdoptionCard } from '../lib/adoptionDiscovery';
@@ -6,9 +6,11 @@ import { HOME_MODULE_TITLES } from '../lib/homeFeedModules';
 import { HomeHorizontalList, HomeModulePressable } from './HomeHorizontalList';
 import { HomeModuleTitle } from './HomeModuleTitle';
 import PetAvatar from './PetAvatar';
-import { colors, radius, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius, spacing } from '../lib/theme';
 
 function AdoptionChip({ card, onPress }: { card: AdoptionCard; onPress: () => void }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <HomeModulePressable onPress={onPress} style={styles.card} accessibilityRole="button" accessibilityLabel="Ver mascota en adopción">
       <PetAvatar
@@ -28,6 +30,8 @@ function AdoptionChip({ card, onPress }: { card: AdoptionCard; onPress: () => vo
 }
 
 function FeedAdoptionsRowInner({ pets }: { pets: AdoptionCard[] }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const open = useCallback(
     (card: AdoptionCard) => {
@@ -55,10 +59,12 @@ function FeedAdoptionsRowInner({ pets }: { pets: AdoptionCard[] }) {
 
 export const FeedAdoptionsRow = memo(FeedAdoptionsRowInner);
 
-const styles = StyleSheet.create({
-  wrap: { paddingVertical: spacing.sm },
-  list: { paddingHorizontal: spacing.lg, gap: spacing.md },
-  card: { width: 140 },
-  photo: { width: 140, height: 168, borderRadius: radius.md, backgroundColor: colors.border },
-  name: { marginTop: 6, fontSize: 13, fontWeight: '800', color: colors.text },
-});
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    wrap: { paddingVertical: spacing.sm },
+    list: { paddingHorizontal: spacing.lg, gap: spacing.md },
+    card: { width: 140 },
+    photo: { width: 140, height: 168, borderRadius: radius.md, backgroundColor: colors.border },
+    name: { marginTop: 6, fontSize: 13, fontWeight: '800', color: colors.text },
+  });
+}

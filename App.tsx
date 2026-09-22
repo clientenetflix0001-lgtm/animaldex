@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import {
   NavigationContainer,
   DefaultTheme,
+  DarkTheme,
   RouteProp,
   LinkingOptions,
   getStateFromPath as rnGetStateFromPath,
@@ -55,7 +56,9 @@ import MyPetsScreen from './screens/MyPetsScreen';
 import { StoreProvider, useStore } from './lib/store';
 import { NotificationsProvider, useNotifications } from './lib/realtime';
 import { ProfileProvider } from './features/profiles';
-import { colors } from './lib/theme';
+import { ThemeProvider } from './lib/ThemeProvider';
+import { useAppTheme, navigationThemeColors, statusBarStyleForScheme, colors } from './lib/theme';
+import type { ThemeColors } from './lib/theme';
 import { RootStackParamList, TabParamList } from './lib/types';
 import { useBreakpoint } from './lib/responsive';
 import { Sidebar } from './components/Sidebar';
@@ -112,7 +115,19 @@ function UserProfileRoute() {
   return <UserProfileScreen userId={route.params.userId} showBack />;
 }
 
+function headerOptions(colors: ThemeColors) {
+  return {
+    headerBackTitle: 'Atrás',
+    headerTintColor: colors.text,
+    headerTitleStyle: { fontWeight: '800' as const, color: colors.text },
+    headerStyle: { backgroundColor: colors.bg },
+    headerShadowVisible: false,
+    contentStyle: { backgroundColor: colors.bg },
+  };
+}
+
 function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
+  const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const bottomInset = Platform.OS === 'web' ? 0 : insets.bottom;
   const focusedName = state.routes[state.index]?.name as keyof TabParamList;
@@ -129,6 +144,8 @@ function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
           height: 56 + bottomInset + 6,
           paddingBottom: bottomInset + 6,
           flexDirection: 'row',
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
         },
       ]}
     >
@@ -172,6 +189,7 @@ function MobileTabBar({ state, navigation }: { state: any; navigation: any }) {
 }
 
 function Tabs() {
+  const { colors } = useAppTheme();
   const { desktopWeb, sidebarMode, sidebarWidth } = useBreakpoint();
   const { unread } = useNotifications();
   const insets = useSafeAreaInsets();
@@ -199,6 +217,7 @@ function Tabs() {
           screenOptions={{
             headerShown: false,
             sceneStyle: { paddingLeft: sidebarWidth, backgroundColor: colors.bg },
+            contentStyle: { backgroundColor: colors.bg },
           }}
         >
           <Tab.Screen name="Inicio" component={InicioStack} />
@@ -409,22 +428,16 @@ function PushBootstrap() {
   return null;
 }
 
-const screenHeaderOptions = {
-  headerBackTitle: 'Atrás',
-  headerTintColor: colors.text,
-  headerTitleStyle: { fontWeight: '800' as const, color: colors.text },
-  headerStyle: { backgroundColor: colors.bg },
-  headerShadowVisible: false,
-};
-
 // Navegador para visitantes SIN sesión. Permite ver recursos públicos
 // abiertos desde un enlace compartido sin cuenta: /p/:id, /:username,
 // /pet/:handle, /a/:id, /m/:id y ?qr= de una chapita ya vinculada.
 // UserProfile sigue existiendo como pantalla INTERNA (p. ej. QR por user_id),
 // sin URL pública /user/:id. Claim de chapita sin vincular sigue en Auth.
 function PublicNavigator() {
+  const { colors } = useAppTheme();
+  const headers = headerOptions(colors);
   return (
-    <Stack.Navigator initialRouteName="Auth">
+    <Stack.Navigator initialRouteName="Auth" screenOptions={{ contentStyle: { backgroundColor: colors.bg } }}>
       <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="UserProfile" component={UserProfileRoute} options={{ headerShown: false }} />
@@ -434,7 +447,7 @@ function PublicNavigator() {
       <Stack.Screen
         name="AlertDetail"
         component={AlertDetailScreen}
-        options={{ title: 'Alerta', ...screenHeaderOptions }}
+        options={{ title: 'Alerta', ...headers }}
       />
       <Stack.Screen name="ListingDetail" component={ListingDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ReelViewer" component={ReelViewerScreen} options={{ headerShown: false }} />
@@ -465,6 +478,8 @@ function WebUrlSync() {
 
 function RootNavigator() {
   const { user, authReady } = useStore();
+  const { colors } = useAppTheme();
+  const headers = headerOptions(colors);
 
   if (!authReady) {
     return (
@@ -479,12 +494,12 @@ function RootNavigator() {
   }
 
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={{ contentStyle: { backgroundColor: colors.bg } }}>
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
       <Stack.Screen
         name="Explorar"
         component={ExploreScreen}
-        options={{ title: 'Explorar', ...screenHeaderOptions }}
+        options={{ title: 'Explorar', ...headers }}
       />
       <Stack.Screen name="PetProfile" component={PetProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="PetTransferRequest" component={PetTransferRequestScreen} options={{ headerShown: false }} />
@@ -493,27 +508,27 @@ function RootNavigator() {
       <Stack.Screen
         name="PostDetail"
         component={PostDetailScreen}
-        options={{ title: 'Publicación', ...screenHeaderOptions }}
+        options={{ title: 'Publicación', ...headers }}
       />
       <Stack.Screen
         name="VerifyPhone"
         component={VerifyPhoneScreen}
-        options={{ title: 'Verificación SMS', ...screenHeaderOptions }}
+        options={{ title: 'Verificación SMS', ...headers }}
       />
       <Stack.Screen
         name="AddPet"
         component={AddPetScreen}
-        options={{ title: 'Nueva mascota', ...screenHeaderOptions }}
+        options={{ title: 'Nueva mascota', ...headers }}
       />
       <Stack.Screen
         name="EditProfile"
         component={EditProfileScreen}
-        options={{ title: 'Editar perfil', ...screenHeaderOptions }}
+        options={{ title: 'Editar perfil', ...headers }}
       />
       <Stack.Screen
         name="EditPublicProfile"
         component={EditPublicProfileScreen}
-        options={{ title: 'Editar página', ...screenHeaderOptions }}
+        options={{ title: 'Editar página', ...headers }}
       />
       <Stack.Screen
         name="QRScanner"
@@ -528,37 +543,37 @@ function RootNavigator() {
       <Stack.Screen
         name="AdminTags"
         component={AdminTagsScreen}
-        options={{ title: 'Chapitas QR', ...screenHeaderOptions }}
+        options={{ title: 'Chapitas QR', ...headers }}
       />
       <Stack.Screen
         name="CreateAlert"
         component={CreateAlertScreen}
-        options={{ title: 'Crear alerta', ...screenHeaderOptions, contentStyle: { backgroundColor: colors.bg } }}
+        options={{ title: 'Crear alerta', ...headers, contentStyle: { backgroundColor: colors.bg } }}
       />
       <Stack.Screen
         name="MyAlerts"
         component={MyAlertsScreen}
-        options={{ title: 'Mis alertas', ...screenHeaderOptions }}
+        options={{ title: 'Mis alertas', ...headers }}
       />
       <Stack.Screen
         name="AlertFlyerPreview"
         component={AlertFlyerPreviewScreen}
-        options={{ title: 'Flyer', ...screenHeaderOptions, contentStyle: { backgroundColor: colors.bg } }}
+        options={{ title: 'Flyer', ...headers, contentStyle: { backgroundColor: colors.bg } }}
       />
       <Stack.Screen
         name="AlertDetail"
         component={AlertDetailScreen}
-        options={{ title: 'Alerta', ...screenHeaderOptions }}
+        options={{ title: 'Alerta', ...headers }}
       />
       <Stack.Screen
         name="CreateListing"
         component={CreateListingScreen}
-        options={{ title: 'Vender', ...screenHeaderOptions }}
+        options={{ title: 'Vender', ...headers }}
       />
       <Stack.Screen
         name="MyListings"
         component={MyListingsScreen}
-        options={{ title: 'Mis productos', ...screenHeaderOptions }}
+        options={{ title: 'Mis productos', ...headers }}
       />
       <Stack.Screen
         name="ListingDetail"
@@ -593,12 +608,12 @@ function RootNavigator() {
       <Stack.Screen
         name="SellerShop"
         component={SellerShopScreen}
-        options={{ title: 'Tienda', ...screenHeaderOptions }}
+        options={{ title: 'Tienda', ...headers }}
       />
       <Stack.Screen
         name="MarketFavorites"
         component={MarketFavoritesScreen}
-        options={{ title: 'Favoritos', ...screenHeaderOptions }}
+        options={{ title: 'Favoritos', ...headers }}
       />
       <Stack.Screen
         name="AdoptionDiscovery"
@@ -627,17 +642,37 @@ function initialSafeAreaMetrics() {
   };
 }
 
-const navTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: colors.bg,
-    card: colors.card,
-    primary: colors.primary,
-    text: colors.text,
-    border: colors.border,
-  },
-};
+function ThemedAppShell() {
+  const { scheme, colors } = useAppTheme();
+  const navTheme = {
+    ...(scheme === 'dark' ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(scheme === 'dark' ? DarkTheme.colors : DefaultTheme.colors),
+      ...navigationThemeColors(scheme),
+    },
+  };
+
+  return (
+    <NavigationContainer
+      ref={navigationRef}
+      theme={navTheme}
+      linking={linking}
+      onReady={() => {
+        setPushNavGate({ navReady: true });
+      }}
+      documentTitle={{
+        formatter: () => 'Animaldex · La red social de tus mascotas 🐾',
+      }}
+    >
+      <StatusBar style={statusBarStyleForScheme(scheme)} />
+      <TagDeepLinkHandler />
+      <AppLinkHandler />
+      <PushBootstrap />
+      <WebUrlSync />
+      <RootNavigator />
+    </NavigationContainer>
+  );
+}
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -651,37 +686,27 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider initialMetrics={initialSafeAreaMetrics()}>
-        {!fontsLoaded ? (
-          <View style={{ flex: 1, backgroundColor: colors.bg }} />
-        ) : (
-          <StoreProvider>
-            <ProfileProvider>
-            <NotificationsProvider>
-              <NavigationContainer
-                ref={navigationRef}
-                theme={navTheme}
-                linking={linking}
-                onReady={() => {
-                  setPushNavGate({ navReady: true });
-                }}
-                documentTitle={{
-                  formatter: () => 'Animaldex · La red social de tus mascotas 🐾',
-                }}
-              >
-                <StatusBar style="dark" />
-                <TagDeepLinkHandler />
-                <AppLinkHandler />
-                <PushBootstrap />
-                <WebUrlSync />
-                <RootNavigator />
-              </NavigationContainer>
-            </NotificationsProvider>
-            </ProfileProvider>
-          </StoreProvider>
-        )}
+        <ThemeProvider>
+          {!fontsLoaded ? (
+            <ThemedBootSplash />
+          ) : (
+            <StoreProvider>
+              <ProfileProvider>
+              <NotificationsProvider>
+                <ThemedAppShell />
+              </NotificationsProvider>
+              </ProfileProvider>
+            </StoreProvider>
+          )}
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+function ThemedBootSplash() {
+  const { colors } = useAppTheme();
+  return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
 }
 
 const styles = StyleSheet.create({

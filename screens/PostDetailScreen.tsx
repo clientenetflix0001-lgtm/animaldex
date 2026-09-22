@@ -35,7 +35,7 @@ import {
   backgroundTextNeedsSeeMore,
   isTextBackgroundPost,
 } from '../lib/postBackgrounds';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint } from '../lib/responsive';
 
@@ -52,6 +52,8 @@ interface DisplayComment {
 }
 
 export default function PostDetailScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
   const { user } = useStore();
@@ -574,7 +576,8 @@ function PostDetailContent({ post }: { post: Post }) {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   mobilePostCard: {
     backgroundColor: colors.card,
@@ -748,3 +751,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+}

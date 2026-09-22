@@ -7,7 +7,7 @@ import { formatArs } from '../lib/market';
 import { listingPriceLabel } from '../lib/listingContact';
 import { formatDistance, haversineKm } from '../lib/geo';
 import { thumb, userFallbackAvatar } from '../lib/images';
-import { colors, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius } from '../lib/theme';
 
 interface Props {
   listing: ApiListing;
@@ -19,6 +19,8 @@ interface Props {
 }
 
 function ListingCardInner({ listing, onPress, onToggleFavorite, viewerLat, viewerLon, style }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const image = listing.images[0];
   const avatar = listing.userAvatar ?? userFallbackAvatar(listing.username ?? 'usuario');
 
@@ -101,7 +103,8 @@ function ListingCardInner({ listing, onPress, onToggleFavorite, viewerLat, viewe
 
 export const ListingCard = memo(ListingCardInner);
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   card: {
     flex: 1,
     minWidth: 0,
@@ -148,3 +151,4 @@ const styles = StyleSheet.create({
   sellerAvatar: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.border },
   sellerName: { fontSize: 11, color: colors.textMuted, flexShrink: 1, minWidth: 0 },
 });
+}

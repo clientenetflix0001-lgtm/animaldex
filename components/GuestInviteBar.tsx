@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 
 interface Props {
   collapsed: boolean;
@@ -18,6 +18,8 @@ interface Props {
  * acciones sociales siguen requiriendo iniciar sesión.
  */
 export function GuestInviteBar({ collapsed, onToggle, onLogin, onRegister }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   if (collapsed) {
     return (
       <Pressable
@@ -62,7 +64,8 @@ export function GuestInviteBar({ collapsed, onToggle, onLogin, onRegister }: Pro
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   panel: {
     position: 'absolute',
     left: 0,
@@ -125,3 +128,4 @@ const styles = StyleSheet.create({
   pillEmoji: { fontSize: 16 },
   pillText: { color: '#fff', fontWeight: '800', fontSize: 14 },
 });
+}

@@ -23,7 +23,7 @@ import { thumb, userFallbackAvatar } from '../lib/images';
 import { AdaptivePostImage } from '../components/AdaptivePostImage';
 import { useImageNaturalSize } from '../lib/imageNaturalSize';
 import { formatCount, formatTime } from '../lib/data';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import WantToAdoptButton from '../components/WantToAdoptButton';
 import { CommentKeyboardView } from '../components/CommentKeyboardView';
@@ -34,6 +34,8 @@ import { useGuestAccess } from '../lib/guestAccess';
 type Rt = RouteProp<RootStackParamList, 'AlertDetail'>;
 
 export default function AlertDetailScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const route = useRoute<Rt>();
   const { user } = useStore();
   const { guest, requireLogin, inviteBar, goBackOrClose } = useGuestAccess({ headerClose: true });
@@ -317,7 +319,8 @@ export default function AlertDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 },
   notFoundEmoji: { fontSize: 48 },
@@ -376,3 +379,4 @@ const styles = StyleSheet.create({
   },
   sendBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
 });
+}

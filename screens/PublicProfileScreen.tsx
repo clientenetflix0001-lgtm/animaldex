@@ -22,7 +22,7 @@ import { thumb, userFallbackAvatar } from '../lib/images';
 import { FollowButton } from '../components/FollowButton';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
-import { colors, spacing, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius } from '../lib/theme';
 import { centeredParentTextWrap } from '../lib/centeredText';
 import { RootStackParamList } from '../lib/types';
 import ProfileBadge from '../features/profiles/ProfileBadge';
@@ -69,6 +69,8 @@ const SPECIES_FILTERS: { id: SpeciesFilter; label: string }[] = [
 ];
 
 export default function PublicProfileScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const params = useRoute<RouteProp<RootStackParamList, 'PublicProfile'>>().params || {};
   const routeProfileId = params.profileId;
@@ -476,9 +478,10 @@ function FilterRow<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  safeWhite: { flex: 1, backgroundColor: '#FFFFFF' },
+  safeWhite: { flex: 1, backgroundColor: colors.card },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -548,3 +551,4 @@ const styles = StyleSheet.create({
   filterTextOn: { color: colors.primary },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 24, paddingHorizontal: 28 },
 });
+}

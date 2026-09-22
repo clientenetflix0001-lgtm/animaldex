@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,7 @@ import { useRoute, RouteProp } from '@react-navigation/native';
 import { useStore } from '../lib/store';
 import { auth, db } from '../lib/db';
 import { sendVerificationCode, verifyCode, smsStatus, PHONE_SIGNUP_UNAVAILABLE } from '../lib/api';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint } from '../lib/responsive';
 import { RootStackParamList } from '../lib/types';
 import { isReservedPublicUsername, isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
@@ -42,6 +42,8 @@ type Step =
 const AR_DIAL = '+54';
 
 export default function AuthScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { login, registerEmail, registerPhone, pendingTagCode } = useStore();
   const { desktopWeb } = useBreakpoint();
   const route = useRoute<RouteProp<RootStackParamList, 'Auth'>>();
@@ -689,7 +691,8 @@ function PasswordField({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flexGrow: 1, paddingBottom: 40 },
   dtRoot: { flex: 1, flexDirection: 'row', backgroundColor: colors.bg },
@@ -847,3 +850,4 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
+}

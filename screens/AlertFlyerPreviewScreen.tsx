@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -20,11 +20,13 @@ import { shareFlyerCanvas } from '../lib/alertFlyerShare';
 import { pushRootScreen } from '../lib/pushRootScreen';
 import { CREAR_FLYER_PREVIEW_ROUTE } from '../lib/crearFlyerRoutes';
 import { db } from '../lib/db';
-import { colors, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius, shadow } from '../lib/theme';
 
 type PreviewParams = { alertId?: string; from?: 'draft' | 'existing' };
 
 export default function AlertFlyerPreviewScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const route = useRoute();
   const params = (route.params || {}) as PreviewParams;
@@ -197,7 +199,8 @@ export default function AlertFlyerPreviewScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   previewArea: { flex: 1, minHeight: 0 },
   scroll: {
@@ -253,3 +256,4 @@ const styles = StyleSheet.create({
   },
   secondaryText: { color: colors.text, fontWeight: '800', fontSize: 15 },
 });
+}

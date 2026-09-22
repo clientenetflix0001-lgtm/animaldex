@@ -98,15 +98,13 @@ describe('perfil personal: layout intacto + fondo blanco', () => {
   });
 
   it('8. el fondo del perfil personal es blanco', () => {
-    assert.match(userProfile, /safe: \{ flex: 1, backgroundColor: '#FFFFFF' \}/);
-    assert.doesNotMatch(userProfile, /safe: \{ flex: 1, backgroundColor: colors\.bg \}/);
+    assert.match(userProfile, /safe: \{ flex: 1, backgroundColor: colors\.card \}/);
   });
 });
 
 describe('perfil mascota: fondo blanco', () => {
   it('9. el fondo del perfil de mascota es blanco', () => {
-    assert.match(petProfile, /safe: \{ flex: 1, backgroundColor: '#FFFFFF' \}/);
-    assert.doesNotMatch(petProfile, /safe: \{ flex: 1, backgroundColor: colors\.bg \}/);
+    assert.match(petProfile, /safe: \{ flex: 1, backgroundColor: colors\.card \}/);
   });
 });
 
@@ -117,7 +115,7 @@ describe('página empresa / bienestar animal: layout intacto', () => {
       publicProfile,
       /avatar: \{\s*width: 110,\s*height: 110,\s*borderRadius: 55/
     );
-    assert.match(publicProfile, /safeWhite: \{ flex: 1, backgroundColor: '#FFFFFF' \}/);
+    assert.match(publicProfile, /safeWhite: \{ flex: 1, backgroundColor: colors\.card \}/);
     assert.match(publicProfile, /<ProfileBadge type=\{profile\.type\} \/>/);
   });
 });

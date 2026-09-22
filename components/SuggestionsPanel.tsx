@@ -1,5 +1,5 @@
 // Panel derecho de sugerencias (solo escritorio ancho, estilo Instagram)
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
@@ -10,7 +10,7 @@ import { thumb, userFallbackAvatar } from '../lib/images';
 import { petPhotoUri } from '../lib/petAvatar';
 import { FollowButton } from './FollowButton';
 import PetAvatar from './PetAvatar';
-import { colors, spacing, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius } from '../lib/theme';
 import { CONTENT } from '../lib/responsive';
 
 interface Suggestion {
@@ -23,6 +23,8 @@ interface Suggestion {
 }
 
 export function SuggestionsPanel() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { user, followedPets, toggleFollowPet } = useStore();
   const [realPets, setRealPets] = useState<ApiPet[]>([]);
@@ -102,7 +104,8 @@ export function SuggestionsPanel() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   panel: {
     width: CONTENT.rightPanel,
     paddingHorizontal: spacing.xl,
@@ -142,3 +145,4 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 });
+}

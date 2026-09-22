@@ -44,7 +44,7 @@ import { PET_SEXES, parsePetSex, speciesGroup } from '../lib/petFields';
 import { petPhotoUri } from '../lib/petAvatar';
 import { petsForPublishingIdentity, reconcileSelectedPetId } from '../lib/petOwnership';
 import { useStore } from '../lib/store';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { useProfiles } from '../features/profiles';
 import { ADOPTION_CONTACT_REQUIRED } from '../lib/adoptionContact';
 import {
@@ -72,6 +72,8 @@ function alertSpeciesFromPet(species: string | null | undefined): string {
 }
 
 export default function CreateAlertScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const route = useRoute();
   const routeName = String(route.name || '');
@@ -657,7 +659,8 @@ export default function CreateAlertScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { padding: spacing.xl, paddingBottom: 60, width: '100%', maxWidth: 680, alignSelf: 'center' },
   label: { fontWeight: '700', fontSize: 14, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.sm },
@@ -783,3 +786,4 @@ const styles = StyleSheet.create({
   },
   saveText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });
+}

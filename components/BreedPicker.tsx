@@ -8,7 +8,7 @@ import {
   suggestBreeds,
   type BreedCatalogEntry,
 } from '../lib/breeds';
-import { colors, radius, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius, spacing } from '../lib/theme';
 
 type Props = {
   species: string;
@@ -25,6 +25,8 @@ export default function BreedPicker({
   allowUnknown = true,
   label = 'Raza',
 }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [query, setQuery] = useState('');
   const dogCatalog = catalogSpeciesFromAlert(species) === 'dog';
   const suggestions = useMemo(() => (dogCatalog ? suggestBreeds(query, species) : []), [dogCatalog, query, species]);
@@ -91,7 +93,8 @@ export default function BreedPicker({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   label: { fontSize: 13, fontWeight: '800', color: colors.text, marginBottom: 6 },
   input: {
     borderWidth: 1,
@@ -140,3 +143,4 @@ const styles = StyleSheet.create({
   unknownActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   unknownText: { fontWeight: '800', color: colors.text, fontSize: 13 },
 });
+}

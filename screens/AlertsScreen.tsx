@@ -5,7 +5,7 @@
 // mente por localidad (detectada por GPS, sin mostrar mapas) y el
 // usuario puede cambiarla manualmente en cualquier momento. Carga
 // progresiva con paginación (10 alertas por página).
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -37,7 +37,7 @@ import {
   territoryQuery,
   type Territory,
 } from '../lib/geoplace/territory.ts';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { consumePendingAlertsMatchFilter } from '../lib/pendingAlertsMatchFilter';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
@@ -47,6 +47,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const PAGE_SIZE = 10;
 
 export default function AlertsScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { desktopWeb } = useBreakpoint();
   const { user } = useStore();
@@ -363,7 +365,8 @@ export default function AlertsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   desktopRoot: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
   desktopWrap: { width: '100%', maxWidth: CONTENT.feed, paddingTop: spacing.xl },
@@ -430,3 +433,4 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
 });
+}

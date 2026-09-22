@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
@@ -10,7 +10,7 @@ import { FollowButton } from './FollowButton';
 import { HOME_MODULE_TITLES } from '../lib/homeFeedModules';
 import { HomeHorizontalList, HomeModulePressable } from './HomeHorizontalList';
 import { HomeModuleTitle } from './HomeModuleTitle';
-import { colors, radius, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius, spacing } from '../lib/theme';
 
 function PageChip({
   page,
@@ -23,6 +23,8 @@ function PageChip({
   onFollow: () => void;
   onOpen: () => void;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.card}>
       <HomeModulePressable onPress={onOpen} style={styles.info} accessibilityRole="button">
@@ -46,6 +48,8 @@ function PageChip({
 }
 
 function FeedPagesRowInner({ pages }: { pages: HomePageRecommendation[] }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { wasRecentHorizontalSwipe } = useHomeModuleGestureLock();
   const [followed, setFollowed] = useState<string[]>([]);
@@ -87,7 +91,8 @@ function FeedPagesRowInner({ pages }: { pages: HomePageRecommendation[] }) {
 
 export const FeedPagesRow = memo(FeedPagesRowInner);
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   wrap: { paddingVertical: spacing.sm },
   list: { paddingHorizontal: spacing.lg, gap: spacing.md },
   card: {
@@ -105,3 +110,4 @@ const styles = StyleSheet.create({
   name: { fontSize: 13, fontWeight: '800', color: colors.text, textAlign: 'center' },
   type: { fontSize: 11, fontWeight: '600', color: colors.textMuted, textAlign: 'center' },
 });
+}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { db } from '../lib/db';
 import { uploadImage } from '../lib/api';
 import { userFallbackAvatar } from '../lib/images';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useProfiles } from '../features/profiles';
 import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
@@ -32,6 +32,8 @@ import BioField from '../components/BioField';
 import { BIO_WORD_LIMIT_ERROR, isBioWithinWordLimit } from '../lib/bio';
 
 export default function EditPublicProfileScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { profileId } = useRoute<RouteProp<RootStackParamList, 'EditPublicProfile'>>().params;
   const { refreshProfiles } = useProfiles();
@@ -317,7 +319,8 @@ export default function EditPublicProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: {
     padding: spacing.xl,
@@ -387,3 +390,4 @@ const styles = StyleSheet.create({
   },
   saveText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });
+}

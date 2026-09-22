@@ -1,9 +1,9 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { createChooserOpen, createChooserOpensInCrearStack, type CreateChooserKind } from '../lib/createChooser';
 import { pushRootScreen } from '../lib/pushRootScreen';
@@ -12,6 +12,8 @@ import { flyerDebug } from '../lib/flyerDebug';
 import { CREAR_FLYER_DRAFT_ROUTE } from '../lib/crearFlyerRoutes';
 
 export default function CreateChooserScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { desktopWeb } = useBreakpoint();
 
@@ -115,7 +117,8 @@ export default function CreateChooserScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   wrap: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
   desktop: { width: '100%', maxWidth: CONTENT.page, alignSelf: 'center' },
@@ -144,3 +147,4 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
   cardHint: { marginTop: 2, fontSize: 13, color: colors.textMuted, fontWeight: '600' },
 });
+}

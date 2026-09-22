@@ -4,7 +4,7 @@
 // Home: header con ubicación editable (misma lógica que Alertas),
 // buscador, categorías horizontales, selector Productos/Servicios,
 // y un listado vertical de 2 productos por fila (no carrusel).
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -41,7 +41,7 @@ import {
   MARKET_GRID_GAP,
 } from '../lib/market';
 import { listingBumpedAt } from '../lib/listingLifecycle';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { useStore } from '../lib/store';
@@ -51,6 +51,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const PAGE_SIZE = 10;
 
 export default function MarketScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { desktopWeb } = useBreakpoint();
   const { user } = useStore();
@@ -414,7 +416,8 @@ export default function MarketScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   desktopRoot: { flex: 1, backgroundColor: colors.bg, alignItems: 'center' },
   desktopWrap: { width: '100%', maxWidth: CONTENT.feed + 200 },
@@ -537,3 +540,4 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 16, fontWeight: '800', color: colors.text, marginTop: 4 },
   emptyText: { fontSize: 13, color: colors.textMuted, textAlign: 'center' },
 });
+}

@@ -9,7 +9,7 @@ import { generateNotifications, getUser, formatTime, Notification } from '../lib
 import { useNotifications } from '../lib/realtime';
 import { ApiNotification, timeAgoMinutes } from '../lib/db';
 import { thumb, userFallbackAvatar } from '../lib/images';
-import { colors, spacing, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { openHumanProfile } from '../lib/publicHandles';
@@ -45,6 +45,8 @@ type Row =
   | { kind: 'header'; title: string; id: string };
 
 export default function ActivityScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { desktopWeb } = useBreakpoint();
   const { notifications: realNotifs, unread, markSeen, refresh } = useNotifications();
@@ -264,7 +266,8 @@ export default function ActivityScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   mobileWrap: { flex: 1 },
   desktopWrap: {
@@ -344,3 +347,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
 });
+}

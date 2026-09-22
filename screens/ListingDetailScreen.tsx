@@ -35,13 +35,15 @@ import { openListingContact } from '../lib/openListingContact';
 import ListingImageGallery from '../components/ListingImageGallery';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { formatTime } from '../lib/data';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'ListingDetail'>;
 
 export default function ListingDetailScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
   const { user } = useStore();
@@ -335,7 +337,8 @@ export default function ListingDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 },
   notFoundEmoji: { fontSize: 48 },
@@ -455,3 +458,4 @@ const styles = StyleSheet.create({
   },
   sendBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
 });
+}

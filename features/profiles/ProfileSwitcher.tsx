@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, radius, spacing } from '../../lib/theme';
+import { useAppTheme, type ThemeColors, radius, spacing } from '../../lib/theme';
 import { thumb, userFallbackAvatar } from '../../lib/images';
 import { useStore } from '../../lib/store';
 import { useProfiles } from './ProfileContext';
@@ -14,6 +14,8 @@ interface Props {
 }
 
 export default function ProfileSwitcher({ compact }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { user } = useStore();
   const { profiles, activeProfile, activeProfileId, setActiveProfileId } = useProfiles();
   const [open, setOpen] = useState(false);
@@ -102,7 +104,8 @@ export default function ProfileSwitcher({ compact }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -168,3 +171,4 @@ const styles = StyleSheet.create({
   },
   createText: { color: colors.primary, fontWeight: '800', fontSize: 15 },
 });
+}

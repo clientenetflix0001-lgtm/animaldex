@@ -38,7 +38,7 @@ import QrLostPetModal from '../components/QrLostPetModal';
 import { shouldShowQrLostPrompt } from '../lib/qrLostPet';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ageLabelFromBirthDate } from '../lib/birthDate';
@@ -64,6 +64,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rt = RouteProp<RootStackParamList, 'PetProfile'>;
 
 export default function PetProfileScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
   const { width } = useWindowDimensions();
@@ -688,8 +690,9 @@ export default function PetProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.card },
   desktopList: {
     width: '100%',
     maxWidth: CONTENT.page,
@@ -892,3 +895,4 @@ const styles = StyleSheet.create({
   emptyGallery: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
   emptyText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
 });
+}

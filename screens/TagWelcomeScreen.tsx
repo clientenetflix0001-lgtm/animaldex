@@ -9,7 +9,7 @@
 // - unclaimed + invitado → Auth, conservando el código pendiente.
 // - unclaimed + sesión → bienvenida y registro de mascota.
 // - inválida → estado controlado, sin pantalla blanca.
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Pressable, ScrollView, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -18,7 +18,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, db } from '../lib/db';
 import { useStore } from '../lib/store';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { CreateProfileSheet, useProfiles, type PublicProfile } from '../features/profiles';
@@ -56,6 +56,8 @@ import PetAvatar from '../components/PetAvatar';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function TagWelcomeScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'TagWelcome'>>();
   const { code } = route.params;
@@ -481,7 +483,8 @@ export default function TagWelcomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: {
     flexGrow: 1,
@@ -578,3 +581,4 @@ const styles = StyleSheet.create({
   checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, alignSelf: 'stretch', maxWidth: 360 },
   checkText: { flex: 1, fontWeight: '700', color: colors.text, fontSize: 14 },
 });
+}
