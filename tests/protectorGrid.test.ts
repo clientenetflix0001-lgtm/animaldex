@@ -80,7 +80,7 @@ describe('navegación: tabs anidados, linking intacto', () => {
 
 describe('perfil protector: fondo blanco y username único', () => {
   it('usa #FFFFFF solo en el SafeAreaView del ramal protector', () => {
-    assert.match(pub, /safeWhite: \{ flex: 1, backgroundColor: '#FFFFFF' \}/);
+    assert.match(pub, /safeWhite: \{ flex: 1, backgroundColor: colors\.card \}/);
     assert.match(
       pub,
       /if \(!isProtector\) \{[\s\S]*?<SafeAreaView style=\{styles\.safe\} edges=\{\['top'\]\}>[\s\S]*return \(\s*<SafeAreaView style=\{styles\.safeWhite\}/,
@@ -97,7 +97,7 @@ describe('perfil protector: fondo blanco y username único', () => {
   });
 
   it('no cambia theme global, grilla ni overlays', () => {
-    const theme = readFileSync(join(root, 'lib/theme.ts'), 'utf8');
+    const theme = readFileSync(join(root, 'lib/appTheme.ts'), 'utf8');
     assert.match(theme, /bg: '#FFF9F2'/);
     assert.match(theme, /primary: '#FF6B4A'/);
     assert.match(pub, /numColumns=\{2\}/);
