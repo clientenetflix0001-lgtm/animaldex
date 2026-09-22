@@ -414,9 +414,9 @@ describe('Quiero adoptar', () => {
     assert.doesNotMatch(action('feed'), /adoption_whatsapp|adoptionWhatsapp/);
     assert.doesNotMatch(action('search'), /adoption_whatsapp|adoptionWhatsapp/);
     assert.doesNotMatch(action('adoptionFeed'), /adoption_whatsapp|adoptionWhatsapp/);
-    assert.doesNotMatch(action('petProfile'), /includeAdoptionContact/);
+    assert.match(action('petProfile'), /ownerContact/);
     assert.match(action('userProfile'), /profiles: profiles\.map\(profileRow\)/);
-    assert.doesNotMatch(action('listProfiles'), /includeAdoptionContact/);
+    assert.match(action('listProfiles'), /includeAdoptionContact: true/);
     assert.match(db, /action: 'adoptionContact'/);
     assert.doesNotMatch(worker, /console\.(log|info|debug|warn)\([^\n]*adoption_whatsapp/);
     assert.doesNotMatch(cardSrc, /console\.(log|info|debug)/);
