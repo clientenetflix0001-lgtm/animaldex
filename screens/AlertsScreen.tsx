@@ -38,6 +38,7 @@ import {
   type Territory,
 } from '../lib/geoplace/territory.ts';
 import { colors, spacing, radius, shadow } from '../lib/theme';
+import { consumePendingAlertsMatchFilter } from '../lib/pendingAlertsMatchFilter';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 
@@ -70,6 +71,7 @@ export default function AlertsScreen() {
   const localitySourceRef = useRef<AlertsLocalitySource>('auto');
   const locateGenRef = useRef(0);
   const didInitialFocusRef = useRef(false);
+  const matchFilterRef = useRef<ReturnType<typeof consumePendingAlertsMatchFilter>>(null);
 
   const fetchPage = useCallback(
     async (reset: boolean) => {
@@ -82,9 +84,11 @@ export default function AlertsScreen() {
         setLoadingMore(true);
       }
       try {
+        const match = matchFilterRef.current;
         const res = await db.alertsFeed(target.locality, reset ? undefined : oldestRef.current, PAGE_SIZE, {
           ...territoryQuery(target.territory),
           province: target.province,
+          ...(match ? { type: match.type, breedId: match.breedId } : {}),
         });
         setAlerts((prev) => (reset ? res.alerts : [...prev, ...res.alerts]));
         if (res.alerts.length > 0) {
@@ -194,8 +198,11 @@ export default function AlertsScreen() {
   // Al volver a Alertas: refrescar el feed y, en modo automático, la ubicación.
   useFocusEffect(
     useCallback(() => {
+      const pending = consumePendingAlertsMatchFilter();
+      if (pending) matchFilterRef.current = pending;
       if (!didInitialFocusRef.current) {
         didInitialFocusRef.current = true;
+        if (pending && targetRef.current) fetchPage(true);
         return;
       }
       if (targetRef.current) fetchPage(true);

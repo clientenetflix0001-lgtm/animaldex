@@ -524,7 +524,9 @@ describe('esquema defensivo', () => {
         .replace('${geo.columns}', geo.columns)
         .replace('${geo.placeholders}', geo.placeholders)
         .replace('${locRef.columns}', '')
-        .replace('${locRef.placeholders}', '');
+        .replace('${locRef.placeholders}', '')
+        .replace('${breedFrag.columns}', '')
+        .replace('${breedFrag.placeholders}', '');
       const legacyValues = ['al-1', 'u-1', 'lost', 'Toby', 'perro', 'mestizo', 'se perdió', 'https://i/1.jpg',
         'Salta', 'Salta', 'AR', null, null, 1, 1, 1, null, null, null, null];
       db.prepare(sql).run(...legacyValues, ...(geo.values as string[]));
