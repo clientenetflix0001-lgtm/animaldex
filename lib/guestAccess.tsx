@@ -5,7 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useStore } from './store';
 import { GuestInviteBar } from '../components/GuestInviteBar';
-import { colors } from './theme';
+import { useAppTheme } from './theme';
 import { RootStackParamList } from './types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -15,6 +15,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * Un solo panel Únete a Animaldex (GuestInviteBar) en posts, perfiles y alertas.
  */
 export function useGuestAccess(opts?: { headerClose?: boolean; treatAsExternal?: boolean }) {
+  const { colors } = useAppTheme();
   const navigation = useNavigation<Nav>();
   const { user } = useStore();
   const guest = !user;
@@ -49,7 +50,7 @@ export function useGuestAccess(opts?: { headerClose?: boolean; treatAsExternal?:
         </Pressable>
       ),
     });
-  }, [opts?.headerClose, guest, cameFromLink, navigation, closeExternal]);
+  }, [opts?.headerClose, guest, cameFromLink, navigation, closeExternal, colors.text]);
 
   const inviteBar = guest ? (
     <GuestInviteBar

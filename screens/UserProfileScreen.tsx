@@ -26,7 +26,7 @@ import WantToAdoptButton from '../components/WantToAdoptButton';
 import PetStatusAvatar from '../components/PetStatusAvatar';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { useProfiles, CreateProfileSheet } from '../features/profiles';
@@ -55,6 +55,8 @@ interface DisplayPet {
 }
 
 export default function UserProfileScreen({ userId, showBack = false }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { width } = useWindowDimensions();
   const { desktopWeb, sidebarWidth } = useBreakpoint();
@@ -531,8 +533,9 @@ export default function UserProfileScreen({ userId, showBack = false }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.card },
   desktopList: {
     width: '100%',
     maxWidth: CONTENT.page,
@@ -673,3 +676,4 @@ const styles = StyleSheet.create({
   emptyTitle: { fontWeight: '800', fontSize: 16, color: colors.text },
   emptyText: { color: colors.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 19 },
 });
+}

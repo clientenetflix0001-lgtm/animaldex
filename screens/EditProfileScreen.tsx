@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,7 @@ import { PET_CONTACT_VISIBLE_HELP, PET_CONTACT_VISIBLE_LABEL } from '../lib/petO
 import { uploadImage } from '../lib/api';
 import { useStore } from '../lib/store';
 import { userFallbackAvatar } from '../lib/images';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { isValidPublicUsername, normalizePublicUsername } from '../lib/publicHandles';
 import { PUBLIC_WEB_HOST } from '../lib/publicWeb';
 import BioField from '../components/BioField';
@@ -30,6 +30,8 @@ import { PlacePicker } from '../components/PlacePicker';
 import type { GeoPlace } from '../lib/geoplace/types.ts';
 
 export default function EditProfileScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { user, refreshUser } = useStore();
   const [name, setName] = useState(user?.name ?? '');
@@ -236,7 +238,8 @@ export default function EditProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: {
     padding: spacing.xl,
@@ -301,3 +304,4 @@ const styles = StyleSheet.create({
   },
   saveText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });
+}

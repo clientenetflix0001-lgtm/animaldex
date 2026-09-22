@@ -9,7 +9,7 @@ import AdoptionDiscoveryScreen from '../screens/AdoptionDiscoveryScreen';
 import { CreateFlyerDraftScreen, CreateFlyerPreviewScreen } from '../screens/CreateFlyerScreens';
 import CreatePostScreen from '../screens/CreatePostScreen';
 import type { TabParamList, TabProfileStackParamList } from './types';
-import { colors } from './theme';
+import { useAppTheme } from './theme';
 import { CREATE_POST_SCREEN_OPTIONS } from './createPostPublish';
 
 const Stack = createNativeStackNavigator<TabProfileStackParamList>();
@@ -40,8 +40,9 @@ export function navigateMainTab(navigation: { navigate: Function }, name: string
 
 export function createTabProfileStack(Root: React.ComponentType) {
   function TabProfileStack() {
+    const { colors } = useAppTheme();
     return (
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
         <Stack.Screen name="TabRoot" component={Root} />
         <Stack.Screen name="PetProfile" component={PetProfileScreen} />
         <Stack.Screen name="PetTransferRequest" component={PetTransferRequestScreen} />

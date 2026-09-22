@@ -1,4 +1,4 @@
-import React, { memo, useState, useCallback } from 'react';
+import React, { memo, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -13,7 +13,7 @@ import { alertBadgeColor, alertBadgeText, alertContextLine, alertFoundSafeNote, 
 import { shareAlert } from '../lib/share';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { formatCount, formatTime } from '../lib/data';
-import { colors, radius, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius, spacing } from '../lib/theme';
 import { AdaptivePostImage } from './AdaptivePostImage';
 import { useImageNaturalSize } from '../lib/imageNaturalSize';
 import { adoptCtaLabel } from '../lib/adoptionContact';
@@ -27,6 +27,8 @@ interface Props {
 }
 
 function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const resolved = isAlertResolved(alert);
   const badgeColor = alertBadgeColor(alert);
   const heartScale = useSharedValue(1);
@@ -152,7 +154,8 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
 
 export const AlertCard = memo(AlertCardInner);
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     width: '100%',
@@ -221,3 +224,4 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
 });
+}

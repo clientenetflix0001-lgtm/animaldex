@@ -18,7 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useStore, apiPostToPost } from '../lib/store';
 import { db } from '../lib/db';
 import { uploadImage } from '../lib/api';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ProfileSwitcher, useProfiles } from '../features/profiles';
 import { PostBackgroundCard, PostBackgroundChip } from '../components/PostBackgroundCard';
@@ -48,6 +48,8 @@ import {
 } from '../lib/createPostPublish';
 
 export default function CreatePostScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const { desktopWeb } = useBreakpoint();
   const { myPets, notifyPostCreated } = useStore();
@@ -404,7 +406,8 @@ export default function CreatePostScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   mobileWrap: { flex: 1 },
   desktopWrap: {
@@ -590,3 +593,4 @@ const styles = StyleSheet.create({
   tipEmoji: { fontSize: 16 },
   tipText: { flex: 1, fontSize: 13, lineHeight: 18, color: colors.text, fontWeight: '600' },
 });
+}

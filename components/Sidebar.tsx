@@ -2,14 +2,14 @@
 // Se usa como tabBar del Tab.Navigator en pantallas grandes:
 // - modo 'rail' (laptop): solo íconos, 76px
 // - modo 'full' (desktop/wide): íconos + etiquetas, 244px
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../lib/store';
 import { useNotifications } from '../lib/realtime';
 import { userFallbackAvatar, thumb } from '../lib/images';
-import { colors, radius, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius, spacing } from '../lib/theme';
 import { SIDEBAR_FULL, SIDEBAR_RAIL } from '../lib/responsive';
 import { navigateMainTab } from '../lib/tabProfileStack';
 import { TAB_ICONS, TAB_LABELS } from '../lib/mainTabs';
@@ -23,6 +23,8 @@ interface Props {
 }
 
 export function Sidebar({ state, navigation, mode }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { user, logout } = useStore();
   const { unread } = useNotifications();
   const { page, setPage } = useFeedReelsNav();
@@ -170,7 +172,8 @@ export function Sidebar({ state, navigation, mode }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   bar: {
     position: 'absolute',
     left: 0,
@@ -237,3 +240,4 @@ const styles = StyleSheet.create({
   },
   badgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
 });
+}

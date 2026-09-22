@@ -35,7 +35,7 @@ import { searchPlaces } from '../lib/geoplace/catalog.ts';
 import { resolveAdmin1Code } from '../lib/geoplace/aliases.ts';
 import type { GeoCandidate, GeoPlace, PlaceResolution } from '../lib/geoplace/types.ts';
 import { locateCurrentPlace, unambiguousPlace } from '../lib/placeLocate';
-import { colors, radius, shadow, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius, shadow, spacing } from '../lib/theme';
 
 /** Payload de selección. Superconjunto del de LocalityPicker: `place` es lo nuevo. */
 export type PlaceSelection = {
@@ -92,6 +92,8 @@ export function PlacePicker({
   title = 'Elegir ubicación',
   allowUseCurrentLocation = true,
 }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<Mode>({ kind: 'search' });
@@ -373,7 +375,8 @@ export function PlacePicker({
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   avoid: { flex: 1 },
   sheetColumn: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
@@ -483,3 +486,4 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
 });
+}

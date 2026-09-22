@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import CreateAlertScreen from './CreateAlertScreen';
 import AlertFlyerPreviewScreen from './AlertFlyerPreviewScreen';
@@ -6,7 +6,7 @@ import { FlyerFlowBoundary } from '../components/FlyerFlowBoundary';
 import { flyerDebug } from '../lib/flyerDebug';
 import { startEmptyFlyerDraft } from '../lib/alertFlyerSession';
 import { CREAR_FLYER_DRAFT_ROUTE, CREAR_FLYER_PREVIEW_ROUTE } from '../lib/crearFlyerRoutes';
-import { colors } from '../lib/theme';
+import { useAppTheme, type ThemeColors } from '../lib/theme';
 
 function bootEmptyFlyerDraft(): 'ready' | 'error' {
   try {
@@ -31,6 +31,8 @@ function bootEmptyFlyerDraft(): 'ready' | 'error' {
 }
 
 export function CreateFlyerDraftScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [boot] = useState<'ready' | 'error'>(() => bootEmptyFlyerDraft());
 
   useEffect(() => {
@@ -57,6 +59,8 @@ export function CreateFlyerDraftScreen() {
 }
 
 export function CreateFlyerPreviewScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   useEffect(() => {
     void flyerDebug('FLYER_DEBUG_07_PREVIEW_MOUNT', {
       route: CREAR_FLYER_PREVIEW_ROUTE,
@@ -72,7 +76,9 @@ export function CreateFlyerPreviewScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   box: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: colors.bg },
   text: { textAlign: 'center', fontWeight: '800', fontSize: 15, color: colors.text },
 });
+}

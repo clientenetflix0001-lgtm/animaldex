@@ -1,16 +1,31 @@
-export const colors = {
-  bg: '#FFF9F2',
-  card: '#FFFFFF',
-  primary: '#FF6B4A',
-  primarysoft: '#FFE8E1',
-  secondary: '#2EC4B6',
-  secondarySoft: '#DDF6F3',
-  text: '#2D2016',
-  textMuted: '#9A8C7E',
-  border: '#F0E6DA',
-  heart: '#FF3B5C',
-  gold: '#FFB800',
-};
+import { lightColors, lightShadow } from './appTheme.ts';
+
+export type { AppColorScheme, ThemeColors, ThemePreference } from './appTheme.ts';
+export {
+  CONTACT_THEME,
+  FLYER_IGNORES_COLOR_SCHEME,
+  NATIVE_AAB_REASONS,
+  NOTIFICATION_ACCENT,
+  NOTIFICATION_ICON_PATH,
+  OTA_SAFE_CHANGES,
+  PHOTO_FILTER_IN_DARK_MODE,
+  POST_BACKGROUND_IGNORES_COLOR_SCHEME,
+  THEME_PREFERENCE,
+  colorsForScheme,
+  darkColors,
+  lightColors,
+  navigationThemeColors,
+  resolveAppScheme,
+  shadowForScheme,
+  statusBarStyleForScheme,
+} from './appTheme.ts';
+export { useAppTheme } from './themeContext.ts';
+
+/**
+ * Tokens claros actuales. Los tests y módulos sin hook siguen viendo
+ * el diseño light. Las pantallas temáticas deben usar useAppTheme().
+ */
+export const colors = lightColors;
 
 export const spacing = {
   xs: 4,
@@ -31,12 +46,4 @@ export const radius = {
   full: 999,
 };
 
-export const shadow = {
-  card: {
-    shadowColor: '#3A2A1A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-};
+export const shadow = lightShadow;

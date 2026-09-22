@@ -1,4 +1,4 @@
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useCallback, memo, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -20,7 +20,7 @@ import { isTextBackgroundPost } from '../lib/postBackgrounds';
 import { FEED_TEXT_BACKGROUND_ASPECT } from '../lib/feedMediaLayout';
 import { feedMediaPerfNoteLikeToggle, feedMediaPerfNotePostCardRender } from '../lib/feedMediaPerf';
 import { useNavigation } from '@react-navigation/native';
-import { colors, FEED_POST_GAP, radius, shadow, spacing } from '../lib/theme';
+import { useAppTheme, type ThemeColors, FEED_POST_GAP, radius, shadow, spacing } from '../lib/theme';
 import ProfileBadge from '../features/profiles/ProfileBadge';
 import { openHumanProfile } from '../lib/publicHandles';
 import PetAvatar from './PetAvatar';
@@ -52,6 +52,8 @@ function PostCardInner({
   onOpenPet,
   onOpenPost,
 }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   feedMediaPerfNotePostCardRender();
   const navigation = useNavigation<any>();
   const header = resolvePostHeader(post);
@@ -210,7 +212,8 @@ function PostCardInner({
 
 export const PostCard = memo(PostCardInner);
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     width: '100%',
@@ -263,3 +266,4 @@ const styles = StyleSheet.create({
   captionName: { fontWeight: '700' },
   viewComments: { color: colors.textMuted, fontSize: 13, marginTop: 6 },
 });
+}

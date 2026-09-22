@@ -19,7 +19,7 @@ import { FeedAdoptionsRow } from '../components/FeedAdoptionsRow';
 import { FeedReelsRow } from '../components/FeedReelsRow';
 import { LoadingFooter } from '../components/LoadingFooter';
 import { SuggestionsPanel } from '../components/SuggestionsPanel';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList, TabParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { ProfileSwitcher } from '../features/profiles';
@@ -45,6 +45,8 @@ type Nav = CompositeNavigationProp<
 >;
 
 export default function FeedScreen() {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const {
     user,
@@ -470,7 +472,8 @@ export default function FeedScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   desktopRoot: { flex: 1, backgroundColor: colors.bg },
   desktopCenter: {
@@ -546,3 +549,4 @@ const styles = StyleSheet.create({
   },
   newPillText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });
+}

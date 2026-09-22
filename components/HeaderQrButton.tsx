@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useEffect, useState, useMemo } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Animated, {
@@ -10,7 +10,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { colors } from '../lib/theme';
+import { useAppTheme, type ThemeColors } from '../lib/theme';
 import {
   HEADER_QR_A11Y,
   HEADER_QR_BUTTON_SIZE,
@@ -31,6 +31,8 @@ type Props = {
 };
 
 function HeaderQrButton({ onPress }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [reduceMotion, setReduceMotion] = useState(false);
   const cycle = useSharedValue(0);
 
@@ -110,7 +112,8 @@ function HeaderQrButton({ onPress }: Props) {
 
 export default memo(HeaderQrButton);
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   wrap: {
     width: HEADER_QR_BUTTON_SIZE,
     height: HEADER_QR_BUTTON_SIZE,
@@ -153,3 +156,4 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
 });
+}

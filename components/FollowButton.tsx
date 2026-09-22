@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Text, Pressable, StyleSheet, ViewStyle } from 'react-native';
-import { colors, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, radius } from '../lib/theme';
 
 interface Props {
   following: boolean;
@@ -10,6 +10,8 @@ interface Props {
 }
 
 export function FollowButton({ following, onPress, style, compact }: Props) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <Pressable
       onPress={onPress}
@@ -28,7 +30,8 @@ export function FollowButton({ following, onPress, style, compact }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   btn: {
     paddingHorizontal: 22,
     paddingVertical: 9,
@@ -47,3 +50,4 @@ const styles = StyleSheet.create({
   textFollow: { color: '#fff' },
   textFollowing: { color: colors.text },
 });
+}
