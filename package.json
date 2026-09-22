@@ -27,6 +27,7 @@
     "expo-secure-store": "^57.0.1",
     "expo-sharing": "~57.0.18",
     "expo-status-bar": "~57.0.1",
+    "expo-system-ui": "~57.0.4",
     "expo-updates": "~57.0.12",
     "expo-video": "~57.0.3",
     "react": "19.2.3",

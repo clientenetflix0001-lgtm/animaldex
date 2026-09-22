@@ -18,6 +18,7 @@
     "android": {
       "package": "com.lucasap123.animaldex",
       "versionCode": 3,
+      "userInterfaceStyle": "automatic",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#FD6904",
@@ -98,6 +99,7 @@
       "web"
     ],
     "plugins": [
+      "expo-system-ui",
       "expo-font",
       [
         "expo-camera",
