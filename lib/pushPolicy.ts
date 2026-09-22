@@ -5,6 +5,7 @@
  */
 
 import { isValidPetUsername } from './petHandles.ts';
+import { setPendingAlertsMatchFilter } from './pendingAlertsMatchFilter.ts';
 
 export const EXPO_PUSH_SEND_URL = 'https://exp.host/--/api/v2/push/send';
 export const EXPO_PUSH_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
@@ -46,6 +47,7 @@ export const DEFAULT_NOTIFICATION_PREFS = {
   like: false,
   follow: true,
   following_activity: true,
+  lost_breed_match: true,
 } as const;
 
 export type NotificationPrefKey = keyof typeof DEFAULT_NOTIFICATION_PREFS;
@@ -102,7 +104,8 @@ export type PushEventType =
   | 'follow'
   | 'following_activity'
   | 'alert_comment'
-  | 'listing_comment';
+  | 'listing_comment'
+  | 'lost_breed_match';
 
 /**
  * Reels reutiliza las prefs existentes `like` / `comment` (opción A).
@@ -118,6 +121,7 @@ export function prefAllows(prefs: ReturnType<typeof mergeNotificationPrefs>, typ
   if (type === 'follow') return prefs.follow;
   if (type === 'following_activity') return prefs.following_activity;
   if (type === 'lost_pet') return prefs.lost_pet;
+  if (type === 'lost_breed_match') return prefs.lost_breed_match;
   if (type === 'adoption') return prefs.adoption;
   return false;
 }
@@ -403,10 +407,14 @@ export type PushData = {
   listingId?: string;
   profileId?: string;
   userId?: string;
+  breedId?: string;
+  placeId?: string;
+  locality?: string;
+  lostAlertId?: string;
 };
 
 export type PushNavTarget = {
-  kind: 'pet' | 'activity' | 'reel' | 'alert' | 'pet_transfer' | 'post' | 'listing' | 'user' | 'page' | 'none';
+  kind: 'pet' | 'activity' | 'reel' | 'alert' | 'pet_transfer' | 'post' | 'listing' | 'user' | 'page' | 'alerts' | 'none';
   petId?: string;
   shareId?: string;
   reelId?: string;
@@ -416,6 +424,9 @@ export type PushNavTarget = {
   listingId?: string;
   profileId?: string;
   userId?: string;
+  breedId?: string;
+  placeId?: string;
+  locality?: string;
 };
 
 function asPushField(value: unknown): string | undefined {
@@ -453,6 +464,10 @@ export function normalizePushData(raw: unknown): PushData {
     listingId: asPushField(inner.listingId),
     profileId: asPushField(inner.profileId),
     userId: asPushField(inner.userId),
+    breedId: asPushField(inner.breedId),
+    placeId: asPushField(inner.placeId),
+    locality: asPushField(inner.locality),
+    lostAlertId: asPushField(inner.lostAlertId),
   };
 }
 
@@ -532,8 +547,11 @@ export function parsePushNav(data: unknown): PushNavTarget {
   if ((d.type === 'follow_pet' || d.type === 'pet_following') && d.petId) {
     return { kind: 'pet', petId: d.petId };
   }
+  if (d.type === 'lost_breed_match_list' || (d.type === 'lost_breed_match' && !d.alertId && !alertIdFromPushUrl(d.url))) {
+    return { kind: 'alerts', breedId: d.breedId, placeId: d.placeId, locality: d.locality };
+  }
   const alertId = d.alertId || alertIdFromPushUrl(d.url);
-  if (d.type === 'alert_renew' || d.type === 'alert_comment' || alertId) {
+  if (d.type === 'alert_renew' || d.type === 'alert_comment' || d.type === 'lost_breed_match' || alertId) {
     if (alertId) return { kind: 'alert', alertId };
   }
   const postId = d.postId || postIdFromPushUrl(d.url);
@@ -582,8 +600,20 @@ export function pushNavDestination(
   | { name: 'ListingDetail'; params: { listingId: string } }
   | { name: 'UserProfile'; params: { userId: string } }
   | { name: 'PublicProfile'; params: { profileId: string } }
+  | { name: 'Tabs'; params: { screen: 'Alertas' } }
   | null {
   const nav = parsePushNav(data);
+  if (nav.kind === 'alerts') {
+    if (nav.breedId) {
+      setPendingAlertsMatchFilter({
+        type: 'found',
+        breedId: nav.breedId,
+        locality: nav.locality || null,
+        placeId: nav.placeId || null,
+      });
+    }
+    return { name: 'Tabs', params: { screen: 'Alertas' } };
+  }
   if (nav.kind === 'pet_transfer' && nav.requestId) {
     return { name: 'PetTransferRequest', params: { requestId: nav.requestId } };
   }

@@ -74,6 +74,9 @@ export interface ApiUser {
   verifiedPhone: string | null;
   email?: string | null;
   emailVerified?: boolean;
+  contactWhatsapp?: string | null;
+  contactPhone?: string | null;
+  petContactVisible?: boolean;
 }
 
 export interface ApiPet {
@@ -228,6 +231,8 @@ export interface ApiAlert {
   petName: string | null;
   species: string;
   breed: string;
+  breedId?: string | null;
+  placeId?: string | null;
   description: string;
   image: string;
   locality: string;
@@ -328,7 +333,7 @@ export interface ApiTag {
 
 export interface ApiNotification {
   id: string;
-  type: 'like' | 'comment' | 'listing_comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday' | 'reel_like' | 'reel_comment' | 'pet_transfer_requested' | 'pet_transfer_accepted' | 'pet_transfer_rejected';
+  type: 'like' | 'comment' | 'listing_comment' | 'follow_user' | 'follow_pet' | 'location' | 'birthday' | 'reel_like' | 'reel_comment' | 'pet_transfer_requested' | 'pet_transfer_accepted' | 'pet_transfer_rejected' | 'lost_breed_match';
   actorId: string | null;
   actorName: string;
   actorUsername: string;
@@ -350,6 +355,9 @@ export interface ApiNotification {
   lon?: number;
   accuracy?: number | null;
   smsStatus?: string;
+  alertId?: string | null;
+  breedId?: string | null;
+  extraCount?: number;
   createdAt: number;
 }
 
@@ -398,7 +406,17 @@ export const auth = {
     placeId?: string | null;
     admin1Code?: string | null;
     admin2Code?: string | null;
+    contactWhatsapp?: string | null;
+    contactPhone?: string | null;
+    petContactVisible?: boolean;
   }) => call('/auth', { action: 'updateProfile', ...fields }),
+  updatePetContact: (fields: {
+    contactWhatsapp?: string | null;
+    contactPhone?: string | null;
+    petContactVisible?: boolean;
+    profileId?: string | null;
+    requireContact?: boolean;
+  }) => call('/db', { action: 'updatePetContact', ...fields }),
 };
 
 // ---------- Datos ----------
@@ -460,7 +478,13 @@ export const db = {
     call('/db', { action: 'postDetail', postId }),
   userProfile: (targetUserId: string): Promise<{ user: ApiUser; pets: ApiPet[]; profiles?: import('../features/profiles/profileTypes').PublicProfile[]; stats: { posts: number; followers: number } }> =>
     call('/db', { action: 'userProfile', targetUserId }),
-  petProfile: (petId: string): Promise<{ pet: ApiPet; owner: { id: string; username: string; name: string; avatarUrl: string | null } | null; shelter?: import('../features/profiles/profileTypes').PublicProfile | null; stats: { posts: number; followers: number } }> =>
+  petProfile: (petId: string): Promise<{
+    pet: ApiPet;
+    owner: { id: string; username: string; name: string; avatarUrl: string | null; verified?: boolean } | null;
+    shelter?: import('../features/profiles/profileTypes').PublicProfile | null;
+    ownerContact?: import('./petOwnerContact.ts').PublicPetOwnerContact | null;
+    stats: { posts: number; followers: number };
+  }> =>
     call('/db', { action: 'petProfile', petId }),
   search: (q: string): Promise<{ pets: ApiPet[]; users: Array<{ id: string; username: string; name: string; avatarUrl: string | null }> }> =>
     call('/db', { action: 'search', q }),
@@ -563,6 +587,7 @@ export const db = {
     avatar?: string | null;
     adoptionWhatsapp?: string | null;
     adoptionPhone?: string | null;
+    petContactVisible?: boolean;
     /** Identidad del lugar normalizado: `AR:georef:66028050`. Aditivo. */
     placeId?: string | null;
     admin1Code?: string | null;
@@ -689,7 +714,7 @@ export const db = {
     locality: string,
     before?: number,
     limit = 10,
-    territory?: TerritoryQuery & { province?: string | null }
+    territory?: TerritoryQuery & { province?: string | null; type?: string; breedId?: string }
   ): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
     call('/db', { action: 'alertsFeed', locality, before, limit, ...territory }),
   alertDetail: (alertId: string): Promise<{ alert: ApiAlert }> => call('/db', { action: 'alertDetail', alertId }),
@@ -700,6 +725,7 @@ export const db = {
     petName?: string;
     species: string;
     breed?: string;
+    breedId?: string | null;
     description: string;
     image: string;
     locality: string;

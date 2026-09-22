@@ -1,3 +1,5 @@
+import { lostBreedMatchPushCopy } from './lostBreedMatch.ts';
+
 // ============================================================
 // Centro de notificaciones Animaldex.
 //
@@ -28,6 +30,7 @@ export const PUSH_KIND = {
   FOLLOW_PAGE: 'follow_page',
   PET_FOLLOWING: 'pet_following',
   PAGE_FOLLOWING: 'page_following',
+  LOST_BREED_MATCH: 'lost_breed_match',
 } as const;
 
 export type PushKind = (typeof PUSH_KIND)[keyof typeof PUSH_KIND];
@@ -37,6 +40,7 @@ export const PUSH_BATCH_MINUTES = {
   ALERT_COMMENT: 15,
   POST_COMMENT: 20,
   SOCIAL: 60,
+  LOST_BREED_MATCH: 60,
 } as const;
 
 export const PUSH_BATCH_LIMITS = {
@@ -128,6 +132,7 @@ export function listingCommentActivityItem(row: {
 export function pushBatchWindowMs(kind: PushKind): number {
   if (kind === PUSH_KIND.ALERT_COMMENT) return PUSH_BATCH_MINUTES.ALERT_COMMENT * 60_000;
   if (kind === PUSH_KIND.POST_COMMENT) return PUSH_BATCH_MINUTES.POST_COMMENT * 60_000;
+  if (kind === PUSH_KIND.LOST_BREED_MATCH) return PUSH_BATCH_MINUTES.LOST_BREED_MATCH * 60_000;
   return PUSH_BATCH_MINUTES.SOCIAL * 60_000;
 }
 
@@ -136,7 +141,8 @@ export function pushLevelForKind(kind: PushKind): PushLevel {
   if (
     kind === PUSH_KIND.ALERT_COMMENT ||
     kind === PUSH_KIND.POST_COMMENT ||
-    kind === PUSH_KIND.LISTING_COMMENT
+    kind === PUSH_KIND.LISTING_COMMENT ||
+    kind === PUSH_KIND.LOST_BREED_MATCH
   ) {
     return PUSH_LEVEL.IMPORTANT;
   }
@@ -146,8 +152,9 @@ export function pushLevelForKind(kind: PushKind): PushLevel {
 /** Prefs existentes. follow / following_activity default true sin columna D1. */
 export function pushPrefKey(
   kind: PushKind
-): 'location' | 'comment' | 'like' | 'follow' | 'following_activity' {
+): 'location' | 'comment' | 'like' | 'follow' | 'following_activity' | 'lost_breed_match' {
   if (kind === PUSH_KIND.LOCATION) return 'location';
+  if (kind === PUSH_KIND.LOST_BREED_MATCH) return 'lost_breed_match';
   if (kind === PUSH_KIND.LIKE) return 'like';
   if (kind === PUSH_KIND.PET_FOLLOWING || kind === PUSH_KIND.PAGE_FOLLOWING) return 'following_activity';
   if (
@@ -198,6 +205,9 @@ export function decidePushDelivery(input: {
   }
   if (input.kind === PUSH_KIND.LISTING_COMMENT) {
     return { action: 'immediate', reason: 'direct_market_inquiry', windowMs: 0 };
+  }
+  if (input.kind === PUSH_KIND.LOST_BREED_MATCH) {
+    return { action: 'enqueue', reason: 'lost_breed_match_window', windowMs };
   }
 
   const batch = input.openBatch;
@@ -402,8 +412,15 @@ export function flushCopyForKind(
   kind: PushKind,
   firstName: string,
   extraCount: number,
-  extra?: { petName?: string | null; pageName?: string | null; subjectNames?: string[] }
+  extra?: { petName?: string | null; pageName?: string | null; subjectNames?: string[]; breedId?: string | null }
 ): { title: string; body: string } {
+  if (kind === PUSH_KIND.LOST_BREED_MATCH) {
+    return lostBreedMatchPushCopy({
+      actorUsername: firstName,
+      extraCount,
+      breedId: extra?.breedId || '',
+    });
+  }
   if (kind === PUSH_KIND.ALERT_COMMENT) return groupedAlertCommentCopy(firstName, extraCount, extra?.petName);
   if (kind === PUSH_KIND.POST_COMMENT) return groupedPostCommentCopy(firstName, extraCount);
   if (kind === PUSH_KIND.LIKE) return groupedLikeCopy(firstName, extraCount);
