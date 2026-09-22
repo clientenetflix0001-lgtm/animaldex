@@ -59,7 +59,7 @@ describe('QR perdido: cuándo mostrar el modal', () => {
   it('5. QR no asociado → flujo actual', () => {
     assert.equal(qrTagShouldPromptLost({ exists: true, status: 'unclaimed', pet: null }), false);
     assert.match(welcome, /setState\('unclaimed'\)/);
-    assert.match(welcome, /Registrar mi mascota/);
+    assert.match(welcome, /QR_REGISTER_NEW_PET_LABEL/);
     assert.match(welcome, /replace\('AddPet', addPetParamsForPersonalQr\(code\)\)/);
     assert.match(welcome, /addPetParamsForPersonalQr/);
   });

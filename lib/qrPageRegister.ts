@@ -1,7 +1,7 @@
 import type { PublicProfile } from '../features/profiles/profileTypes';
 
-export const REGISTER_MY_PET_LABEL = 'Registrar mi mascota';
-export const REGISTER_ON_PAGE_LABEL = 'Registrar esta mascota en tu página';
+export const REGISTER_MY_PET_LABEL = 'Registrar una mascota nueva';
+export const REGISTER_ON_PAGE_LABEL = 'Registrar una mascota en mi página';
 export const CREATE_PROTECTOR_PAGE_LABEL = 'Crear Bienestar Animal';
 export const PAGE_REGISTER_IN_LABEL = 'Registrar en:';
 export const PAGE_REGISTER_PICK_TITLE = '¿En qué página querés registrar esta mascota?';

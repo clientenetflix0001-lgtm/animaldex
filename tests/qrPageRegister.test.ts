@@ -36,17 +36,18 @@ const patitas = { id: 'pr-pat', type: 'protector', name: 'Patitas Salta', userna
 
 describe('QR registrar mascota en Bienestar Animal', () => {
   it('1. Registrar a mi mascota sigue funcionando igual', () => {
-    assert.equal(REGISTER_MY_PET_LABEL, 'Registrar mi mascota');
-    assert.match(welcome, /Registrar mi mascota/);
+    assert.equal(REGISTER_MY_PET_LABEL, 'Registrar una mascota nueva');
+    assert.match(welcome, /QR_REGISTER_NEW_PET_LABEL/);
     assert.deepEqual(addPetParamsForPersonalQr('AAA123'), { tagCode: 'AAA123' });
-    assert.match(welcome, /replace\('AddPet', addPetParamsForPersonalQr\(code\)\)/);
+    assert.match(welcome, /AddPet', addPetParamsForPersonalQr\(code\)/);
     assert.match(addPet, /tagCode = route\.params\?\.tagCode/);
   });
 
-  it('2. aparece Registrar esta mascota en tu página', () => {
-    assert.equal(REGISTER_ON_PAGE_LABEL, 'Registrar esta mascota en tu página');
-    assert.match(welcome, /Registrar esta mascota en tu página/);
+  it('2. aparece Registrar una mascota en mi página si hay página', () => {
+    assert.equal(REGISTER_ON_PAGE_LABEL, 'Registrar una mascota en mi página');
+    assert.match(welcome, /QR_REGISTER_PAGE_PET_LABEL/);
     assert.match(welcome, /openPageRegister/);
+    assert.match(welcome, /qrPageOptionVisible/);
   });
 
   it('3. una Página Bienestar → seleccionable', () => {
