@@ -419,9 +419,9 @@ const screenHeaderOptions = {
 
 // Navegador para visitantes SIN sesión. Permite ver recursos públicos
 // abiertos desde un enlace compartido sin cuenta: /p/:id, /:username,
-// /pet/:handle, /a/:id y /m/:id. Cualquier otra ruta cae en Auth.
+// /pet/:handle, /a/:id, /m/:id y ?qr= de una chapita ya vinculada.
 // UserProfile sigue existiendo como pantalla INTERNA (p. ej. QR por user_id),
-// sin URL pública /user/:id.
+// sin URL pública /user/:id. Claim de chapita sin vincular sigue en Auth.
 function PublicNavigator() {
   return (
     <Stack.Navigator initialRouteName="Auth">
@@ -430,6 +430,7 @@ function PublicNavigator() {
       <Stack.Screen name="UserProfile" component={UserProfileRoute} options={{ headerShown: false }} />
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="PetProfile" component={PetProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="TagWelcome" component={TagWelcomeScreen} options={{ headerShown: false }} />
       <Stack.Screen
         name="AlertDetail"
         component={AlertDetailScreen}

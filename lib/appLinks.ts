@@ -4,6 +4,7 @@ import {
   LEGACY_WEB_ORIGIN,
   PUBLIC_WEB_ORIGIN,
 } from './publicWeb.ts';
+import { extractTagCode } from './tags.ts';
 
 /** Prefijos que React Navigation y el parser público reconocen. */
 export const APP_LINK_PREFIXES = [
@@ -25,6 +26,7 @@ export type AppLinkTarget =
   | { screen: 'ReelViewer'; params: { reelId: string } }
   | { screen: 'PublicProfile'; params: { username: string } }
   | { screen: 'PetTransferRequest'; params: { requestId: string } }
+  | { screen: 'TagWelcome'; params: { code: string } }
   | { screen: 'Tabs'; params: { screen: AppLinkTab } };
 
 const TAB_SEGMENTS: Record<string, AppLinkTab> = {
@@ -128,6 +130,11 @@ export function resolveAppLink(url: string | null | undefined): AppLinkTarget | 
   if (!url) return null;
   const parsed = parseUrl(url);
   if (!parsed || !isAllowedHost(parsed.hostname)) return null;
+
+  const tagCode = extractTagCode(url);
+  if (tagCode) {
+    return { screen: 'TagWelcome', params: { code: tagCode } };
+  }
 
   const parts = parsed.pathname.split('/').filter(Boolean);
   const queryD = parsed.searchParams.get('d') || undefined;

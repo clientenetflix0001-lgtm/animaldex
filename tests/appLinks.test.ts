@@ -146,12 +146,12 @@ describe('resolveAppLink: recursos públicos animaldex.com + pages.dev', () => {
       params: { username: 'lucasfuentes' },
     });
     assert.deepEqual(resolveAppLink('https://animaldex.com?qr=AAA123'), {
-      screen: 'Tabs',
-      params: { screen: 'Inicio' },
+      screen: 'TagWelcome',
+      params: { code: 'AAA123' },
     });
     assert.deepEqual(resolveAppLink('https://animaldex-web.pages.dev?qr=AAA123'), {
-      screen: 'Tabs',
-      params: { screen: 'Inicio' },
+      screen: 'TagWelcome',
+      params: { code: 'AAA123' },
     });
   });
 });

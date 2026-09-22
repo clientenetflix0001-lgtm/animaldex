@@ -98,7 +98,8 @@ describe('QR registrar mascota en Bienestar Animal', () => {
     assert.equal(params.tagCode, 'AAA123');
     assert.match(welcome, /addPetParamsForPageQr\(code, page\.id\)/);
     assert.match(welcome, /const \{ code \} = route\.params/);
-    assert.doesNotMatch(welcome, /setPendingTagCode|QRScanner/);
+    assert.match(welcome, /setPendingTagCode\(code\)/);
+    assert.doesNotMatch(welcome, /QRScanner/);
   });
 
   it('9. vuelve al registro automáticamente', () => {
