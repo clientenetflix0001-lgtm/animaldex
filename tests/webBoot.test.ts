@@ -23,6 +23,41 @@ function moduleScopeColorsWithoutImport(src: string): boolean {
   return usesColors && !importsColors;
 }
 
+function topLevelChunks(src: string): { name: string; body: string }[] {
+  const lines = src.split('\n');
+  const chunks: { name: string; body: string }[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const m = lines[i].match(/^(export )?(default )?(function (\w+)|const (\w+) = )/);
+    if (m && !lines[i].startsWith(' ')) {
+      const name = m[4] || m[5];
+      const start = i;
+      i += 1;
+      while (i < lines.length) {
+        if (/^(export )?(default )?(function |const \w+ = )/.test(lines[i]) && !lines[i].startsWith(' ')) break;
+        i += 1;
+      }
+      chunks.push({ name, body: lines.slice(start, i).join('\n') });
+      continue;
+    }
+    i += 1;
+  }
+  return chunks;
+}
+
+/** Helpers de módulo que usan styles del padre (useMemo makeStyles) sin definirlos. */
+function hookStylesUnbound(src: string): string[] {
+  const chunks = topLevelChunks(src);
+  const hookDefined = chunks.some((c) => c.body.includes('useMemo(() => makeStyles'));
+  if (!hookDefined) return [];
+  const moduleStyles = chunks.some((c) => /^const styles = StyleSheet\.create/m.test(c.body));
+  if (moduleStyles) return [];
+  return chunks
+    .filter((c) => c.name !== 'makeStyles' && !c.name.endsWith('Styles'))
+    .filter((c) => /\bstyles\./.test(c.body) && !c.body.includes('const styles'))
+    .map((c) => c.name);
+}
+
 describe('web boot: no ReferenceError colors', () => {
   it('ActivityScreen importa colors para ICONS de módulo', () => {
     const activity = read('screens/ActivityScreen.tsx');
@@ -65,6 +100,29 @@ describe('web boot: no ReferenceError colors', () => {
       if (!name.endsWith('.tsx')) continue;
       const rel = `screens/${name}`;
       if (moduleScopeColorsWithoutImport(read(rel))) broken.push(rel);
+    }
+    assert.deepEqual(broken, []);
+  });
+
+  it('helpers de módulo no usan styles del padre sin definirlos', () => {
+    const broken: string[] = [];
+    for (const dir of ['screens', 'components', 'features']) {
+      const walk = (folder: string) => {
+        for (const name of readdirSync(join(root, folder))) {
+          const rel = `${folder}/${name}`;
+          const abs = join(root, rel);
+          try {
+            if (readdirSync(abs)) walk(rel);
+            continue;
+          } catch {
+            /* file */
+          }
+          if (!name.endsWith('.tsx')) continue;
+          const unbound = hookStylesUnbound(read(rel));
+          if (unbound.length) broken.push(`${rel}:${unbound.join(',')}`);
+        }
+      };
+      walk(dir);
     }
     assert.deepEqual(broken, []);
   });

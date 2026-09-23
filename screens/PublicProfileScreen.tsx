@@ -459,6 +459,8 @@ function FilterRow<T extends string>({
   value: T;
   onChange: (id: T) => void;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <ScrollView
       horizontal
