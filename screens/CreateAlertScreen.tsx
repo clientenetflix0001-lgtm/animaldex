@@ -496,7 +496,7 @@ export default function CreateAlertScreen() {
                 setBreedId(id);
                 setBreed(id ? breedDisplayLabel(id) : '');
               }}
-              allowUnknown={type !== 'lost'}
+              allowUnknown
               label={type === 'found' || type === 'sighting' ? 'Raza (si la reconocés)' : 'Raza'}
             />
           ) : null}

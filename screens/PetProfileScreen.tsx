@@ -54,9 +54,7 @@ import { useProfiles } from '../features/profiles';
 import {
   PHONE_ORANGE,
   WHATSAPP_GREEN,
-  publicContactButtons,
-  telUrl,
-  whatsappConversationUrl,
+  ownerCardModel,
   type PublicPetOwnerContact,
 } from '../lib/petOwnerContact';
 
@@ -532,40 +530,46 @@ export default function PetProfileScreen() {
             style={styles.ownerAvatar}
             transition={200}
           />
+          {(() => {
+            const card = ownerCardModel({
+              shelterUsername: shelter?.username,
+              ownerUsername,
+              ownerName,
+              ownerContact,
+            });
+            return (
+              <>
           <View style={styles.ownerIdentity}>
             <View style={styles.ownerNameRow}>
               <Text style={styles.ownerName} numberOfLines={1}>
-                {shelter ? shelter.username : ownerUsername}
+                {card.identity}
               </Text>
-              {!!ownerContact?.verified && (
+              {card.showVerified ? (
                 <Ionicons name="checkmark-circle" size={16} color="#22C55E" />
+              ) : (
+                <View style={styles.ownerVerifiedSlot} accessibilityElementsHidden />
               )}
             </View>
           </View>
-          {(() => {
-            const buttons = publicContactButtons(ownerContact);
-            const wa = whatsappConversationUrl(ownerContact?.whatsapp);
-            const phone = telUrl(ownerContact?.phone);
-            return (
               <View style={styles.ownerActions}>
-                {buttons.showWhatsapp && wa ? (
+                {card.showWhatsapp && card.whatsappUrl ? (
                   <Pressable
                     style={[styles.contactBtn, { backgroundColor: WHATSAPP_GREEN }]}
                     onPress={(e) => {
                       e.stopPropagation?.();
-                      Linking.openURL(wa);
+                      Linking.openURL(card.whatsappUrl!);
                     }}
                     accessibilityLabel="WhatsApp"
                   >
                     <Ionicons name="logo-whatsapp" size={16} color="#fff" />
                   </Pressable>
                 ) : null}
-                {buttons.showPhone && phone ? (
+                {card.showPhone && card.phoneUrl ? (
                   <Pressable
                     style={[styles.contactBtn, { backgroundColor: PHONE_ORANGE }]}
                     onPress={(e) => {
                       e.stopPropagation?.();
-                      Linking.openURL(phone);
+                      Linking.openURL(card.phoneUrl!);
                     }}
                     accessibilityLabel="Teléfono"
                   >
@@ -574,6 +578,7 @@ export default function PetProfileScreen() {
                 ) : null}
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </View>
+              </>
             );
           })()}
         </Pressable>
@@ -846,6 +851,7 @@ function makeStyles(colors: ThemeColors) {
   ownerIdentity: { flex: 1, minWidth: 0 },
   ownerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   ownerName: { fontSize: 14, fontWeight: '800', color: colors.text, flexShrink: 1 },
+  ownerVerifiedSlot: { width: 16, height: 16 },
   ownerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   contactBtn: {
     width: 32,

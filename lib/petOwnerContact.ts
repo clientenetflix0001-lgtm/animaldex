@@ -244,3 +244,46 @@ export function ownerNeedsContactStep(source: {
 } | null | undefined): boolean {
   return !hasOwnerContactNumber(source);
 }
+
+/** Username visible en la owner card. Nunca el nombre real. */
+export function ownerCardIdentityLabel(input: {
+  shelterUsername?: string | null;
+  ownerUsername?: string | null;
+  ownerName?: string | null;
+}): string {
+  const username = String(input.shelterUsername || input.ownerUsername || '')
+    .replace(/^@/, '')
+    .trim();
+  return username;
+}
+
+/** verified_phone / OTP no es insignia. Reservar layout, no pintar check. */
+export function ownerCardShowsVerifiedBadge(
+  _contact?: { verified?: boolean | null } | null
+): boolean {
+  return ACCOUNT_VERIFIED_AVAILABLE && _contact?.verified === true;
+}
+
+export function ownerCardModel(input: {
+  shelterUsername?: string | null;
+  ownerUsername?: string | null;
+  ownerName?: string | null;
+  ownerContact?: PublicPetOwnerContact | null;
+}): {
+  identity: string;
+  showVerified: boolean;
+  showWhatsapp: boolean;
+  showPhone: boolean;
+  whatsappUrl: string | null;
+  phoneUrl: string | null;
+} {
+  const buttons = publicContactButtons(input.ownerContact);
+  return {
+    identity: ownerCardIdentityLabel(input),
+    showVerified: ownerCardShowsVerifiedBadge(input.ownerContact),
+    showWhatsapp: buttons.showWhatsapp,
+    showPhone: buttons.showPhone,
+    whatsappUrl: whatsappConversationUrl(input.ownerContact?.whatsapp),
+    phoneUrl: telUrl(input.ownerContact?.phone),
+  };
+}

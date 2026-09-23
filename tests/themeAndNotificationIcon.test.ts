@@ -52,8 +52,10 @@ describe('theme system + notification icon', () => {
     const provider = read('lib/ThemeProvider.tsx');
     assert.match(read('lib/themeContext.ts'), /export function useAppTheme/);
     assert.match(provider, /Appearance\.addChangeListener/);
-    assert.match(provider, /setScheme\(resolveAppScheme\(colorScheme\)\)/);
+    assert.match(provider, /schemeFromSystemAppearance/);
+    assert.match(provider, /AppState\.addEventListener/);
     assert.doesNotMatch(provider, /useColorScheme\(\)/);
+    assert.doesNotMatch(provider, /AsyncStorage|SecureStore/);
   });
 
   it('4. Feed conserva background_id', () => {
