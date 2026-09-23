@@ -38,7 +38,7 @@ describe('QR registrar mascota en Bienestar Animal', () => {
   it('1. Registrar a mi mascota sigue funcionando igual', () => {
     assert.equal(REGISTER_MY_PET_LABEL, 'Registrar una mascota nueva');
     assert.match(welcome, /QR_REGISTER_NEW_PET_LABEL/);
-    assert.deepEqual(addPetParamsForPersonalQr('AAA123'), { tagCode: 'AAA123' });
+    assert.deepEqual(addPetParamsForPersonalQr('AAA123'), { tagCode: 'AAA123', qrClaimKind: 'new_personal' });
     assert.match(welcome, /AddPet', addPetParamsForPersonalQr\(code\)/);
     assert.match(addPet, /tagCode = route\.params\?\.tagCode/);
   });
@@ -97,7 +97,7 @@ describe('QR registrar mascota en Bienestar Animal', () => {
     const params = addPetParamsForPageQr('AAA123', 'pr-apan');
     assert.equal(qrRegisterKeepsTag('AAA123', params), true);
     assert.equal(params.tagCode, 'AAA123');
-    assert.match(welcome, /addPetParamsForPageQr\(code, page\.id\)/);
+    assert.match(welcome, /addPetParamsForPageQr\(code, page\.id/);
     assert.match(welcome, /const \{ code \} = route\.params/);
     assert.match(welcome, /setPendingTagCode\(code\)/);
     assert.doesNotMatch(welcome, /QRScanner/);
@@ -111,16 +111,21 @@ describe('QR registrar mascota en Bienestar Animal', () => {
   });
 
   it('10. profile_id correcto', () => {
-    assert.deepEqual(addPetParamsForPageQr('17', 'pr-apan'), { tagCode: '17', profileId: 'pr-apan' });
+    assert.deepEqual(addPetParamsForPageQr('17', 'pr-apan'), {
+      tagCode: '17',
+      profileId: 'pr-apan',
+      qrClaimKind: 'new_page',
+    });
     assert.match(addPet, /routeProfileId \|\| \(activeProfile\?\.type === 'protector'/);
     assert.match(addPet, /profileId: isProtectorPet \? profileId : null/);
-    assert.match(types, /AddPet: \{ tagCode\?: string; petId\?: string; profileId\?: string \}/);
+    assert.match(types, /tagCode\?: string/);
+    assert.match(types, /qrClaimKind\?:/);
     assert.match(worker, /profile_id, care_status/);
   });
 
   it('11. QR legacy numérico intacto', () => {
     assert.equal(extractTagCode('https://animaldex-web.pages.dev/?qr=17'), '17');
-    assert.deepEqual(addPetParamsForPersonalQr('17'), { tagCode: '17' });
+    assert.deepEqual(addPetParamsForPersonalQr('17'), { tagCode: '17', qrClaimKind: 'new_personal' });
     assert.equal(resolveScannedValue('https://animaldex-web.pages.dev/?qr=17').kind, 'tag');
   });
 

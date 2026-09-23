@@ -2,7 +2,7 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 
 export type TabProfileStackParamList = {
   TabRoot: undefined;
-  PetProfile: { petId: string; fromQr?: boolean };
+  PetProfile: { petId: string; fromQr?: boolean; qrClaim?: import('./qrClaimSuccess').QrClaimSuccessInput };
   PetTransferRequest: { requestId: string };
   PublicProfile: { profileId?: string; username?: string };
   UserProfile: { userId: string };
@@ -27,12 +27,20 @@ export type RootStackParamList = {
   Auth: { mode?: 'login' | 'register' } | undefined;
   Tabs: NavigatorScreenParams<TabParamList> | undefined;
   Explorar: undefined;
-  PetProfile: { petId: string; fromQr?: boolean };
+  PetProfile: { petId: string; fromQr?: boolean; qrClaim?: import('./qrClaimSuccess').QrClaimSuccessInput };
   PetTransferRequest: { requestId: string };
   UserProfile: { userId: string };
   PostDetail: { postId: string; d?: string };
   VerifyPhone: undefined;
-  AddPet: { tagCode?: string; petId?: string; profileId?: string } | undefined;
+  AddPet:
+    | {
+        tagCode?: string;
+        petId?: string;
+        profileId?: string;
+        qrClaimKind?: import('./qrClaimSuccess').QrClaimKind;
+        qrPageLabel?: string;
+      }
+    | undefined;
   EditProfile: undefined;
   EditPublicProfile: { profileId: string };
   QRScanner: undefined;

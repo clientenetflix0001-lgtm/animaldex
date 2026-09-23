@@ -25,12 +25,21 @@ export function qrPageRegisterView(profiles: Array<{ type?: string | null }> | n
   return qrPageRegisterViewForCount(protectorPagesForQr(profiles).length);
 }
 
-export function addPetParamsForPersonalQr(code: string): { tagCode: string } {
-  return { tagCode: code };
+export function addPetParamsForPersonalQr(code: string): { tagCode: string; qrClaimKind: 'new_personal' } {
+  return { tagCode: code, qrClaimKind: 'new_personal' };
 }
 
-export function addPetParamsForPageQr(code: string, profileId: string): { tagCode: string; profileId: string } {
-  return { tagCode: code, profileId };
+export function addPetParamsForPageQr(
+  code: string,
+  profileId: string,
+  pageLabel?: string | null
+): { tagCode: string; profileId: string; qrClaimKind: 'new_page'; qrPageLabel?: string } {
+  return {
+    tagCode: code,
+    profileId,
+    qrClaimKind: 'new_page',
+    ...(pageLabel ? { qrPageLabel: pageLabel } : {}),
+  };
 }
 
 export function qrRegisterKeepsTag(code: string, params: { tagCode?: string }): boolean {

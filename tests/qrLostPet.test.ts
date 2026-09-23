@@ -170,7 +170,7 @@ describe('QR perdido: ubicación y origen', () => {
     assert.match(welcome, /publicTagTargetFromStatus/);
     assert.match(welcome, /target.kind === 'pet'/);
     assert.match(scanner, /r\.kind === 'tag'\) navigation\.replace\('TagWelcome', \{ code: r\.code \}\)/);
-    assert.match(types, /PetProfile: \{ petId: string; fromQr\?: boolean \}/);
+    assert.match(types, /PetProfile: \{ petId: string; fromQr\?: boolean; qrClaim\?:/);
     assert.match(types, /TagWelcome: \{ code: string \}/);
     assert.match(db, /action: 'tagStatus'/);
     assert.match(worker, /if \(action === 'tagStatus'\)/);

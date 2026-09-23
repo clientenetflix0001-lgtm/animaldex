@@ -22,6 +22,8 @@ import { uploadImage } from '../lib/api';
 import { useStore } from '../lib/store';
 import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
+import { petProfileAfterClaim } from '../lib/qrClaimSuccess';
+import { replaceWebPublicPath, webPetProfilePath } from '../lib/webPublicPath';
 import { useProfiles } from '../features/profiles';
 import BirthDatePicker from '../components/BirthDatePicker';
 import { formatBirthDate, isValidBirthDateParts, parseBirthDate } from '../lib/birthDate';
@@ -55,6 +57,8 @@ export default function AddPetScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'AddPet'>>();
   const tagCode = route.params?.tagCode;
+  const qrClaimKind = route.params?.qrClaimKind;
+  const qrPageLabel = route.params?.qrPageLabel;
   const editPetId = route.params?.petId;
   const { refreshMyPets, setPendingTagCode } = useStore();
   const savingRef = useRef(false);
@@ -228,9 +232,19 @@ export default function AddPetScreen() {
   const birthDate = birthOk && birthYear && birthMonth && birthDay ? formatBirthDate(birthYear, birthMonth, birthDay) : null;
 
   const goToCreatedPet = useCallback((pet: { id: string; username?: string | null }) => {
-    const petId = pet.username || pet.id;
+    if (tagCode != null) {
+      const dest = petProfileAfterClaim(pet, qrClaimKind === 'new_page' ? 'new_page' : 'new_personal', qrPageLabel);
+      if (dest) {
+        replaceWebPublicPath(webPetProfilePath(dest.petId));
+        navigation.replace('PetProfile', dest);
+        return;
+      }
+    }
+    const petId = pet.id || pet.username;
+    if (!petId) return;
+    replaceWebPublicPath(webPetProfilePath(petId));
     navigation.replace('PetProfile', { petId });
-  }, [navigation]);
+  }, [navigation, qrClaimKind, qrPageLabel, tagCode]);
 
   const save = useCallback(async () => {
     if (savingRef.current) return;

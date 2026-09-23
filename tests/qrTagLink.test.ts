@@ -71,7 +71,7 @@ describe('QR: tres opciones de vinculación', () => {
   });
 
   it('16. vincular existente conserva claimTag', () => {
-    assert.deepEqual(addPetParamsForPersonalQr('AAA123'), { tagCode: 'AAA123' });
+    assert.deepEqual(addPetParamsForPersonalQr('AAA123'), { tagCode: 'AAA123', qrClaimKind: 'new_personal' });
     assert.deepEqual(existingPetsForQr([{ id: 'a' }, { id: 'b', archivedAt: 1 }]).map((p) => p.id), ['a']);
     assert.match(welcome, /db\.claimTag\(code, petId\)/);
     assert.equal(qrNeedsContactStep({ contactWhatsapp: null, contactPhone: null }), true);
