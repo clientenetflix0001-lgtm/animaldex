@@ -9,7 +9,7 @@ import { generateNotifications, getUser, formatTime, Notification } from '../lib
 import { useNotifications } from '../lib/realtime';
 import { ApiNotification, timeAgoMinutes } from '../lib/db';
 import { thumb, userFallbackAvatar } from '../lib/images';
-import { useAppTheme, type ThemeColors, spacing, radius } from '../lib/theme';
+import { useAppTheme, type ThemeColors, spacing, radius, colors } from '../lib/theme';
 import { RootStackParamList } from '../lib/types';
 import { useBreakpoint, CONTENT } from '../lib/responsive';
 import { openHumanProfile } from '../lib/publicHandles';
