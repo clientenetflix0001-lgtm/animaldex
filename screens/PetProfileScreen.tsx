@@ -844,7 +844,7 @@ function makeStyles(colors: ThemeColors) {
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     minHeight: 52,
   },
   ownerAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.border },
