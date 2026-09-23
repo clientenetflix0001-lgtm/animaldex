@@ -61,6 +61,8 @@ function Inner({
   size: number;
   fallbackPlus?: boolean;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={[styles.imgWrap, { width: size, height: size, borderRadius: size / 2 }]}>
       {thumbUrl ? (

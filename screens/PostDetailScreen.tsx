@@ -117,6 +117,8 @@ export default function PostDetailScreen() {
 }
 
 function PostDetailContent({ post }: { post: Post }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { desktopWeb, height } = useBreakpoint();
   const {

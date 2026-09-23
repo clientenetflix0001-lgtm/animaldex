@@ -43,6 +43,16 @@ export function qrNeedsContactStep(source: {
   return ownerNeedsContactStep(source);
 }
 
+export type QrContactStepKind = 'full' | 'visibility';
+
+/** Sin número → formulario. Con número → solo visibilidad, sin reescribir. */
+export function qrContactStep(source: {
+  contactWhatsapp?: string | null;
+  contactPhone?: string | null;
+} | null | undefined): QrContactStepKind {
+  return qrNeedsContactStep(source) ? 'full' : 'visibility';
+}
+
 export function qrContactReady(source: {
   contactWhatsapp?: string | null;
   contactPhone?: string | null;

@@ -4399,17 +4399,22 @@ async function handleDb(request, env, ctx) {
 
     if (action === 'updatePetContact') {
       const profileId = clean(body.profileId, 80);
-      const parsed = parseOwnerContactFields(body.contactWhatsapp, body.contactPhone);
+      const parsed = parseOwnerContactFields(
+        body.contactWhatsapp !== undefined ? body.contactWhatsapp : undefined,
+        body.contactPhone !== undefined ? body.contactPhone : undefined
+      );
       if (!parsed.ok) return json({ error: parsed.error }, 400);
       if (body.requireContact && !parsed.whatsapp && !parsed.phone) {
         return json({ error: 'Agregá un WhatsApp o un teléfono.' }, 400);
       }
-      const visible = !!body.petContactVisible;
       if (profileId) {
         const owned = await d1(env, 'SELECT * FROM profiles WHERE id = ? AND account_id = ?', [profileId, userId]);
         if (!owned[0]) return json({ error: 'Esa página no es tuya' }, 403);
         const nextWhatsapp = body.contactWhatsapp !== undefined ? parsed.whatsapp : owned[0].adoption_whatsapp;
         const nextPhone = body.contactPhone !== undefined ? parsed.phone : (owned[0].adoption_phone || owned[0].phone);
+        const visible = body.petContactVisible !== undefined
+          ? !!body.petContactVisible
+          : Number(owned[0].pet_contact_visible) === 1;
         await d1(
           env,
           'UPDATE profiles SET adoption_whatsapp = COALESCE(?, adoption_whatsapp), adoption_phone = COALESCE(?, adoption_phone), phone = COALESCE(?, phone) WHERE id = ?',
@@ -4419,9 +4424,12 @@ async function handleDb(request, env, ctx) {
         const rows = await d1(env, 'SELECT * FROM profiles WHERE id = ?', [profileId]);
         return json({ ok: true, profile: profileRow(rows[0], { includeAdoptionContact: true }) });
       }
+      const current = await d1(env, 'SELECT * FROM users WHERE id = ?', [userId]);
+      const prev = readUserContact(current[0]);
+      const visible = body.petContactVisible !== undefined ? !!body.petContactVisible : prev.petContactVisible;
       await updateUserPetContact(env, userId, {
-        whatsapp: parsed.whatsapp,
-        phone: parsed.phone,
+        whatsapp: body.contactWhatsapp !== undefined ? parsed.whatsapp : prev.contactWhatsapp,
+        phone: body.contactPhone !== undefined ? parsed.phone : prev.contactPhone,
         visible,
       });
       const rows = await d1(env, 'SELECT * FROM users WHERE id = ?', [userId]);

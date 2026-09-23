@@ -126,7 +126,7 @@ describe('copy visible: Refugio → Bienestar Animal', () => {
     assert.equal(PROFILE_TYPE_LABEL.protector, 'Página de Bienestar Animal');
     assert.match(createSheet, />Bienestar Animal</);
     assert.match(createSheet, /Nueva página de Bienestar Animal/);
-    assert.match(petProfile, /shelter \? shelter.username : ownerUsername/);
+    assert.match(petProfile, /ownerCardModel/);
     assert.match(transferSheet, /página de Bienestar Animal/);
     assert.match(userProfile, /Tienda o Bienestar Animal/);
     assert.match(editPublic, /Localidad de Bienestar Animal/);

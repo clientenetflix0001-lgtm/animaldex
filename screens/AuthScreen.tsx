@@ -666,6 +666,8 @@ function PasswordField({
   placeholder?: string;
   onSubmit?: () => void;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.inputWrap}>
       <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />

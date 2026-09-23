@@ -39,8 +39,9 @@ import {
   QR_REGISTER_PAGE_PET_LABEL,
   existingPetsForQr,
   pageSourceForQrContact,
-  qrNeedsContactStep,
+  qrContactStep,
   qrPageOptionVisible,
+  type QrContactStepKind,
 } from '../lib/qrTagLink';
 import {
   PAGE_PET_CONTACT_VISIBLE_HELP,
@@ -49,6 +50,7 @@ import {
   PET_CONTACT_STEP_TITLE,
   PET_CONTACT_VISIBLE_HELP,
   PET_CONTACT_VISIBLE_LABEL,
+  isPetContactVisible,
 } from '../lib/petOwnerContact';
 import { centeredParentTextWrap } from '../lib/centeredText';
 import PetAvatar from '../components/PetAvatar';
@@ -68,6 +70,7 @@ export default function TagWelcomeScreen() {
   const [pageView, setPageView] = useState<QrPageRegisterView | 'contact' | 'pick-existing'>('welcome');
   const [selectedPage, setSelectedPage] = useState<PublicProfile | null>(null);
   const [pendingChoice, setPendingChoice] = useState<'new_personal' | 'existing' | 'new_page' | null>(null);
+  const [contactStep, setContactStep] = useState<QrContactStepKind>('full');
   const [createOpen, setCreateOpen] = useState(false);
   const [contactWhatsapp, setContactWhatsapp] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -142,7 +145,11 @@ export default function TagWelcomeScreen() {
         if (!pages.length) return;
         setPendingChoice('new_page');
         setSelectedPage(pages.length === 1 ? pages[0] : null);
-        if (pages.length === 1 && qrNeedsContactStep(pageSourceForQrContact(pages[0]))) {
+        if (pages.length === 1) {
+          const source = pageSourceForQrContact(pages[0]);
+          const step = qrContactStep(source);
+          setContactStep(step);
+          setContactVisible(isPetContactVisible(pages[0].petContactVisible) || step === 'full');
           setPageView('contact');
           return;
         }
@@ -150,38 +157,39 @@ export default function TagWelcomeScreen() {
         return;
       }
       setPendingChoice(choice);
-      if (qrNeedsContactStep(user)) {
-        setPageView('contact');
-        return;
-      }
-      finishChoice(choice);
+      const step = qrContactStep(user);
+      setContactStep(step);
+      setContactVisible(isPetContactVisible(user?.petContactVisible) || step === 'full');
+      setPageView('contact');
     },
-    [finishChoice, profiles, user]
+    [profiles, user]
   );
 
   const saveContactAndContinue = useCallback(async () => {
-    if (!contactWhatsapp.trim() && !contactPhone.trim()) {
+    const visibilityOnly = contactStep === 'visibility';
+    if (!visibilityOnly && !contactWhatsapp.trim() && !contactPhone.trim()) {
       Alert.alert('Falta un contacto', 'Agregá un WhatsApp o un teléfono.');
       return;
     }
     setSavingContact(true);
     try {
       if (pendingChoice === 'new_page' && selectedPage) {
+        const existing = pageSourceForQrContact(selectedPage);
         await auth.updatePetContact({
           profileId: selectedPage.id,
-          contactWhatsapp: contactWhatsapp.trim() || null,
-          contactPhone: contactPhone.trim() || null,
+          contactWhatsapp: visibilityOnly ? existing?.contactWhatsapp : contactWhatsapp.trim() || null,
+          contactPhone: visibilityOnly ? existing?.contactPhone : contactPhone.trim() || null,
           petContactVisible: contactVisible,
-          requireContact: true,
+          requireContact: !visibilityOnly,
         });
         await refreshProfiles();
         finishChoice('new_page', selectedPage);
       } else {
         await auth.updatePetContact({
-          contactWhatsapp: contactWhatsapp.trim() || null,
-          contactPhone: contactPhone.trim() || null,
+          contactWhatsapp: visibilityOnly ? user?.contactWhatsapp : contactWhatsapp.trim() || null,
+          contactPhone: visibilityOnly ? user?.contactPhone : contactPhone.trim() || null,
           petContactVisible: contactVisible,
-          requireContact: true,
+          requireContact: !visibilityOnly,
         });
         await refreshUser();
         finishChoice(pendingChoice || 'new_personal');
@@ -191,7 +199,7 @@ export default function TagWelcomeScreen() {
     } finally {
       setSavingContact(false);
     }
-  }, [contactPhone, contactVisible, contactWhatsapp, finishChoice, pendingChoice, refreshProfiles, refreshUser, selectedPage]);
+  }, [contactPhone, contactStep, contactVisible, contactWhatsapp, finishChoice, pendingChoice, refreshProfiles, refreshUser, selectedPage, user]);
 
   const claimExisting = useCallback(
     async (petId: string) => {
@@ -342,6 +350,8 @@ export default function TagWelcomeScreen() {
           <>
             <Text style={[styles.title, centeredParentTextWrap]}>{PET_CONTACT_STEP_TITLE}</Text>
             <Text style={[styles.subtitle, centeredParentTextWrap]}>{PET_CONTACT_STEP_HELP}</Text>
+            {contactStep === 'full' ? (
+              <>
             <TextInput
               style={styles.input}
               value={contactWhatsapp}
@@ -358,6 +368,8 @@ export default function TagWelcomeScreen() {
               placeholderTextColor={colors.textMuted}
               keyboardType="phone-pad"
             />
+              </>
+            ) : null}
             <Pressable style={styles.checkRow} onPress={() => setContactVisible((v) => !v)}>
               <Ionicons
                 name={contactVisible ? 'checkbox' : 'square-outline'}
@@ -416,12 +428,12 @@ export default function TagWelcomeScreen() {
             <Pressable
               style={styles.primaryBtn}
               onPress={() => {
-                if (qrNeedsContactStep(pageSourceForQrContact(selectedPage))) {
-                  setPendingChoice('new_page');
-                  setPageView('contact');
-                  return;
-                }
-                goPage(selectedPage);
+                const source = pageSourceForQrContact(selectedPage);
+                const step = qrContactStep(source);
+                setPendingChoice('new_page');
+                setContactStep(step);
+                setContactVisible(isPetContactVisible(selectedPage.petContactVisible) || step === 'full');
+                setPageView('contact');
               }}
             >
               <Text style={styles.primaryBtnText}>Continuar</Text>
@@ -439,12 +451,12 @@ export default function TagWelcomeScreen() {
               <View key={page.id}>
                 {pageCard(page, () => {
                   setSelectedPage(page);
-                  if (qrNeedsContactStep(pageSourceForQrContact(page))) {
-                    setPendingChoice('new_page');
-                    setPageView('contact');
-                    return;
-                  }
-                  goPage(page);
+                  const source = pageSourceForQrContact(page);
+                  const step = qrContactStep(source);
+                  setPendingChoice('new_page');
+                  setContactStep(step);
+                  setContactVisible(isPetContactVisible(page.petContactVisible) || step === 'full');
+                  setPageView('contact');
                 })}
               </View>
             ))}
