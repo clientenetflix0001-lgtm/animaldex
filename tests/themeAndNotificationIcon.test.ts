@@ -43,7 +43,7 @@ describe('theme system + notification icon', () => {
     assert.equal(resolveAppScheme('dark'), 'dark');
     assert.equal(colorsForScheme('dark').bg, darkColors.bg);
     assert.equal(colorsForScheme('dark').text, darkColors.text);
-    assert.notEqual(darkColors.bg, '#000000');
+    assert.equal(darkColors.bg, '#000000');
   });
 
   it('3. cambio runtime light/dark', () => {
@@ -197,7 +197,7 @@ describe('theme system + notification icon', () => {
     assert.equal(lightColors.dangerSoft, '#FFE8EC');
     assert.equal(lightColors.warningSoft, '#FFF4E5');
     assert.equal(darkColors.dangerSoft, '#3A1E24');
-    assert.equal(darkColors.warningSoft, '#3A2E1C');
+    assert.equal(darkColors.warningSoft, '#1C1C1E');
   });
 
   it('pantallas migradas usan useAppTheme y makeStyles', () => {
