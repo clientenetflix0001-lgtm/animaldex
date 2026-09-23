@@ -35,7 +35,9 @@ import { petPhotoUri } from '../lib/petAvatar';
 import { FollowButton } from '../components/FollowButton';
 import PetStatusAvatar from '../components/PetStatusAvatar';
 import QrLostPetModal from '../components/QrLostPetModal';
+import QrClaimSuccessModal from '../components/QrClaimSuccessModal';
 import { shouldShowQrLostPrompt } from '../lib/qrLostPet';
+import { qrClaimShouldShow, qrClaimSuccessMessage } from '../lib/qrClaimSuccess';
 import { StatBlock } from '../components/StatBlock';
 import { PostGridMedia } from '../components/PostBackgroundCard';
 import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
@@ -74,6 +76,7 @@ export default function PetProfileScreen() {
 
   const petId = route.params.petId;
   const fromQr = !!route.params.fromQr;
+  const qrClaim = route.params.qrClaim;
   const demoPet = useMemo(() => PETS.find((p) => p.id === petId), [petId]);
 
   const [realPet, setRealPet] = useState<ApiPet | null>(null);
@@ -690,6 +693,15 @@ export default function PetProfileScreen() {
           const ok = await shareMyLocation();
           if (ok) setQrLostOpen(false);
         }}
+      />
+      <QrClaimSuccessModal
+        visible={!loading && !!realPet && qrClaimShouldShow(qrClaim)}
+        message={qrClaimSuccessMessage({
+          kind: qrClaim?.kind || 'new_personal',
+          username: qrClaim?.username || realPet?.username,
+          pageLabel: qrClaim?.pageLabel,
+        })}
+        onClose={() => navigation.setParams({ qrClaim: undefined })}
       />
     </View>
   );

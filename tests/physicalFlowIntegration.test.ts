@@ -216,7 +216,7 @@ describe('flujo real: QR unclaimed → 3 caminos → claim', () => {
   it('11. mascota nueva llega al claim personal', () => {
     assert.match(welcome, /startChoice\('new_personal'\)/);
     assert.match(welcome, /addPetParamsForPersonalQr\(code\)/);
-    assert.deepEqual(addPetParamsForPersonalQr('AAA123'), { tagCode: 'AAA123' });
+    assert.deepEqual(addPetParamsForPersonalQr('AAA123'), { tagCode: 'AAA123', qrClaimKind: 'new_personal' });
     assert.equal(qrContactStep({}), 'full');
     assert.equal(qrContactStep({ contactWhatsapp: '+5493875551111' }), 'visibility');
     assert.match(welcome, /qrContactStep/);
@@ -224,8 +224,12 @@ describe('flujo real: QR unclaimed → 3 caminos → claim', () => {
   });
 
   it('12. mascota en página llega al claim de página', () => {
-    assert.match(welcome, /addPetParamsForPageQr\(code, page\.id\)/);
-    assert.deepEqual(addPetParamsForPageQr('AAA123', 'prf-1'), { tagCode: 'AAA123', profileId: 'prf-1' });
+    assert.match(welcome, /addPetParamsForPageQr\(code, page\.id/);
+    assert.deepEqual(addPetParamsForPageQr('AAA123', 'prf-1'), {
+      tagCode: 'AAA123',
+      profileId: 'prf-1',
+      qrClaimKind: 'new_page',
+    });
     const page = pageSourceForQrContact({
       adoptionWhatsapp: '+5493875553333',
       phone: null,

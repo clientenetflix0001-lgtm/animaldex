@@ -62,7 +62,13 @@ import type { ThemeColors } from './lib/theme';
 import { RootStackParamList, TabParamList } from './lib/types';
 import { useBreakpoint } from './lib/responsive';
 import { Sidebar } from './components/Sidebar';
-import { extractTagCode } from './lib/tags';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  CONSUMED_INITIAL_APP_LINK_KEY,
+  markAppLinkSeenThisLaunch,
+  shouldAcceptEventAppLink,
+  shouldAcceptInitialAppLink,
+} from './lib/deepLinkOnce';
 import { createTabProfileStack, navigateMainTab } from './lib/tabProfileStack';
 import { MOBILE_TAB_ORDER, TAB_ICONS, TAB_LABELS } from './lib/mainTabs';
 import { planMainTabPress, shouldHighlightTab } from './lib/feedReelsNav';
@@ -313,14 +319,31 @@ const linking: LinkingOptions<RootStackParamList> = {
     // aquí hace que React Navigation navegue contra un spinner y se pierda.
     // La cola de lib/appLinks.ts la aplica AppLinkHandler después.
     if (Platform.OS !== 'web') {
-      rememberIncomingAppLink(url);
+      let lastConsumed: string | null = null;
+      try {
+        lastConsumed = await AsyncStorage.getItem(CONSUMED_INITIAL_APP_LINK_KEY);
+      } catch {
+        lastConsumed = null;
+      }
+      if (shouldAcceptInitialAppLink(url, lastConsumed)) {
+        rememberIncomingAppLink(url);
+        const seen = markAppLinkSeenThisLaunch(url);
+        try {
+          await AsyncStorage.setItem(CONSUMED_INITIAL_APP_LINK_KEY, seen);
+        } catch {
+          /* persistencia best-effort */
+        }
+      }
       return null;
     }
     return url;
   },
   subscribe(listener) {
     const onUrl = ({ url }: { url: string }) => {
+      if (!shouldAcceptEventAppLink(url)) return;
       rememberIncomingAppLink(url);
+      const seen = markAppLinkSeenThisLaunch(url);
+      AsyncStorage.setItem(CONSUMED_INITIAL_APP_LINK_KEY, seen).catch(() => {});
       listener(url);
     };
     const sub = Linking.addEventListener('url', onUrl);
@@ -337,21 +360,8 @@ const linking: LinkingOptions<RootStackParamList> = {
 // chapita, UNA sola vez.
 // ============================================================
 function TagDeepLinkHandler() {
-  const { user, authReady, pendingTagCode, setPendingTagCode } = useStore();
+  const { user, authReady, pendingTagCode } = useStore();
   const handledRef = useRef(false);
-
-  useEffect(() => {
-    Linking.getInitialURL().then((url) => {
-      const code = extractTagCode(url);
-      if (code != null) setPendingTagCode(code);
-    });
-    const sub = Linking.addEventListener('url', ({ url }) => {
-      const code = extractTagCode(url);
-      if (code != null) setPendingTagCode(code);
-    });
-    return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     if (!authReady || !user || pendingTagCode == null || handledRef.current) return;
@@ -364,7 +374,6 @@ function TagDeepLinkHandler() {
     }
     handledRef.current = true;
     const code = pendingTagCode;
-    // pendingTagCode se limpia en AddPet cuando create+claim terminan bien.
 
     const tryNavigate = () => {
       if (navigationRef.isReady()) {
@@ -374,7 +383,7 @@ function TagDeepLinkHandler() {
       }
     };
     tryNavigate();
-  }, [authReady, user, pendingTagCode, setPendingTagCode]);
+  }, [authReady, user, pendingTagCode]);
 
   return null;
 }
@@ -457,10 +466,11 @@ function PublicNavigator() {
 
 function WebUrlSync() {
   const { user, authReady } = useStore();
+  const userId = user?.id ?? null;
 
   useEffect(() => {
-    setLinkingHasUser(!!user);
-  }, [user]);
+    setLinkingHasUser(!!userId);
+  }, [userId]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !authReady) return;
@@ -471,7 +481,7 @@ function WebUrlSync() {
       if (state) navigationRef.resetRoot(state);
     };
     apply();
-  }, [authReady, user]);
+  }, [authReady, userId]);
 
   return null;
 }

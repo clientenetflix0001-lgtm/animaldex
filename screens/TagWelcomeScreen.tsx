@@ -23,6 +23,8 @@ import { RootStackParamList } from '../lib/types';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { CreateProfileSheet, useProfiles, type PublicProfile } from '../features/profiles';
 import { guestTagWelcomeHome, publicTagTargetFromStatus, TAG_UNAVAILABLE_TITLE } from '../lib/tagPublicResolve';
+import { petProfileAfterClaim } from '../lib/qrClaimSuccess';
+import { replaceWebPublicPath, webPetProfilePath } from '../lib/webPublicPath';
 import {
   addPetParamsForPageQr,
   addPetParamsForPersonalQr,
@@ -90,8 +92,10 @@ export default function TagWelcomeScreen() {
         return;
       }
       if (target.kind === 'pet') {
+        setPendingTagCode(null);
         setState('claimed');
         setTimeout(() => {
+          replaceWebPublicPath(webPetProfilePath(target.petId));
           navigation.replace('PetProfile', { petId: target.petId, fromQr: true });
         }, 700);
         return;
@@ -117,7 +121,7 @@ export default function TagWelcomeScreen() {
 
   const goPage = useCallback(
     (page: PublicProfile) => {
-      navigation.replace('AddPet', addPetParamsForPageQr(code, page.id));
+      navigation.replace('AddPet', addPetParamsForPageQr(code, page.id, page.username || page.name));
     },
     [code, navigation]
   );
@@ -206,15 +210,20 @@ export default function TagWelcomeScreen() {
       setClaimingId(petId);
       try {
         await db.claimTag(code, petId);
+        const pet = existingPetsForQr(myPets).find((p) => p.id === petId);
+        const dest = petProfileAfterClaim(pet || { id: petId }, 'existing');
+        if (!dest) throw new Error('No se pudo abrir el perfil de la mascota.');
+        setPendingTagCode(null);
         await refreshMyPets();
-        navigation.replace('PetProfile', { petId, fromQr: true });
+        replaceWebPublicPath(webPetProfilePath(dest.petId));
+        navigation.replace('PetProfile', dest);
       } catch (e: any) {
         Alert.alert('Error', e?.message || 'No se pudo vincular la chapita');
       } finally {
         setClaimingId(null);
       }
     },
-    [code, navigation, refreshMyPets]
+    [code, myPets, navigation, refreshMyPets, setPendingTagCode]
   );
 
   const openPageRegister = useCallback(() => {
@@ -254,7 +263,10 @@ export default function TagWelcomeScreen() {
           </Text>
           <Pressable
             style={styles.primaryBtn}
-            onPress={() => navigation.replace(guestTagWelcomeHome(!!user))}
+            onPress={() => {
+              setPendingTagCode(null);
+              navigation.replace(guestTagWelcomeHome(!!user));
+            }}
           >
             <Text style={styles.primaryBtnText}>{user ? 'Ir al inicio' : 'Entendido'}</Text>
           </Pressable>
