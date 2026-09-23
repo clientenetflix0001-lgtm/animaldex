@@ -45,6 +45,19 @@ function topLevelChunks(src: string): { name: string; body: string }[] {
   return chunks;
 }
 
+/** Helpers de módulo que usan colors. sin useAppTheme ni import de colors. */
+function hookColorsUnbound(src: string): string[] {
+  const importsColors = /import\s*\{[^}]*\bcolors\b[^}]*\}\s*from\s*['"][^'"]*theme['"]/.test(src);
+  if (importsColors) return [];
+  const chunks = topLevelChunks(src);
+  return chunks
+    .filter((c) => c.name !== 'makeStyles' && !c.name.endsWith('Styles'))
+    .filter((c) => /\bcolors\./.test(c.body))
+    .filter((c) => !c.body.includes('useAppTheme') && !c.body.includes('const { colors'))
+    .filter((c) => !/\bcolors\s*[:),]/.test(c.body.slice(0, 400)) && !c.body.slice(0, 300).includes('ThemeColors'))
+    .map((c) => c.name);
+}
+
 /** Helpers de módulo que usan styles del padre (useMemo makeStyles) sin definirlos. */
 function hookStylesUnbound(src: string): string[] {
   const chunks = topLevelChunks(src);
@@ -106,7 +119,7 @@ describe('web boot: no ReferenceError colors', () => {
 
   it('helpers de módulo no usan styles del padre sin definirlos', () => {
     const broken: string[] = [];
-    for (const dir of ['screens', 'components', 'features']) {
+    for (const dir of ['screens', 'components', 'features', 'lib']) {
       const walk = (folder: string) => {
         for (const name of readdirSync(join(root, folder))) {
           const rel = `${folder}/${name}`;
@@ -118,12 +131,23 @@ describe('web boot: no ReferenceError colors', () => {
             /* file */
           }
           if (!name.endsWith('.tsx')) continue;
-          const unbound = hookStylesUnbound(read(rel));
-          if (unbound.length) broken.push(`${rel}:${unbound.join(',')}`);
+          const src = read(rel);
+          const unbound = hookStylesUnbound(src);
+          if (unbound.length) broken.push(`${rel}:styles:${unbound.join(',')}`);
+          const colors = hookColorsUnbound(src);
+          if (colors.length) broken.push(`${rel}:colors:${colors.join(',')}`);
         }
       };
       walk(dir);
     }
     assert.deepEqual(broken, []);
+  });
+
+  it('ExternalNavButton resuelve colors con useAppTheme', () => {
+    const src = read('lib/guestAccess.tsx');
+    assert.match(src, /export function ExternalNavButton/);
+    const unbound = hookColorsUnbound(src);
+    assert.deepEqual(unbound, []);
+    assert.match(src, /function ExternalNavButton[\s\S]*useAppTheme\(\)/);
   });
 });

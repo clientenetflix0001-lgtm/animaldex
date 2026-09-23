@@ -85,6 +85,7 @@ export function ExternalNavButton({
   onBack: () => void;
   onClose: () => void;
 }) {
+  const { colors } = useAppTheme();
   if (cameFromLink && !guest) {
     return (
       <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Cerrar y volver al inicio">
