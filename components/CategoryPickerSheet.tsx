@@ -3,7 +3,7 @@
 // ============================================================
 import React from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, FlatList } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { MARKET_CATEGORIES, categoriesFor } from '../lib/market';
 import { ListingKind } from '../lib/market';
 import { colors, spacing, radius, shadow } from '../lib/theme';

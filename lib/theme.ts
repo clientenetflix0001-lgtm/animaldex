@@ -12,6 +12,10 @@ export const colors = {
   gold: '#FFB800',
 };
 
+/** Iconos de interfaz en web. Native sigue usando text / primary / muted. */
+export const UI_ICON_LIGHT = '#000000';
+export const UI_ICON_DARK = '#FFFFFF';
+
 export const spacing = {
   xs: 4,
   sm: 8,

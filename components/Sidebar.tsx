@@ -5,7 +5,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { useStore } from '../lib/store';
 import { useNotifications } from '../lib/realtime';
 import { userFallbackAvatar, thumb } from '../lib/images';

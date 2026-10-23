@@ -352,9 +352,9 @@ describe('Georef caído', () => {
 
   it('si reverseGeocodeAsync falla no se inventa un lugar por centroide', () => {
     assert.match(locate, /reverseGeocodeAsync/);
-    assert.match(locate, /reason: 'no-candidates'/);
-    assert.doesNotMatch(locate, /placeFromCoords\(\{ lat: coords\.latitude, lng: coords\.longitude \}\)/);
+    assert.match(read('lib/placeLocateResolution.ts'), /reason: 'no-candidates'/);
     assert.doesNotMatch(locate, /geoResolveCoords/);
+    assert.match(locate, /chooseLocateResolution/);
   });
 });
 

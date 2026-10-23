@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { View, StyleSheet, Modal, Pressable, Platform, StatusBar } from 'react-native';
 import { Image } from 'expo-image';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { large } from '../lib/images';
 import { colors } from '../lib/theme';
 import { feedMediaBoxStyle } from '../lib/feedMediaLayout';

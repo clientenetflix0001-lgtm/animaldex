@@ -75,7 +75,8 @@ describe('detección GEO por reverse geocode + catálogo', () => {
     const locate = read('lib/placeLocate.ts');
     assert.match(locate, /reverseGeocodeAsync/);
     assert.doesNotMatch(locate, /geoResolveCoords/);
-    assert.match(locate, /resolutionFromGeocode/);
+    assert.match(locate, /chooseLocateResolution/);
+    assert.match(read('lib/placeLocateResolution.ts'), /resolutionFromGeocode/);
     assert.match(read('lib/geoplace/fromGeocode.ts'), /source: 'device-geocode'/);
   });
 });
