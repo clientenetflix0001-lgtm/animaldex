@@ -2,7 +2,7 @@ import React, { memo, useCallback, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { adoptionStatusOverlay, compactAgeLabel } from '../lib/compactTime';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { sharePetProfile } from '../lib/share';

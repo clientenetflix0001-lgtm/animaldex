@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { transferSheetBottomPadding, transferSheetScrollPadding } from '../lib/transferSheetLayout';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { db } from '../lib/db';
 import {
   externalLeaveNote,

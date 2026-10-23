@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Image } from 'expo-image';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import type { ApiReel } from '../lib/db';
 import {
@@ -14,6 +14,8 @@ import {
   resolveReelVideoTap,
   type ReelPlayerRole,
 } from '../lib/reels';
+import { WEB_REEL_FIRST_FRAME_TIMEOUT_MS } from '../lib/reelWebPlayback';
+import { WebHlsVideo } from './WebHlsVideo';
 import { parseReelOverlays } from '../lib/reelOverlays';
 import { thumb, userFallbackAvatar } from '../lib/images';
 import { colors } from '../lib/theme';
@@ -59,6 +61,7 @@ function ReelCardInner({
   const [firstFrame, setFirstFrame] = useState(false);
   const [failed, setFailed] = useState(false);
   const [userPaused, setUserPaused] = useState(false);
+  const [webRetry, setWebRetry] = useState(0);
   const [showMore, setShowMore] = useState(false);
   const [burst, setBurst] = useState(false);
   const lastTapRef = useRef<number | null>(null);
@@ -66,10 +69,11 @@ function ReelCardInner({
   const burstRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const surface = ownerReelSurface(reel.status);
+  const hlsUri = role !== 'idle' && surface === 'ready' && reel.hlsUrl ? reel.hlsUrl : null;
   const source = useMemo(() => {
-    if (role === 'idle' || !reel.hlsUrl || surface !== 'ready') return null;
-    return { uri: reel.hlsUrl, contentType: 'hls' as const };
-  }, [role, reel.hlsUrl, surface]);
+    if (Platform.OS === 'web' || !hlsUri) return null;
+    return { uri: hlsUri, contentType: 'hls' as const };
+  }, [hlsUri]);
 
   const overlays = useMemo(() => parseReelOverlays(reel.overlays), [reel.overlays]);
 
@@ -89,10 +93,17 @@ function ReelCardInner({
   }, [player, muted, role]);
 
   useEffect(() => {
+    setFirstFrame(false);
+    setFailed(false);
+    setUserPaused(false);
+  }, [reel.id, reel.hlsUrl]);
+
+  useEffect(() => {
     if (role !== 'active') setUserPaused(false);
   }, [role, reel.id]);
 
   useEffect(() => {
+    if (Platform.OS === 'web') return;
     if (shouldPlay && role === 'active' && !userPaused && !failed && surface === 'ready') {
       try {
         player.play();
@@ -106,6 +117,12 @@ function ReelCardInner({
     }
   }, [player, shouldPlay, role, userPaused, failed, surface]);
 
+  useEffect(() => {
+    if (!(role === 'active' && surface === 'ready' && !firstFrame && !failed)) return;
+    const t = setTimeout(() => setFailed(true), WEB_REEL_FIRST_FRAME_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [role, surface, firstFrame, failed, reel.id]);
+
   useEffect(
     () => () => {
       if (waitRef.current) clearTimeout(waitRef.current);
@@ -117,6 +134,10 @@ function ReelCardInner({
   const retry = useCallback(() => {
     setFailed(false);
     setFirstFrame(false);
+    if (Platform.OS === 'web') {
+      setWebRetry((n) => n + 1);
+      return;
+    }
     if (reel.hlsUrl) {
       try {
         player.replace({ uri: reel.hlsUrl, contentType: 'hls' });
@@ -125,6 +146,16 @@ function ReelCardInner({
       }
     }
   }, [player, reel.hlsUrl]);
+
+  const onWebFirstFrame = useCallback(() => {
+    setFirstFrame(true);
+    reelDevMark(reel.id, 'T5');
+  }, [reel.id]);
+
+  const onWebError = useCallback(() => setFailed(true), []);
+  const onWebAutoplayBlocked = useCallback(() => {
+    if (!muted) onToggleMute();
+  }, [muted, onToggleMute]);
 
   const onVideoPress = () => {
     if (role !== 'active' || surface !== 'ready') return;
@@ -185,12 +216,25 @@ function ReelCardInner({
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#111' }]} />
       )}
 
-      {source ? (
+      {Platform.OS === 'web' && hlsUri ? (
+        <View style={[StyleSheet.absoluteFill, firstFrame ? styles.videoOn : styles.videoOff]}>
+          <WebHlsVideo
+            key={`${reel.id}-${webRetry}`}
+            uri={hlsUri}
+            shouldPlay={shouldPlay && role === 'active' && !userPaused && !failed}
+            muted={muted || role !== 'active'}
+            onFirstFrame={onWebFirstFrame}
+            onError={onWebError}
+            onAutoplayBlocked={onWebAutoplayBlocked}
+          />
+        </View>
+      ) : source ? (
         <VideoView
           player={player}
           style={[StyleSheet.absoluteFill, firstFrame ? styles.videoOn : styles.videoOff]}
           contentFit="cover"
           nativeControls={false}
+          playsInline
           useExoShutter={false}
           onFirstFrameRender={() => {
             setFirstFrame(true);

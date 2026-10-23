@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { db, type ApiComment } from '../lib/db';
 import { colors, spacing } from '../lib/theme';
 import { STORY_EXPIRED_MESSAGE, STORY_NOT_VET_DISCLAIMER } from '../lib/stories';

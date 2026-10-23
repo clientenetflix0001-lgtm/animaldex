@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { colors } from '../lib/theme';
 import { STORY_SEEN_RING, STORY_UNSEEN_GRADIENT, type StoryRingVariant } from '../lib/stories';
 import { thumb } from '../lib/images';

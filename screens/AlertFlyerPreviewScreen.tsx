@@ -9,7 +9,7 @@ import {
   Text,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from '../components/AppIcon';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { AlertFlyerCanvas, FlyerCanvasFallback, FlyerRenderGuard } from '../components/AlertFlyerCanvas';
 import { FLYER_ASPECT, flyerFromApiAlert, type AlertFlyerSession } from '../lib/alertFlyer';
