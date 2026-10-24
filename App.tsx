@@ -14,7 +14,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import IoniconsFont from '@expo/vector-icons/Ionicons';
+import Ionicons from './components/AppIcon';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 import ExploreScreen from './screens/ExploreScreen';
@@ -686,7 +687,7 @@ function ThemedAppShell() {
 
 export default function App() {
   const [fontsLoaded] = useFonts({
-    ...Ionicons.font,
+    ...IoniconsFont.font,
   });
 
   // SafeAreaProvider tiene que montarse en el primer frame, con las métricas

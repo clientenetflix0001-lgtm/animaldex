@@ -1,7 +1,7 @@
 import React, { memo, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Image } from 'expo-image';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,

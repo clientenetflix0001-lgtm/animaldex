@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from '../components/AppIcon';
 import { ReelCard } from '../components/ReelCard';
 import { db, timeAgoMinutes, type ApiComment, type ApiReel } from '../lib/db';
 import { useStore } from '../lib/store';

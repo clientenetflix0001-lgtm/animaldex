@@ -8,8 +8,8 @@
 // forma alguna de guardar texto que no corresponda a un lugar del catálogo
 // oficial. Si no hay coincidencias, no hay nada que elegir.
 //
-// GPS: coordenadas → reverseGeocodeAsync → catálogo embebido → GeoPlace.
-// La coordenada exacta no llega a esta pantalla.
+// GPS: coordenadas → reverseGeocodeAsync (nativo) o catálogo embebido (web)
+// → GeoPlace. La coordenada exacta no llega a esta pantalla. No llama a /geo.
 //
 // CC BY 4.0: pie de atribución obligatorio, porque acá los datos de Georef se
 // muestran al usuario por primera vez.
@@ -29,7 +29,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { GEO_ATTRIBUTION, coarseDistanceLabel, placeContextLabel, placeDisplayName } from '../lib/geoplace/format.ts';
 import { searchPlaces } from '../lib/geoplace/catalog.ts';
 import { resolveAdmin1Code } from '../lib/geoplace/aliases.ts';
@@ -80,7 +80,7 @@ type Mode =
   /** Resultado del GPS esperando que el usuario confirme. */
   | { kind: 'confirm'; resolution: PlaceResolution }
   | { kind: 'locating' }
-  | { kind: 'locate-error'; reason: 'permission-denied' | 'position-unavailable' };
+  | { kind: 'locate-error'; reason: 'permission-denied' | 'position-unavailable' | 'no-place' };
 
 const SEARCH_LIMIT = 20;
 
@@ -153,7 +153,7 @@ export function PlacePicker({
       return;
     }
     if (!res.candidates.length) {
-      setMode({ kind: 'search' });
+      setMode({ kind: 'locate-error', reason: 'no-place' });
       return;
     }
     setMode({ kind: 'confirm', resolution: res });
@@ -208,7 +208,9 @@ export function PlacePicker({
           <Text style={styles.emptyTitle}>
             {mode.reason === 'permission-denied'
               ? 'No tenemos permiso de ubicación'
-              : 'No pudimos obtener tu ubicación'}
+              : mode.reason === 'no-place'
+                ? 'No pudimos ubicar esa zona'
+                : 'No pudimos obtener tu ubicación'}
           </Text>
           <Text style={styles.emptyHint}>Podés buscarla escribiendo el nombre.</Text>
           <Pressable style={styles.secondaryBtn} onPress={() => setMode({ kind: 'search' })}>

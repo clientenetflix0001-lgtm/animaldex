@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from '../components/AppIcon';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useStore } from '../lib/store';
 import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';

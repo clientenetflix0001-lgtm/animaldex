@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { ApiListing } from '../lib/db';
 import { formatArs } from '../lib/market';
 import { listingPriceLabel } from '../lib/listingContact';

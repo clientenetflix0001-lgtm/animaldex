@@ -10,7 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from '../components/AppIcon';
 import { useNavigation } from '@react-navigation/native';
 import { sendVerificationCode, verifyCode } from '../lib/api';
 import { normalizePhone } from '../lib/phone';

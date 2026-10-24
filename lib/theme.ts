@@ -27,6 +27,10 @@ export { useAppTheme } from './themeContext.ts';
  */
 export const colors = lightColors;
 
+/** Iconos de interfaz en web. Native sigue usando text / primary / muted. */
+export const UI_ICON_LIGHT = '#000000';
+export const UI_ICON_DARK = '#FFFFFF';
+
 export const spacing = {
   xs: 4,
   sm: 8,

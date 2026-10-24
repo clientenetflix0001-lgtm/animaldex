@@ -6,10 +6,9 @@
 //   GPS → Location.reverseGeocodeAsync() → texto de municipio/departamento
 //       → catálogo GEO embebido → GeoPlace + IDs existentes
 //
-// El reverse geocoder del sistema operativo es rápido y ya distinguía
-// Cerrillos de Salta. El catálogo convierte ese texto en la identidad que
-// ya usan Alertas, Adopción y Páginas. `/geo` (Georef remoto) sigue en el
-// Worker por si otro sistema lo necesita; esta función ya no lo llama.
+// En web reverseGeocodeAsync no entrega texto (Expo SDK 49+). Ahí se usa
+// el catálogo embebido por cercanía de celda, siempre con confirmación.
+// No se llama a `/geo` (Georef remoto).
 //
 // PRIVACIDAD: la coordenada se obtiene acá y NO se devuelve al llamador.
 // Tampoco se manda al Worker. Esta función sólo entrega lugares del catálogo,
@@ -17,10 +16,11 @@
 // ============================================================
 
 import * as Location from 'expo-location';
+import { Platform } from 'react-native';
 import { placeById } from './geoplace/catalog.ts';
-import { resolutionFromGeocode } from './geoplace/fromGeocode.ts';
 import { GEO_COUNTRY_CODE, GEO_PROVIDER } from './geoplace/catalog.ts';
 import type { GeoCandidate, PlaceResolution } from './geoplace/types.ts';
+import { chooseLocateResolution, EMPTY_DEVICE_RESOLUTION } from './placeLocateResolution.ts';
 
 export type LocateFailure =
   /** El usuario no dio permiso de ubicación. */
@@ -79,29 +79,40 @@ export function resolutionFromWire(raw: any): PlaceResolution | null {
   };
 }
 
-const SAFE_EMPTY: PlaceResolution = {
-  administrativeArea: null,
-  candidates: [],
-  confidence: 'low',
-  requiresConfirmation: true,
-  source: 'device-geocode',
-  boundaryRisk: false,
-  governmentLocalCorroborated: false,
-  reason: 'no-candidates',
-};
+const SAFE_EMPTY = EMPTY_DEVICE_RESOLUTION;
+
+async function ensureForegroundPermission(): Promise<'granted' | 'denied' | 'unavailable'> {
+  try {
+    const current = await Location.getForegroundPermissionsAsync();
+    if (current.status === 'granted') return 'granted';
+    if (current.status === 'denied' && current.canAskAgain === false) return 'denied';
+    const requested = await Location.requestForegroundPermissionsAsync();
+    if (requested.status === 'granted') return 'granted';
+    return 'denied';
+  } catch {
+    try {
+      const requested = await Location.requestForegroundPermissionsAsync();
+      return requested.status === 'granted' ? 'granted' : 'unavailable';
+    } catch {
+      return 'unavailable';
+    }
+  }
+}
 
 /**
  * Pide la ubicación, la pasa por el reverse geocoder del dispositivo y la
  * normaliza contra el catálogo embebido.
  *
- * Nunca devuelve la coordenada del usuario. Si el geocoder falla, no se
- * inventa un lugar por cercanía de centroide: el usuario elige a mano.
+ * Nunca devuelve la coordenada del usuario. En Android, si el geocoder falla
+ * no se inventa un lugar por cercanía de centroide. En web, sin texto de
+ * geocoder, el catálogo local sugiere candidatos con confirmación.
  */
 export async function locateCurrentPlace(): Promise<LocateResult> {
   let coords: { latitude: number; longitude: number };
   try {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return { ok: false, reason: 'permission-denied' };
+    const permission = await ensureForegroundPermission();
+    if (permission === 'denied') return { ok: false, reason: 'permission-denied' };
+    if (permission !== 'granted') return { ok: false, reason: 'position-unavailable' };
     const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
     coords = pos.coords;
     if (!Number.isFinite(coords?.latitude) || !Number.isFinite(coords?.longitude)) {
@@ -111,24 +122,29 @@ export async function locateCurrentPlace(): Promise<LocateResult> {
     return { ok: false, reason: 'position-unavailable' };
   }
 
+  let geocode = null;
   try {
     const results = await Location.reverseGeocodeAsync({
       latitude: coords.latitude,
       longitude: coords.longitude,
     });
-    const r = results?.[0];
-    return {
-      ok: true,
-      ...resolutionFromGeocode({
-        city: r?.city ?? null,
-        subregion: r?.subregion ?? null,
-        region: r?.region ?? null,
-      }),
-    };
+    geocode = results?.[0] ?? null;
   } catch {
-    return { ok: true, ...SAFE_EMPTY };
+    geocode = null;
   }
+
+  return {
+    ok: true,
+    ...chooseLocateResolution({
+      platform: Platform.OS,
+      geocode,
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+    }),
+  };
 }
+
+export { SAFE_EMPTY };
 
 // `unambiguousPlace` vive en placeResolution.ts, que no importa expo-location
 // ni el cliente HTTP. Se reexporta para que las pantallas sigan pidiéndolo acá.

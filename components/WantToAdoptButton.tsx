@@ -1,6 +1,6 @@
 import React, { useEffect, memo } from 'react';
 import { Pressable, Text, StyleSheet, ViewStyle } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import Animated, {
   Easing,
   useAnimatedStyle,

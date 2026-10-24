@@ -12,7 +12,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from '../../components/AppIcon';
 import { useAppTheme, type ThemeColors, radius, spacing } from '../../lib/theme';
 import { useProfiles } from './ProfileContext';
 import { limitMessage, type ProfileType, type PublicProfile } from './profileTypes';
