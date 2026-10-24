@@ -1,7 +1,8 @@
 /**
  * Color de iconos de interfaz en web.
  * Tema claro: #000000. Tema oscuro: #FFFFFF.
- * El scheme lo decide useAppTheme() (sistema), no colors.bg estático.
+ * El scheme lo decide ThemeProvider → useAppTheme() (Appearance en
+ * Android, prefers-color-scheme en web). No usar colors.bg estático.
  * No se aplica a fotos, logo, overlays sobre media ni iconos semánticos
  * (error, alerta tipificada, WhatsApp, like activo, verificado).
  */

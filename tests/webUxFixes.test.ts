@@ -164,4 +164,22 @@ describe('Iconos web: negro en claro, blanco en oscuro', () => {
     assert.match(read('screens/FeedScreen.tsx'), /from '\.\.\/components\/AppIcon'/);
     assert.match(read('components/Sidebar.tsx'), /from '\.\/AppIcon'/);
   });
+
+  it('el scheme activo viene de ThemeProvider, no de colors.bg', () => {
+    const provider = read('lib/ThemeProvider.tsx');
+    const icon = read('components/AppIcon.tsx');
+    const webColor = read('lib/webIconColor.ts');
+    const appJson = JSON.parse(read('app.json'));
+    assert.match(provider, /Appearance\.getColorScheme/);
+    assert.match(provider, /Appearance\.addChangeListener/);
+    assert.match(provider, /schemeFromSystemAppearance/);
+    assert.doesNotMatch(provider, /useColorScheme\(\)/);
+    assert.match(read('lib/appTheme.ts'), /THEME_PREFERENCE: ThemePreference = 'system'/);
+    assert.match(icon, /useAppTheme\(\)/);
+    assert.doesNotMatch(icon, /colors\.bg/);
+    assert.doesNotMatch(webColor, /paletteIsDark\(colors\.bg\)/);
+    assert.match(webColor, /scheme === 'dark' \? UI_ICON_DARK : UI_ICON_LIGHT/);
+    assert.equal(appJson.expo.userInterfaceStyle, 'automatic');
+    assert.equal(appJson.expo.android.userInterfaceStyle, 'automatic');
+  });
 });
