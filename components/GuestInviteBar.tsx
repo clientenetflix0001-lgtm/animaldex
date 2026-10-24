@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 
 interface Props {

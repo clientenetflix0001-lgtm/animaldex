@@ -1,7 +1,7 @@
 import React, { memo, useMemo } from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { useAppTheme, type ThemeColors, spacing, radius, shadow } from '../lib/theme';
 import { qrLostPetMessage, qrLostPetQuestion, qrLostPetTitle } from '../lib/qrLostPet';
 import { centeredParentTextWrap } from '../lib/centeredText';

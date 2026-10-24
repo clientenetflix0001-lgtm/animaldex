@@ -14,7 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from '../components/AppIcon';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';

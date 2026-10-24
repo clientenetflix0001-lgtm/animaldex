@@ -8,7 +8,7 @@
 
 import React, { useMemo } from 'react';
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { geoCatalogMeta } from '../lib/geoplace/catalog.ts';
 import { useAppTheme, type ThemeColors, radius, shadow, spacing } from '../lib/theme';
 

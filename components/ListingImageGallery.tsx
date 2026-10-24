@@ -10,7 +10,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { Image } from 'expo-image';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { large } from '../lib/images';
 
 type Props = {

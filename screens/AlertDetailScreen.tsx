@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from '../components/AppIcon';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { db, ApiAlert, ApiComment, timeAgoMinutes } from '../lib/db';
 import { useStore } from '../lib/store';

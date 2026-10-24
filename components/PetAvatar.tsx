@@ -1,7 +1,7 @@
 import React, { memo, useMemo } from 'react';
 import { View, StyleSheet, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import { useAppTheme, type ThemeColors } from '../lib/theme';
 import { thumb } from '../lib/images';
 import { petPhotoUri } from '../lib/petAvatar';

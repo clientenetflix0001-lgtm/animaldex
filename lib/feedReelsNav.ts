@@ -49,3 +49,23 @@ export function planMainTabPress(input: {
 export function shouldPlayFeedReels(input: { page: FeedReelsPage; tabFocused: boolean }): boolean {
   return input.page === 1 && input.tabFocused;
 }
+
+/** Página 0/1 a partir del offset del pager horizontal. */
+export function pageFromPagerOffset(offsetX: number, width: number): FeedReelsPage {
+  if (!width || width <= 0 || !Number.isFinite(offsetX)) return 0;
+  const next = Math.round(offsetX / width);
+  return next <= 0 ? 0 : 1;
+}
+
+/**
+ * Devuelve la página a commitear, o null si no cambió.
+ * El swiper web no emite onMomentumScrollEnd de forma fiable.
+ */
+export function commitFeedPageFromOffset(
+  offsetX: number,
+  width: number,
+  current: FeedReelsPage
+): FeedReelsPage | null {
+  const next = pageFromPagerOffset(offsetX, width);
+  return next === current ? null : next;
+}

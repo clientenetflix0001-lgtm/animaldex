@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, PanResponder } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from './AppIcon';
 import type { ReelTextOverlay } from '../lib/reelOverlays';
 import { REEL_OVERLAY_SAFE, REEL_OVERLAY_TEXT_MAX, sanitizeOverlayText } from '../lib/reelOverlays';
 import { useAppTheme, type ThemeColors, radius } from '../lib/theme';

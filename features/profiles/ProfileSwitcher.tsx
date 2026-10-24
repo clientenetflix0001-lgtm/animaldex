@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Ionicons from '../../components/AppIcon';
 import { useAppTheme, type ThemeColors, radius, spacing } from '../../lib/theme';
 import { thumb, userFallbackAvatar } from '../../lib/images';
 import { useStore } from '../../lib/store';
