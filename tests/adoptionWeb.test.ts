@@ -135,7 +135,33 @@ describe('Worker: publicaciones sobre alerts', () => {
 
   it('la limpieza programada solo toca publicaciones sin cuenta de adopción', () => {
     assert.match(mod, /WHERE is_guest = 1 AND type = 'adoption' AND expires_at IS NOT NULL AND expires_at <= \?/);
-    assert.match(worker, /cleanupExpiredGuestAdoptions\(env, adoptionDeps\(\), nowMs\)/);
+    assert.match(worker, /cleanupExpiredGuestAdoptions\(env, adoptionDeps\(\), nowMs, \{ maxBatches: 1/);
+    assert.match(worker, /cleanupExpiredGuestAdoptions\(env, adoptionDeps\(\), nowMs, \{ maxBatches: 3/);
+    assert.match(mod, /env\.DB\.batch\(statements\)/);
+  });
+
+  it('una imagen se borra solo si ninguna alerta ni post la usa', () => {
+    assert.match(mod, /SELECT image FROM alerts WHERE image IN/);
+    assert.match(mod, /SELECT image FROM posts WHERE image IN/);
+  });
+
+  it('el límite por IP usa un registro propio que eliminar no toca', () => {
+    assert.match(mod, /const GUEST_RATE_TABLE = 'adoption_guest_rate'/);
+    assert.match(mod, /reserveGuestSlot\(env, deps, ipKey, now\)/);
+    assert.doesNotMatch(mod, /DELETE FROM \$\{GUEST_RATE_TABLE\} WHERE id IN/);
+    assert.match(mod, /env\.GUEST_POSTS_PER_IP_PER_DAY/);
+    assert.match(mod, /env\.GUEST_POSTS_GLOBAL_PER_HOUR/);
+  });
+
+  it('Turnstile exige success, hostname autorizado y la acción del formulario', () => {
+    assert.match(mod, /data\.success !== true/);
+    assert.match(mod, /turnstileAllowedHostnames\(env\)\.includes\(hostname\)/);
+    assert.match(mod, /data\.action !== TURNSTILE_ACTION/);
+  });
+
+  it('los recordatorios de renovación excluyen publicaciones sin cuenta', () => {
+    const fn = worker.slice(worker.indexOf('async function runAlertRenewalReminders'));
+    assert.match(fn.slice(0, 2000), /user_id NOT LIKE 'guest:%'/);
   });
 
   it('alertRow no expone la identidad interna de una publicación sin cuenta', () => {
