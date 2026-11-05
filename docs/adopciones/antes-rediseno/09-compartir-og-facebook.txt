@@ -1,0 +1,16 @@
+GET /a/alert-1789698918078-s3vztx  UA=facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)
+HTTP 200
+
+<meta name="description" content="laurag. publicó a Rambo en adopción en Salta Capital. Conocé su historia y ayudala/o a encontrar una familia." />
+<meta property="og:site_name" content="Animaldex" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="💜 Rambo está buscando una familia" />
+<meta property="og:description" content="laurag. publicó a Rambo en adopción en Salta Capital. Conocé su historia y ayudala/o a encontrar una familia." />
+<meta property="og:image" content="https://imagedelivery.net/8m1UaEl3HZU-HEHN3G4Exg/7e79755b-96c1-49b9-98fe-6f0229f7d200/public" />
+<meta property="og:image:width" content="600" />
+<meta property="og:image:height" content="600" />
+<meta property="og:url" content="https://animaldex.com/a/alert-1789698918078-s3vztx" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="💜 Rambo está buscando una familia" />
+<meta name="twitter:description" content="laurag. publicó a Rambo en adopción en Salta Capital. Conocé su historia y ayudala/o a encontrar una familia." />
+<meta name="twitter:image" content="https://imagedelivery.net/8m1UaEl3HZU-HEHN3G4Exg/7e79755b-96c1-49b9-98fe-6f0229f7d200/public" />

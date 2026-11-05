@@ -1,0 +1,70 @@
+[
+  {
+    "job": "04-adopcion-detalle-movil",
+    "closedPrompt": true,
+    "scroll": {
+      "h": 1205,
+      "c": 780
+    },
+    "shots": 2,
+    "actions": [
+      "alertDetail",
+      "alertComments"
+    ],
+    "buttons": [
+      "\nQuiero adoptarlo",
+      "🐾\nÚnete a Animaldex"
+    ]
+  },
+  {
+    "job": "05-adopcion-detalle-escritorio",
+    "closedPrompt": true,
+    "scroll": {
+      "h": 2460,
+      "c": 836
+    },
+    "shots": 4,
+    "actions": [
+      "alertDetail",
+      "alertComments"
+    ],
+    "buttons": [
+      "\nQuiero adoptarlo",
+      "🐾\nÚnete a Animaldex"
+    ]
+  },
+  {
+    "job": "06-adopcion-detalle-movil-oscuro",
+    "closedPrompt": true,
+    "scroll": {
+      "h": 1205,
+      "c": 780
+    },
+    "shots": 2,
+    "actions": [
+      "alertDetail",
+      "alertComments"
+    ],
+    "buttons": [
+      "\nQuiero adoptarlo",
+      "🐾\nÚnete a Animaldex"
+    ]
+  },
+  {
+    "job": "07-mascota-en-adopcion-perfil-movil",
+    "closedPrompt": true,
+    "scroll": {
+      "h": 944,
+      "c": 844
+    },
+    "shots": 2,
+    "actions": [
+      "petProfile",
+      "petPosts"
+    ],
+    "buttons": [
+      "",
+      "🐾\nÚnete a Animaldex"
+    ]
+  }
+]
