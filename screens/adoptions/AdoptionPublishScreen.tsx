@@ -1,5 +1,5 @@
 // ============================================================
-// Animaldex Adopciones — publicar (solo web). Con o sin cuenta.
+// Animaldex Adopciones — publicar (solo web, con cuenta).
 // A) Tomar foto  B) Subir foto  C) Subir flyer (sin datos extra).
 // Crea una alerta type='adoption' con la localidad fija de la URL.
 // ============================================================
@@ -12,12 +12,10 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as Clipboard from 'expo-clipboard';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '../../components/AppIcon';
@@ -27,8 +25,7 @@ import { useAppTheme, type ThemeColors, radius, spacing } from '../../lib/theme'
 import { RootStackParamList } from '../../lib/types';
 import { adoptionLocalityBySlug, DEFAULT_ADOPTION_SLUG } from '../../lib/adoptionLocalities';
 import { prepareAdoptionImage, type AdoptionImageKind } from '../../lib/adoptionImagePrep';
-import { guestManageUrl, saveGuestLink } from '../../lib/adoptionGuestLinks';
-import { TurnstileWidget, TURNSTILE_SITE_KEY } from '../../components/adoptions/TurnstileWidget';
+import { AdoptionAccountPrompt } from '../../components/adoptions/AdoptionAccountPrompt';
 import { shareAlert } from '../../lib/share';
 import { adoptionPostShareUrl } from '../../components/adoptions/useAdoptionPostActions';
 import { ADOPTIONS_MAX_WIDTH } from './AdoptionsWallScreen';
@@ -47,10 +44,8 @@ export default function AdoptionPublishScreen() {
   const route = useRoute<Rt>();
   const navigation = useNavigation<Nav>();
   const { user } = useStore();
-  const guest = !user;
   const place = adoptionLocalityBySlug(route.params?.city) || adoptionLocalityBySlug(DEFAULT_ADOPTION_SLUG)!;
   const city = place.slug;
-  const guestEnabled = !!TURNSTILE_SITE_KEY;
 
   const [source, setSource] = useState<Source | null>(null);
   const [image, setImage] = useState<{ dataUrl: string; previewUri: string } | null>(null);
@@ -60,13 +55,9 @@ export default function AdoptionPublishScreen() {
   const [sex, setSex] = useState<Sex>(null);
   const [description, setDescription] = useState('');
   const [contact, setContact] = useState('');
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const [turnstileKey, setTurnstileKey] = useState(0);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ alert: ApiAlert; manageUrl: string | null } | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
+  const [done, setDone] = useState<ApiAlert | null>(null);
 
   const kind: AdoptionImageKind = source === 'flyer' ? 'flyer' : 'photo';
 
@@ -99,12 +90,7 @@ export default function AdoptionPublishScreen() {
   }, [navigation, city]);
 
   const publish = useCallback(async () => {
-    if (!image || !source || publishing) return;
-    if (guest && !guestEnabled) return;
-    if (guest && !turnstileToken) {
-      setError('Esperá un segundo mientras verificamos que no seas un robot.');
-      return;
-    }
+    if (!image || !source || publishing || !user) return;
     if (kind === 'photo' && !contact.trim()) {
       setError('Agregá un WhatsApp o teléfono para que puedan contactarte.');
       return;
@@ -119,35 +105,14 @@ export default function AdoptionPublishScreen() {
         ...(kind === 'photo'
           ? { petName: petName.trim(), species, sex, description: description.trim(), contactWhatsapp: contact.trim() }
           : {}),
-        ...(guest && turnstileToken ? { turnstileToken } : {}),
       });
-      let manageUrl: string | null = null;
-      if (res.manageToken) {
-        manageUrl = guestManageUrl(city, res.alert.id, res.manageToken);
-        saveGuestLink({ alertId: res.alert.id, token: res.manageToken, city, expiresAt: res.expiresAt });
-      }
-      setDone({ alert: res.alert, manageUrl });
+      setDone(res.alert);
     } catch (e: any) {
       setError(e?.message || 'No se pudo publicar. Probá de nuevo.');
-      if (guest) {
-        setTurnstileToken(null);
-        setTurnstileKey((k) => k + 1);
-      }
     } finally {
       setPublishing(false);
     }
-  }, [image, source, publishing, guest, guestEnabled, turnstileToken, kind, contact, city, petName, species, sex, description]);
-
-  const copyManage = useCallback(async () => {
-    if (!done?.manageUrl) return;
-    try {
-      await Clipboard.setStringAsync(done.manageUrl);
-      setCopied(true);
-      setCopyFailed(false);
-    } catch {
-      setCopyFailed(true);
-    }
-  }, [done]);
+  }, [image, source, publishing, user, kind, contact, city, petName, species, sex, description]);
 
   const topBar = (
     <View style={styles.topBar}>
@@ -169,36 +134,17 @@ export default function AdoptionPublishScreen() {
           <View style={styles.doneBox}>
             <Text style={styles.doneTitle}>¡Publicada!</Text>
             <Text style={styles.doneText}>
-              {done.manageUrl
-                ? 'Tu publicación ya está en el muro y se mantiene visible durante 7 días.'
-                : 'Tu publicación ya está en el muro. Se mantiene activa 7 días y después podés renovarla.'}
+              Tu publicación ya está en el muro. Se mantiene activa 7 días y después podés renovarla.
             </Text>
-            {done.manageUrl ? (
-              <View style={styles.manageBox}>
-                <Text style={styles.manageTitle}>Guardá tu enlace</Text>
-                <Text style={styles.manageText}>
-                  Copiá y guardá este enlace: es la única forma de administrar o eliminar tu publicación, porque
-                  publicaste sin cuenta. No lo compartas: quien lo tenga puede eliminarla.
-                </Text>
-                {copyFailed ? (
-                  <Text style={styles.manageUrl} selectable>
-                    {done.manageUrl}
-                  </Text>
-                ) : null}
-                <Pressable style={styles.secondaryBtn} onPress={copyManage}>
-                  <Text style={styles.secondaryBtnText}>{copied ? 'Enlace copiado' : 'Copiar mi enlace'}</Text>
-                </Pressable>
-              </View>
-            ) : null}
             <Pressable
               style={styles.primaryBtn}
-              onPress={() => navigation.replace('AdoptionPost', { city, alertId: done.alert.id })}
+              onPress={() => navigation.replace('AdoptionPost', { city, alertId: done.id })}
             >
               <Text style={styles.primaryBtnText}>Ver publicación</Text>
             </Pressable>
             <Pressable
               style={styles.secondaryBtn}
-              onPress={() => shareAlert(done.alert, adoptionPostShareUrl(city, done.alert.id)).catch(() => {})}
+              onPress={() => shareAlert(done, adoptionPostShareUrl(city, done.id)).catch(() => {})}
             >
               <Text style={styles.secondaryBtnText}>Difundir</Text>
             </Pressable>
@@ -208,21 +154,27 @@ export default function AdoptionPublishScreen() {
     );
   }
 
-  const guestBlocked = guest && !guestEnabled;
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.content}>
+          {topBar}
+          <AdoptionAccountPrompt
+            title="Publicá una mascota en adopción"
+            message="Para publicar y administrar tus mascotas, necesitás una cuenta de Animaldex."
+            onLogin={() => navigation.navigate('Auth', { mode: 'login' })}
+            onRegister={() => navigation.navigate('Auth', { mode: 'register' })}
+            onCancel={goBack}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {topBar}
-
-        {guestBlocked ? (
-          <View style={styles.notice}>
-            <Text style={styles.noticeText}>Publicar sin cuenta todavía no está habilitado.</Text>
-            <Pressable onPress={() => navigation.navigate('Auth', { mode: 'login' })} hitSlop={6}>
-              <Text style={styles.noticeLink}>Iniciar sesión</Text>
-            </Pressable>
-          </View>
-        ) : null}
 
         {!image ? (
           <View style={styles.options}>
@@ -233,7 +185,7 @@ export default function AdoptionPublishScreen() {
               title="Tomar foto"
               text="Sacá una foto y completá los datos básicos."
               onPress={() => pick('camera')}
-              disabled={preparing || guestBlocked}
+              disabled={preparing}
             />
             <Option
               styles={styles}
@@ -242,7 +194,7 @@ export default function AdoptionPublishScreen() {
               title="Subir foto"
               text="Elegí una foto de tu galería y completá los datos."
               onPress={() => pick('gallery')}
-              disabled={preparing || guestBlocked}
+              disabled={preparing}
             />
             <Option
               styles={styles}
@@ -251,7 +203,7 @@ export default function AdoptionPublishScreen() {
               title="Subir flyer"
               text="Lo más rápido: subí tu flyer con los datos de contacto y publicá."
               onPress={() => pick('flyer')}
-              disabled={preparing || guestBlocked}
+              disabled={preparing}
             />
             {preparing ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.md }} /> : null}
           </View>
@@ -315,15 +267,13 @@ export default function AdoptionPublishScreen() {
             ) : null}
 
             <Text style={styles.hint}>
-              {`Se publica en ${place.locality}. ${guest ? 'Sin cuenta: visible 7 días.' : 'Activa 7 días; después podés renovarla.'}`}
+              {`Se publica en ${place.locality}. Activa 7 días; después podés renovarla.`}
             </Text>
 
-            {guest ? <TurnstileWidget key={turnstileKey} onToken={setTurnstileToken} /> : null}
-
             <Pressable
-              style={[styles.primaryBtn, (publishing || guestBlocked) && styles.disabled]}
+              style={[styles.primaryBtn, publishing && styles.disabled]}
               onPress={publish}
-              disabled={publishing || guestBlocked}
+              disabled={publishing}
             >
               {publishing ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Publicar</Text>}
             </Pressable>
@@ -331,9 +281,6 @@ export default function AdoptionPublishScreen() {
         )}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        {Platform.OS === 'web' && guest && !guestBlocked ? (
-          <Text style={styles.footNote}>Protegido por Cloudflare Turnstile.</Text>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -399,18 +346,6 @@ function makeStyles(colors: ThemeColors) {
     topBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
     topTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
     topSub: { fontSize: 12, color: colors.textMuted },
-    notice: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      alignItems: 'center',
-      gap: spacing.sm,
-      backgroundColor: colors.warningSoft,
-      borderRadius: radius.sm,
-      padding: spacing.md,
-      marginBottom: spacing.md,
-    },
-    noticeText: { color: colors.text, fontSize: 13 },
-    noticeLink: { color: colors.primary, fontWeight: '800', fontSize: 13 },
     options: { gap: spacing.sm },
     option: {
       flexDirection: 'row',
@@ -472,21 +407,8 @@ function makeStyles(colors: ThemeColors) {
     secondaryBtnText: { color: colors.text, fontWeight: '700', fontSize: 14 },
     disabled: { opacity: 0.5 },
     error: { color: '#E0483E', fontSize: 13, marginTop: spacing.md, textAlign: 'center' },
-    footNote: { color: colors.textMuted, fontSize: 11, marginTop: spacing.lg, textAlign: 'center' },
     doneBox: { gap: spacing.sm, paddingTop: spacing.md },
     doneTitle: { fontSize: 20, fontWeight: '800', color: colors.text },
     doneText: { fontSize: 14, color: colors.textMuted, lineHeight: 20 },
-    manageBox: {
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      padding: spacing.md,
-      marginTop: spacing.sm,
-      gap: 6,
-    },
-    manageTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
-    manageText: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
-    manageUrl: { fontSize: 12, color: colors.text },
   });
 }

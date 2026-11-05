@@ -40,7 +40,7 @@ export function adoptionLocalityBySlug(slug: unknown): AdoptionLocality | null {
 }
 
 /** Subrutas fijas de una localidad. No pueden ser ids de alerta. */
-export const ADOPTION_SUBPATHS = ['publicar', 'mis-publicaciones', 'gestionar'] as const;
+export const ADOPTION_SUBPATHS = ['publicar', 'mis-publicaciones'] as const;
 export type AdoptionSubpath = (typeof ADOPTION_SUBPATHS)[number];
 
 export function adoptionWallPath(slug: string): string {
@@ -59,8 +59,7 @@ export type AdoptionRoute =
   | { screen: 'AdoptionsWall'; params: { city: string } }
   | { screen: 'AdoptionPost'; params: { city: string; alertId: string } }
   | { screen: 'AdoptionPublish'; params: { city: string } }
-  | { screen: 'AdoptionMine'; params: { city: string } }
-  | { screen: 'AdoptionManage'; params: { city: string } };
+  | { screen: 'AdoptionMine'; params: { city: string } };
 
 /**
  * `/adopciones/<slug>[/<sub|id>]` → pantalla. Devuelve null para slugs que no
@@ -78,7 +77,7 @@ export function resolveAdoptionPath(parts: string[]): AdoptionRoute | null {
   if (!seg) return null;
   if (seg === 'publicar') return { screen: 'AdoptionPublish', params: { city } };
   if (seg === 'mis-publicaciones') return { screen: 'AdoptionMine', params: { city } };
-  if (seg === 'gestionar') return { screen: 'AdoptionManage', params: { city } };
+  if (seg === 'gestionar') return { screen: 'AdoptionsWall', params: { city } };
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(seg)) return null;
   return { screen: 'AdoptionPost', params: { city, alertId: seg } };
 }

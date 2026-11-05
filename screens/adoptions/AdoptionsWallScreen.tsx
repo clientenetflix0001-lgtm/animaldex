@@ -3,7 +3,7 @@
 // /adopciones/:city · reutiliza AlertCard y alertas type='adoption'.
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -16,6 +16,7 @@ import { RootStackParamList } from '../../lib/types';
 import { adoptionLocalityBySlug, DEFAULT_ADOPTION_SLUG } from '../../lib/adoptionLocalities';
 import { AlertCard } from '../../components/AlertCard';
 import { adoptionPostShareUrl, useAdoptionPostActions } from '../../components/adoptions/useAdoptionPostActions';
+import { AdoptionAccountPrompt } from '../../components/adoptions/AdoptionAccountPrompt';
 
 type Rt = RouteProp<RootStackParamList, 'AdoptionsWall'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -41,6 +42,7 @@ export default function AdoptionsWallScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
+  const [askAccount, setAskAccount] = useState(false);
   const loadingRef = useRef(false);
 
   const load = useCallback(
@@ -124,7 +126,7 @@ export default function AdoptionsWallScreen() {
       </View>
       <Pressable
         style={styles.publishBtn}
-        onPress={() => navigation.navigate('AdoptionPublish', { city })}
+        onPress={() => (guest ? setAskAccount(true) : navigation.navigate('AdoptionPublish', { city }))}
         accessibilityRole="button"
       >
         <Text style={styles.publishText}>+ Publicar mascota en adopción</Text>
@@ -168,6 +170,17 @@ export default function AdoptionsWallScreen() {
         showsVerticalScrollIndicator={false}
       />
       {guest && showInvite ? inviteBar : null}
+      <Modal visible={askAccount} transparent animationType="fade" onRequestClose={() => setAskAccount(false)}>
+        <View style={styles.modalBackdrop}>
+          <AdoptionAccountPrompt
+            title="Publicá una mascota en adopción"
+            message="Para publicar y administrar tus mascotas, necesitás una cuenta de Animaldex."
+            onLogin={() => navigation.navigate('Auth', { mode: 'login' })}
+            onRegister={() => navigation.navigate('Auth', { mode: 'register' })}
+            onCancel={() => setAskAccount(false)}
+          />
+        </View>
+      </Modal>
       {overlays}
     </SafeAreaView>
   );
@@ -196,5 +209,12 @@ function makeStyles(colors: ThemeColors) {
     loader: { marginTop: spacing.xl },
     empty: { padding: spacing.xl, alignItems: 'center' },
     emptyText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: spacing.lg,
+    },
   });
 }

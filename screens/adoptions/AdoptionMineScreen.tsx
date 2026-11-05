@@ -1,7 +1,6 @@
 // ============================================================
-// Animaldex Adopciones — Mis publicaciones (solo web).
-// Con cuenta: Ver, Renovar, Pausar/Reanudar, Eliminar.
-// Sin cuenta: enlaces privados guardados en este navegador.
+// Animaldex Adopciones — Mis publicaciones (solo web, con cuenta).
+// Ver, Renovar, Pausar/Reanudar, Eliminar. Sin sesión, invita a entrar.
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Platform, Alert } from 'react-native';
@@ -11,7 +10,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '../../components/AppIcon';
 import { db, type ApiAlert } from '../../lib/db';
 import { useStore } from '../../lib/store';
-import { useAppTheme, type ThemeColors, radius, spacing } from '../../lib/theme';
+import { useAppTheme, type ThemeColors, spacing } from '../../lib/theme';
 import { RootStackParamList } from '../../lib/types';
 import { adoptionLocalityBySlug, DEFAULT_ADOPTION_SLUG } from '../../lib/adoptionLocalities';
 import {
@@ -20,7 +19,7 @@ import {
   canRenewAdoptionPost,
   canResumeAdoptionPost,
 } from '../../lib/adoptionLifecycle';
-import { listGuestLinks, removeGuestLink, type GuestManageLink } from '../../lib/adoptionGuestLinks';
+import { AdoptionAccountPrompt } from '../../components/adoptions/AdoptionAccountPrompt';
 import { AdoptionPostRow, type RowAction } from '../../components/adoptions/AdoptionPostRow';
 import { ADOPTIONS_MAX_WIDTH } from './AdoptionsWallScreen';
 
@@ -48,8 +47,6 @@ function legacyRenewable(a: ApiAlert, now: number): boolean {
   return now - last >= ADOPTION_CYCLE_MS;
 }
 
-type GuestEntry = { link: GuestManageLink; alert: ApiAlert | null };
-
 export default function AdoptionMineScreen() {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -60,7 +57,6 @@ export default function AdoptionMineScreen() {
   const city = place.slug;
 
   const [mine, setMine] = useState<ApiAlert[]>([]);
-  const [guestEntries, setGuestEntries] = useState<GuestEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -70,25 +66,12 @@ export default function AdoptionMineScreen() {
     setLoading(true);
     setError(null);
     try {
-      if (user) {
-        const res = await db.myAdoptionPosts();
-        setMine(res.alerts);
-      } else {
+      if (!user) {
         setMine([]);
+        return;
       }
-      const links = listGuestLinks();
-      const entries = await Promise.all(
-        links.map(async (link) => {
-          try {
-            const res = await db.guestAdoptionStatus(link.alertId, link.token);
-            return { link, alert: res.alert };
-          } catch (e: any) {
-            if (e?.status === 404) removeGuestLink(link.alertId);
-            return { link, alert: null };
-          }
-        })
-      );
-      setGuestEntries(entries.filter((e) => e.alert));
+      const res = await db.myAdoptionPosts();
+      setMine(res.alerts);
     } catch (e: any) {
       setError(e?.message || 'No pudimos cargar tus publicaciones.');
     } finally {
@@ -143,28 +126,14 @@ export default function AdoptionMineScreen() {
     return list;
   };
 
-  const guestActions = (entry: GuestEntry): RowAction[] => [
-    { key: 'view', label: 'Ver', onPress: () => view(entry.link.alertId) },
-    {
-      key: 'delete',
-      label: 'Eliminar',
-      danger: true,
-      onPress: async () => {
-        if (!(await confirmAction('Eliminar publicación', 'Se borra la publicación. No se puede deshacer.'))) return;
-        run(entry.link.alertId, async () => {
-          await db.guestAdoptionDelete(entry.link.alertId, entry.link.token);
-          removeGuestLink(entry.link.alertId);
-        });
-      },
-    },
-  ];
+  const goBack = () => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('AdoptionsWall', { city }));
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topBar}>
           <Pressable
-            onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('AdoptionsWall', { city }))}
+            onPress={goBack}
             hitSlop={10}
             accessibilityLabel="Volver"
           >
@@ -179,6 +148,16 @@ export default function AdoptionMineScreen() {
         {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
+        {!loading && !user ? (
+          <AdoptionAccountPrompt
+            title="Tus publicaciones"
+            message="Para ver y administrar tus publicaciones, iniciá sesión o creá una cuenta."
+            onLogin={() => navigation.navigate('Auth', { mode: 'login' })}
+            onRegister={() => navigation.navigate('Auth', { mode: 'register' })}
+            onCancel={goBack}
+          />
+        ) : null}
+
         {!loading && user ? (
           <View style={styles.section}>
             {mine.length === 0 ? (
@@ -188,37 +167,6 @@ export default function AdoptionMineScreen() {
                 <AdoptionPostRow key={a.id} alert={a} now={now} actions={accountActions(a)} busy={busyId === a.id} />
               ))
             )}
-          </View>
-        ) : null}
-
-        {!loading && guestEntries.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Publicadas sin cuenta en este dispositivo</Text>
-            {guestEntries.map((e) =>
-              e.alert ? (
-                <AdoptionPostRow
-                  key={e.link.alertId}
-                  alert={e.alert}
-                  now={now}
-                  actions={guestActions(e)}
-                  busy={busyId === e.link.alertId}
-                  note="Se elimina automáticamente al vencer."
-                />
-              ) : null
-            )}
-          </View>
-        ) : null}
-
-        {!loading && !user ? (
-          <View style={styles.guestBox}>
-            <Text style={styles.guestText}>
-              {guestEntries.length === 0
-                ? 'Si publicaste sin cuenta, abrí el enlace privado que recibiste al publicar.'
-                : 'Para renovar o pausar publicaciones, publicá con una cuenta.'}
-            </Text>
-            <Pressable onPress={() => navigation.navigate('Auth', { mode: 'login' })} hitSlop={6}>
-              <Text style={styles.link}>Iniciar sesión</Text>
-            </Pressable>
           </View>
         ) : null}
       </ScrollView>
@@ -240,19 +188,7 @@ function makeStyles(colors: ThemeColors) {
     topTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
     topSub: { fontSize: 12, color: colors.textMuted },
     section: { gap: spacing.sm, marginTop: spacing.sm },
-    sectionTitle: { fontSize: 13, fontWeight: '800', color: colors.textMuted, marginTop: spacing.md },
     empty: { color: colors.textMuted, fontSize: 14, textAlign: 'center', marginTop: spacing.xl },
     error: { color: '#E0483E', fontSize: 13, textAlign: 'center', marginTop: spacing.md },
-    guestBox: {
-      marginTop: spacing.lg,
-      padding: spacing.md,
-      borderRadius: radius.md,
-      backgroundColor: colors.card,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      gap: spacing.sm,
-    },
-    guestText: { color: colors.text, fontSize: 13, lineHeight: 18 },
-    link: { color: colors.primary, fontWeight: '800', fontSize: 13 },
   });
 }

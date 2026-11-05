@@ -258,7 +258,6 @@ export interface ApiAlert {
   userAvatar: string | null;
   /** Solo publicaciones creadas desde Animaldex Adopciones web. */
   mediaKind?: 'photo' | 'flyer' | null;
-  isGuest?: boolean;
   expiresAt?: number | null;
   pausedAt?: number | null;
 }
@@ -786,8 +785,7 @@ export const db = {
     description?: string;
     contactWhatsapp?: string;
     contactPhone?: string;
-    turnstileToken?: string;
-  }): Promise<{ alert: ApiAlert; manageToken: string | null; expiresAt: number }> =>
+  }): Promise<{ alert: ApiAlert; expiresAt: number }> =>
     call('/db', { action: 'createAdoptionPost', ...post }),
   myAdoptionPosts: (): Promise<{ alerts: ApiAlert[] }> => call('/db', { action: 'myAdoptionPosts' }),
   pauseAdoptionPost: (alertId: string): Promise<{ alert: ApiAlert }> =>
@@ -799,10 +797,6 @@ export const db = {
   deleteAdoptionPost: (alertId: string): Promise<{ ok: boolean }> =>
     call('/db', { action: 'deleteAdoptionPost', alertId }),
   reportAlert: (alertId: string): Promise<{ ok: boolean }> => call('/db', { action: 'reportAlert', alertId }),
-  guestAdoptionStatus: (alertId: string, token: string): Promise<{ alert: ApiAlert; expiresAt: number | null }> =>
-    call('/db', { action: 'guestAdoptionStatus', alertId, token }),
-  guestAdoptionDelete: (alertId: string, token: string): Promise<{ ok: boolean }> =>
-    call('/db', { action: 'guestAdoptionDelete', alertId, token }),
 
   // ---------- Mercado (productos y servicios) ----------
   listingsFeed: (params: {

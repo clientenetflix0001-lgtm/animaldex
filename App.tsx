@@ -55,7 +55,6 @@ import AdoptionDiscoveryScreen from './screens/AdoptionDiscoveryScreen';
 import AdoptionsWallScreen from './screens/adoptions/AdoptionsWallScreen';
 import AdoptionPublishScreen from './screens/adoptions/AdoptionPublishScreen';
 import AdoptionMineScreen from './screens/adoptions/AdoptionMineScreen';
-import AdoptionManageScreen from './screens/adoptions/AdoptionManageScreen';
 import MyPetsScreen from './screens/MyPetsScreen';
 
 import { StoreProvider, useStore } from './lib/store';
@@ -280,7 +279,6 @@ const ADOPTION_WEB_SCREENS = {
   AdoptionsWall: 'adopciones/:city',
   AdoptionPublish: 'adopciones/:city/publicar',
   AdoptionMine: 'adopciones/:city/mis-publicaciones',
-  AdoptionManage: 'adopciones/:city/gestionar',
   AdoptionPost: 'adopciones/:city/:alertId',
 } as const;
 
@@ -296,7 +294,6 @@ function adoptionWebScreens(colors: ThemeColors) {
       />
       <Stack.Screen name="AdoptionPublish" component={AdoptionPublishScreen} options={{ headerShown: false, title: 'Publicar en adopción' }} />
       <Stack.Screen name="AdoptionMine" component={AdoptionMineScreen} options={{ headerShown: false, title: 'Mis publicaciones' }} />
-      <Stack.Screen name="AdoptionManage" component={AdoptionManageScreen} options={{ headerShown: false, title: 'Tu publicación' }} />
     </>
   );
 }

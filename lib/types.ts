@@ -62,7 +62,6 @@ export type RootStackParamList = {
   AdoptionPost: { city: string; alertId: string };
   AdoptionPublish: { city: string };
   AdoptionMine: { city: string };
-  AdoptionManage: { city: string };
   CreateReel: undefined;
   CreateStory: undefined;
   StoryViewer: {
