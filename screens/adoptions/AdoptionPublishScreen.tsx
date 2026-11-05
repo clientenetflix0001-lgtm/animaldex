@@ -66,6 +66,7 @@ export default function AdoptionPublishScreen() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ alert: ApiAlert; manageUrl: string | null } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   const kind: AdoptionImageKind = source === 'flyer' ? 'flyer' : 'photo';
 
@@ -142,7 +143,10 @@ export default function AdoptionPublishScreen() {
     try {
       await Clipboard.setStringAsync(done.manageUrl);
       setCopied(true);
-    } catch {}
+      setCopyFailed(false);
+    } catch {
+      setCopyFailed(true);
+    }
   }, [done]);
 
   const topBar = (
@@ -171,16 +175,18 @@ export default function AdoptionPublishScreen() {
             </Text>
             {done.manageUrl ? (
               <View style={styles.manageBox}>
-                <Text style={styles.manageTitle}>Tu enlace privado</Text>
+                <Text style={styles.manageTitle}>Guardá tu enlace</Text>
                 <Text style={styles.manageText}>
-                  Guardalo para ver el tiempo restante o eliminar la publicación. No lo compartas: quien lo tenga puede
-                  eliminarla.
+                  Copiá y guardá este enlace: es la única forma de administrar o eliminar tu publicación, porque
+                  publicaste sin cuenta. No lo compartas: quien lo tenga puede eliminarla.
                 </Text>
-                <Text style={styles.manageUrl} selectable numberOfLines={2}>
-                  {done.manageUrl}
-                </Text>
+                {copyFailed ? (
+                  <Text style={styles.manageUrl} selectable>
+                    {done.manageUrl}
+                  </Text>
+                ) : null}
                 <Pressable style={styles.secondaryBtn} onPress={copyManage}>
-                  <Text style={styles.secondaryBtnText}>{copied ? 'Enlace copiado' : 'Copiar enlace privado'}</Text>
+                  <Text style={styles.secondaryBtnText}>{copied ? 'Enlace copiado' : 'Copiar mi enlace'}</Text>
                 </Pressable>
               </View>
             ) : null}
