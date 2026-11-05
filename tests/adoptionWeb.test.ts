@@ -145,6 +145,30 @@ describe('Worker: publicaciones sobre alerts', () => {
     assert.match(mod, /SELECT image FROM posts WHERE image IN/);
   });
 
+  it('la imagen queda registrada en la misma transacción que borra la publicación', () => {
+    const body = mod.slice(mod.indexOf('async function deleteAdoptionRows'));
+    const batchAt = body.indexOf('await env.DB.batch(statements)');
+    const insertAt = body.indexOf('pendingImageStatement(env, image, now)');
+    assert.ok(insertAt > 0 && batchAt > insertAt);
+    assert.match(mod, /INSERT INTO \$\{IMAGE_DELETE_TABLE\}/);
+    assert.match(mod, /adoption_image_deletions/);
+    assert.match(body, /drain: false/);
+  });
+
+  it('un fallo de Cloudflare conserva la tarea, revisa resp.ok y no reintenta en la misma pasada', () => {
+    assert.match(mod, /resp\.status === 404/);
+    assert.match(mod, /!resp\.ok/);
+    assert.match(mod, /status = 'error'/);
+    assert.match(mod, /imageDeleteBackoffMs\(row\.attempts\)/);
+    assert.match(mod, /IMAGE_DELETE_MAX_ATTEMPTS/);
+    assert.doesNotMatch(mod.slice(mod.indexOf('async function processImageDeletionPass'), mod.indexOf('export async function processPendingImageDeletions')), /for \(let attempt/);
+  });
+
+  it('el cron drena la cola de imágenes en lotes chicos', () => {
+    assert.match(worker, /processPendingImageDeletions\(env, adoptionDeps\(\), nowMs, \{ maxPasses: 2, budgetMs: 4_000 \}\)/);
+    assert.match(worker, /processPendingImageDeletions\(env, adoptionDeps\(\), nowMs, \{ maxPasses: 1, budgetMs: 4_000 \}\)/);
+  });
+
   it('el límite por IP usa un registro propio que eliminar no toca', () => {
     assert.match(mod, /const GUEST_RATE_TABLE = 'adoption_guest_rate'/);
     assert.match(mod, /reserveGuestSlot\(env, deps, ipKey, now\)/);
