@@ -51,8 +51,10 @@ export default function AlertDetailScreen() {
   const { user } = useStore();
   const { guest, requireLogin, inviteBar, goBackOrClose } = useGuestAccess({ headerClose: true });
   const { alertId } = route.params;
-  // Solo la ruta web /adopciones/:city/:alertId. /a/:id y Android no cambian.
+  // Solo la ruta web /adopciones/:city/:alertId (Difundir, denuncia, URL de la sección).
   const adoptionSection = route.name === 'AdoptionPost';
+  // Modal de flyer sin contacto: también en /a/:id, pero solo en web. Android no cambia.
+  const flyerModalEnabled = adoptionSection || Platform.OS === 'web';
   const adoptionCity =
     (route.params as RootStackParamList['AdoptionPost']).city || DEFAULT_ADOPTION_SLUG;
   const adoptionActions = useAdoptionPostActions();
@@ -109,12 +111,12 @@ export default function AlertDetailScreen() {
     if (!alert || adopting) return;
     setAdopting(true);
     try {
-      if (adoptionSection) await adoptionActions.adopt(alert);
+      if (flyerModalEnabled) await adoptionActions.adopt(alert);
       else await openAlertAdoption(alert);
     } finally {
       setAdopting(false);
     }
-  }, [alert, adopting, adoptionSection, adoptionActions]);
+  }, [alert, adopting, flyerModalEnabled, adoptionActions]);
 
   const handleReport = useCallback(() => {
     if (!alert || reported) return;
@@ -383,7 +385,7 @@ export default function AlertDetailScreen() {
           </View>
         </CommentKeyboardView>
       )}
-      {adoptionSection ? adoptionActions.overlays : null}
+      {flyerModalEnabled ? adoptionActions.overlays : null}
     </SafeAreaView>
   );
 }
