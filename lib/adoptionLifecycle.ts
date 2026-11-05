@@ -38,6 +38,41 @@ export const GUEST_RATE_RETENTION_MS = 2 * DAY_MS;
  */
 export const GUEST_CLEANUP_BATCH_SIZE = 10;
 
+/**
+ * Imágenes de Cloudflare procesadas por pasada. El cron de 5 minutos hace
+ * como mucho dos pasadas (10 borrados) y el diario una, para no sumar carga
+ * a las notificaciones.
+ */
+export const IMAGE_DELETE_BATCH_SIZE = 5;
+
+/** Pasadas de la cola dentro de una misma ejecución. Nunca más de dos. */
+export const IMAGE_DELETE_MAX_PASSES = 2;
+
+/** Intentos automáticos por imagen. Después queda en estado `error`, con la referencia intacta. */
+export const IMAGE_DELETE_MAX_ATTEMPTS = 8;
+
+/**
+ * Reserva de una tarea ya tomada. Otro cron no la vuelve a tomar hasta que
+ * pase este plazo, o hasta que esta ejecución le ponga la próxima espera.
+ */
+export const IMAGE_DELETE_LEASE_MS = 10 * 60 * 1000;
+
+/** Espera antes de reintentar, según el número de intento (1 = el primero que falló). */
+const IMAGE_DELETE_BACKOFF_MS = [
+  5 * 60 * 1000,
+  15 * 60 * 1000,
+  60 * 60 * 1000,
+  4 * 60 * 60 * 1000,
+  12 * 60 * 60 * 1000,
+  24 * 60 * 60 * 1000,
+  48 * 60 * 60 * 1000,
+];
+
+export function imageDeleteBackoffMs(attempts: number): number {
+  const i = Math.min(Math.max(Math.floor(attempts) || 1, 1), IMAGE_DELETE_BACKOFF_MS.length) - 1;
+  return IMAGE_DELETE_BACKOFF_MS[i];
+}
+
 /** Acción que el widget declara y el Worker exige en siteverify. */
 export const TURNSTILE_ACTION = 'adoption_publish';
 

@@ -36,6 +36,7 @@ import {
   alertVisibilitySql,
   cleanupExpiredGuestAdoptions,
   guestPostGone,
+  processPendingImageDeletions,
   handleAuthAdoptionAction,
   handlePublicAdoptionAction,
   renewAlertLifecycleSql,
@@ -4695,7 +4696,8 @@ export default {
 
   async scheduled(event, env) {
     const nowMs = event && event.scheduledTime ? Number(event.scheduledTime) : Date.now();
-    // */5 * * * * → solo flush. 0 11 * * * → tareas diarias (y un flush extra).
+    // */5 * * * * → flush, un lote de publicaciones vencidas y la cola de imágenes.
+    // 0 11 * * * → tareas diarias (y un flush extra).
     if (scheduledJobKind(event && event.cron) === 'push_flush') {
       try {
         await flushDuePushBatches(env, notifyUserPush, nowMs);
@@ -4706,6 +4708,12 @@ export default {
         await cleanupExpiredGuestAdoptions(env, adoptionDeps(), nowMs, { maxBatches: 1, budgetMs: 8_000 });
       } catch (e) {
         console.log('guest-adoption-cleanup', e && e.message);
+      }
+      try {
+        // Dos pasadas de 5, solo si la primera vino llena. Presupuesto corto.
+        await processPendingImageDeletions(env, adoptionDeps(), nowMs, { maxPasses: 2, budgetMs: 4_000 });
+      } catch (e) {
+        console.log('adoption-image-cleanup', e && e.message);
       }
       return;
     }
@@ -4743,6 +4751,12 @@ export default {
       await cleanupExpiredGuestAdoptions(env, adoptionDeps(), nowMs, { maxBatches: 3, budgetMs: 15_000, purgeRate: true });
     } catch (e) {
       console.log('guest-adoption-cleanup', e && e.message);
+    }
+    try {
+      // Una sola pasada: el cron de 5 minutos es el que drena la cola.
+      await processPendingImageDeletions(env, adoptionDeps(), nowMs, { maxPasses: 1, budgetMs: 4_000 });
+    } catch (e) {
+      console.log('adoption-image-cleanup', e && e.message);
     }
   },
 };
