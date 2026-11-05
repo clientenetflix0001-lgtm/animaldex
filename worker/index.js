@@ -818,6 +818,7 @@ async function runAlertRenewalReminders(env, nowMs = Date.now()) {
           AND resolved_at IS NULL
           AND COALESCE(renewed_at, created_at) <= ?
           AND (renewal_notified_at IS NULL OR renewal_notified_at < COALESCE(renewed_at, created_at))
+          AND user_id NOT LIKE 'guest:%'
         LIMIT 40`,
       [dueBefore]
     );
@@ -4701,6 +4702,11 @@ export default {
       } catch (e) {
         console.log('push-batches', e && e.message);
       }
+      try {
+        await cleanupExpiredGuestAdoptions(env, adoptionDeps(), nowMs, { maxBatches: 1, budgetMs: 8_000 });
+      } catch (e) {
+        console.log('guest-adoption-cleanup', e && e.message);
+      }
       return;
     }
     try {
@@ -4734,7 +4740,7 @@ export default {
       console.log('story-cleanup', e && e.message);
     }
     try {
-      await cleanupExpiredGuestAdoptions(env, adoptionDeps(), nowMs);
+      await cleanupExpiredGuestAdoptions(env, adoptionDeps(), nowMs, { maxBatches: 3, budgetMs: 15_000, purgeRate: true });
     } catch (e) {
       console.log('guest-adoption-cleanup', e && e.message);
     }
