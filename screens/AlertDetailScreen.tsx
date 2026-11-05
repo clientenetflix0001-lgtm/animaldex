@@ -10,11 +10,15 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
+  Platform,
+  Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '../components/AppIcon';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiAlert, ApiComment, timeAgoMinutes } from '../lib/db';
 import { useStore } from '../lib/store';
 import { shareAlert } from '../lib/share';
@@ -30,16 +34,29 @@ import { CommentKeyboardView } from '../components/CommentKeyboardView';
 import { adoptCtaLabel } from '../lib/adoptionContact';
 import { openAlertAdoption } from '../lib/openAlertAdoption';
 import { useGuestAccess } from '../lib/guestAccess';
+import { DEFAULT_ADOPTION_SLUG } from '../lib/adoptionLocalities';
+import { adoptionPostShareUrl, useAdoptionPostActions } from '../components/adoptions/useAdoptionPostActions';
 
-type Rt = RouteProp<RootStackParamList, 'AlertDetail'>;
+type Rt = RouteProp<RootStackParamList, 'AlertDetail' | 'AdoptionPost'>;
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+const DIFUNDIR_LABEL_MIN_WIDTH = 400;
 
 export default function AlertDetailScreen() {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const route = useRoute<Rt>();
+  const navigation = useNavigation<Nav>();
+  const { width } = useWindowDimensions();
   const { user } = useStore();
   const { guest, requireLogin, inviteBar, goBackOrClose } = useGuestAccess({ headerClose: true });
   const { alertId } = route.params;
+  // Solo la ruta web /adopciones/:city/:alertId. /a/:id y Android no cambian.
+  const adoptionSection = route.name === 'AdoptionPost';
+  const adoptionCity =
+    (route.params as RootStackParamList['AdoptionPost']).city || DEFAULT_ADOPTION_SLUG;
+  const adoptionActions = useAdoptionPostActions();
+  const [reported, setReported] = useState(false);
 
   const [alert, setAlert] = useState<ApiAlert | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,21 +99,52 @@ export default function AlertDetailScreen() {
     if (!alert || sharing) return;
     setSharing(true);
     try {
-      await shareAlert(alert);
+      await shareAlert(alert, adoptionSection ? adoptionPostShareUrl(adoptionCity, alert.id) : undefined);
     } finally {
       setSharing(false);
     }
-  }, [alert, sharing]);
+  }, [alert, sharing, adoptionSection, adoptionCity]);
 
   const handleAdopt = useCallback(async () => {
     if (!alert || adopting) return;
     setAdopting(true);
     try {
-      await openAlertAdoption(alert);
+      if (adoptionSection) await adoptionActions.adopt(alert);
+      else await openAlertAdoption(alert);
     } finally {
       setAdopting(false);
     }
-  }, [alert, adopting]);
+  }, [alert, adopting, adoptionSection, adoptionActions]);
+
+  const handleReport = useCallback(() => {
+    if (!alert || reported) return;
+    if (guest) { requireLogin(); return; }
+    const send = () => {
+      db.reportAlert(alert.id)
+        .then(() => {
+          setReported(true);
+          if (Platform.OS === 'web') window.alert('Gracias. Vamos a revisar la publicación.');
+          else Alert.alert('Gracias', 'Vamos a revisar la publicación.');
+        })
+        .catch((e: any) => {
+          const msg = e?.message || 'No se pudo enviar la denuncia.';
+          if (Platform.OS === 'web') window.alert(msg);
+          else Alert.alert('Error', msg);
+        });
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Denunciar esta publicación por contenido inapropiado o engañoso?')) send();
+    } else {
+      Alert.alert('Denunciar', '¿Denunciar esta publicación?', [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Denunciar', style: 'destructive', onPress: send },
+      ]);
+    }
+  }, [alert, reported, guest, requireLogin]);
+
+  const backToWall = useCallback(() => {
+    navigation.navigate('AdoptionsWall', { city: adoptionCity });
+  }, [navigation, adoptionCity]);
 
   const send = useCallback(async () => {
     if (guest) { requireLogin(); return; }
@@ -145,9 +193,9 @@ export default function AlertDetailScreen() {
           <Text style={styles.notFoundText}>Este enlace ya no está disponible.</Text>
           <Pressable
             style={styles.notFoundBtn}
-            onPress={goBackOrClose}
+            onPress={adoptionSection ? backToWall : goBackOrClose}
           >
-            <Text style={styles.notFoundBtnText}>Volver</Text>
+            <Text style={styles.notFoundBtnText}>{adoptionSection ? 'Ver adopciones' : 'Volver'}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -213,7 +261,22 @@ export default function AlertDetailScreen() {
             <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
           </Pressable>
         ) : alert.type === 'adoption' && !resolved ? (
-          <WantToAdoptButton label={adoptCtaLabel(alert.sex)} onPress={handleAdopt} />
+          <>
+            <WantToAdoptButton label={adoptCtaLabel(alert.sex)} onPress={handleAdopt} />
+            {adoptionSection ? (
+              <Pressable
+                onPress={handleShare}
+                disabled={sharing}
+                hitSlop={8}
+                style={styles.actionBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Difundir"
+              >
+                <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
+                {width >= DIFUNDIR_LABEL_MIN_WIDTH ? <Text style={styles.actionCount}>Difundir</Text> : null}
+              </Pressable>
+            ) : null}
+          </>
         ) : (
           <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
             <Ionicons name="paw" size={15} color="#fff" />
@@ -224,6 +287,11 @@ export default function AlertDetailScreen() {
 
       <Text style={styles.description}>{alert.description}</Text>
       {alert.username && <Text style={styles.postedBy}>Publicado por {alert.username}</Text>}
+      {adoptionSection && user?.id !== alert.userId ? (
+        <Pressable onPress={handleReport} disabled={reported} hitSlop={6} accessibilityRole="button">
+          <Text style={styles.postedBy}>{reported ? 'Denuncia enviada' : 'Denunciar publicación'}</Text>
+        </Pressable>
+      ) : null}
 
       <Text style={styles.commentsTitle}>
         Comentarios {displayComments.length > 0 ? `(${displayComments.length})` : ''}
@@ -315,6 +383,7 @@ export default function AlertDetailScreen() {
           </View>
         </CommentKeyboardView>
       )}
+      {adoptionSection ? adoptionActions.overlays : null}
     </SafeAreaView>
   );
 }
