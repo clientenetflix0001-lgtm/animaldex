@@ -166,6 +166,27 @@ memoria de cada isolate (`:1103-1121`). Se sube a Cloudflare Images y se sirve d
 
 ---
 
+## 7b. Detalles adicionales verificados
+
+- `AdoptionDiscovery` también está registrada en cada pila de pestañas (`lib/tabProfileStack.tsx:52`)
+  y se abre desde el perfil de usuario (`screens/UserProfileScreen.tsx:304`), además de Inicio.
+- Las mascotas de refugio en adopción se crean desde `screens/AddPetScreen.tsx`, que pone
+  `care_status = 'en_adopcion'` por defecto en un perfil de Bienestar Animal (`lib/petFields.ts:59-60`).
+- `PetProfileScreen` **no** muestra «Quiero adoptarlo». Ese botón solo aparece en la tarjeta del
+  muro, en `AlertCard` (`components/AlertCard.tsx:133-134`) y en `AlertDetailScreen`
+  (`lib/openAlertAdoption.ts`).
+- El listado y el detalle de alertas **no exponen** WhatsApp ni teléfono (`alertRow`,
+  `worker/index.js:1603-1637`). El contacto solo se obtiene al tocar el botón, mediante
+  `alertAdoptionContact` o `adoptionContact`.
+- El muro no tiene filtro por edad; la edad solo se muestra.
+- Las imágenes se guardan en Cloudflare Images. No se usa R2. Tamaño máximo de 8 MB y
+  formatos jpeg, png, webp y gif (`worker/imageUpload.js`).
+- En web, compartir usa `navigator.share` o el portapapeles; en Android, `Share.share`
+  (`lib/share.ts:271-298`). El flyer se captura con `react-native-view-shot` y se comparte con
+  `expo-sharing` (`lib/alertFlyerShare.ts`).
+- Las App Links de Android (`app.json:41-53`) cubren `/p/`, `/pet/`, `/a/`, `/m/`, `/r/` y
+  `/transfer/`, pero **no** `/adopciones/`.
+
 ## 8. Qué preservar en el rediseño
 
 1. `placeId` como identidad territorial (`AR:georef:66028050` para Salta Capital) y su filtro en el Worker.

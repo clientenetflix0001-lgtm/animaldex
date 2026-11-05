@@ -110,7 +110,11 @@ el filtro territorial existente (`worker/geoFilter.js`). No usa GPS: la localida
 - `OG_PATH_RE` en `cf-pages-worker.src.js:557`.
 
 Hay que agregar `adopciones` a `RESERVED_PUBLIC_USERNAMES` en los tres lugares sincronizados
-(`lib/publicHandles.ts:10-13`). Hoy ningún usuario ni perfil se llama así (verificado con un
+(`lib/publicHandles.ts:10-13`). Uno de ellos es `spaReserved` en `cf-pages-worker.src.js:633-638`.
+También hay que agregar la ruta en `getStateFromPublicPath` (`lib/webLinking.ts`) y en
+`resolveAppLink` (`lib/appLinks.ts`). Si se quiere que esos enlaces abran la app Android,
+hace falta un `pathPrefix` `/adopciones/` en `app.json`, y eso requiere una build nueva:
+una OTA no alcanza. Hoy ningún usuario ni perfil se llama así (verificado con un
 SELECT en D1).
 
 ### 2.5 Frontend: dentro de la app Expo web
