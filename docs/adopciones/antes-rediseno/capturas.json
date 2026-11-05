@@ -1,0 +1,151 @@
+[
+  {
+    "shot": "01-visitante-inicio-movil",
+    "requested": "/",
+    "finalUrl": "https://animaldex.com/entrar",
+    "scheme": "light",
+    "apiCalls": [],
+    "text": "🐾\nAnimaldex\nLa red social de tus mascotas\nIniciar sesión\nCrear cuenta\n\n\n\nEntrar\n¿Primera vez? Toca \"Crear cuenta\" para unirte en segundos."
+  },
+  {
+    "shot": "02-visitante-inicio-escritorio",
+    "requested": "/",
+    "finalUrl": "https://animaldex.com/entrar",
+    "scheme": "light",
+    "apiCalls": [],
+    "text": "🐾\nAnimaldex\nLa red social de tus mascotas\n📸\nComparte los mejores momentos de tus peluditos\n❤️\nLikes, comentarios y seguidores reales\n🐕\nUn perfil único para cada mascota\n☁️\nTus fotos seguras en la nube\nIniciar sesión\nCrear cuenta\n\n\n\nEntrar\n¿Primera vez? Toca \"Crear cuenta\" para unirte en segundos."
+  },
+  {
+    "shot": "03-visitante-alertas-sin-sesion-movil",
+    "requested": "/alertas",
+    "finalUrl": "https://animaldex.com/entrar",
+    "scheme": "light",
+    "apiCalls": [],
+    "text": "🐾\nAnimaldex\nLa red social de tus mascotas\nIniciar sesión\nCrear cuenta\n\n\n\nEntrar\n¿Primera vez? Toca \"Crear cuenta\" para unirte en segundos."
+  },
+  {
+    "shot": "04-adopcion-detalle-movil",
+    "requested": "/a/alert-1789698918078-s3vztx",
+    "finalUrl": "https://animaldex.com/a/alert-1789698918078-s3vztx",
+    "scheme": "light",
+    "apiCalls": [
+      {
+        "method": "OPTIONS",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": null
+      },
+      {
+        "method": "OPTIONS",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": "alertDetail"
+      },
+      {
+        "method": "POST",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": "alertComments"
+      }
+    ],
+    "text": "Alerta\n💜 EN ADOPCIÓN\nlaurag. publicó a Rambo en adopción\n\nSalta Capital\nhace 6 sem\n\n2\n\n0\n\nQuiero adoptarlo\nPerrito rescatado de la calle, esta xon tratamiento por haber sido atacado por otros perros 🥺\nNecesita una oportunidad,va con compromiso de castración\nPublicado por laurag.\nComentarios\n💬\nSé el primero en comentar\n\n🐾\nÚnete a Animaldex\nConecta con mascotas, personas y páginas de Bienestar Animal.\nCrear cuenta\nIniciar sesión"
+  },
+  {
+    "shot": "05-adopcion-detalle-escritorio",
+    "requested": "/a/alert-1789698918078-s3vztx",
+    "finalUrl": "https://animaldex.com/a/alert-1789698918078-s3vztx",
+    "scheme": "light",
+    "apiCalls": [
+      {
+        "method": "POST",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": "alertDetail"
+      },
+      {
+        "method": "POST",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": "alertComments"
+      }
+    ],
+    "text": "Alerta\n💜 EN ADOPCIÓN\nlaurag. publicó a Rambo en adopción\n\nSalta Capital\nhace 6 sem\n\n2\n\n0\n\nQuiero adoptarlo\nPerrito rescatado de la calle, esta xon tratamiento por haber sido atacado por otros perros 🥺\nNecesita una oportunidad,va con compromiso de castración\nPublicado por laurag.\nComentarios\n💬\nSé el primero en comentar\n\n🐾\nÚnete a Animaldex\nConecta con mascotas, personas y páginas de Bienestar Animal.\nCrear cuenta\nIniciar sesión"
+  },
+  {
+    "shot": "06-adopcion-detalle-movil-oscuro",
+    "requested": "/a/alert-1789698918078-s3vztx",
+    "finalUrl": "https://animaldex.com/a/alert-1789698918078-s3vztx",
+    "scheme": "dark",
+    "apiCalls": [
+      {
+        "method": "OPTIONS",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": null
+      },
+      {
+        "method": "OPTIONS",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": "alertDetail"
+      },
+      {
+        "method": "POST",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": "alertComments"
+      }
+    ],
+    "text": "Alerta\n💜 EN ADOPCIÓN\nlaurag. publicó a Rambo en adopción\n\nSalta Capital\nhace 6 sem\n\n2\n\n0\n\nQuiero adoptarlo\nPerrito rescatado de la calle, esta xon tratamiento por haber sido atacado por otros perros 🥺\nNecesita una oportunidad,va con compromiso de castración\nPublicado por laurag.\nComentarios\n💬\nSé el primero en comentar\n\n🐾\nÚnete a Animaldex\nConecta con mascotas, personas y páginas de Bienestar Animal.\nCrear cuenta\nIniciar sesión"
+  },
+  {
+    "shot": "07-mascota-en-adopcion-perfil-movil",
+    "requested": "/pet/sasha.pet",
+    "finalUrl": "https://animaldex.com/pet/sasha.pet",
+    "scheme": "light",
+    "apiCalls": [
+      {
+        "method": "OPTIONS",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": null
+      },
+      {
+        "method": "OPTIONS",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": null
+      },
+      {
+        "method": "POST",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": "petProfile"
+      },
+      {
+        "method": "POST",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": "petPosts"
+      }
+    ],
+    "text": "\nSasha\n\nSasha\n@sasha.pet\nEn adopción\nPerro\nMestiza de Pitbull\nMediano\nCastrado\nEsperando hace 28 días\n🐶\nSasha tiene aprox 3 meses llego al Refugio luego se que fuera atacada por perros motivo por el cual perdió un ojito. Ya está castrada y está esperando una familia que la ame para siempre\n0\nPosts\n2\nSeguidores\n—\nSiguiendo\nSeguir\nmifielamigorefugio\n\n\nCompartir mi ubicación con el dueño de Sasha\nPublicaciones\nReels\nAún no hay publicaciones de Sasha 🐾\n\n🐾\nÚnete a Animaldex\nConecta con mascotas, personas y páginas de Bienestar Animal.\nCrear cuenta\nIniciar sesión"
+  },
+  {
+    "shot": "08-mascota-en-adopcion-perfil-escritorio",
+    "requested": "/pet/sasha.pet",
+    "finalUrl": "https://animaldex.com/pet/sasha.pet",
+    "scheme": "light",
+    "apiCalls": [
+      {
+        "method": "POST",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": "petProfile"
+      },
+      {
+        "method": "POST",
+        "url": "https://animaldex-api.animaldex-api.workers.dev/db",
+        "action": "petPosts"
+      }
+    ],
+    "text": "\nSasha\n\nSasha\n@sasha.pet\nEn adopción\nPerro\nMestiza de Pitbull\nMediano\nCastrado\nEsperando hace 28 días\n🐶\nSasha tiene aprox 3 meses llego al Refugio luego se que fuera atacada por perros motivo por el cual perdió un ojito. Ya está castrada y está esperando una familia que la ame para siempre\n0\nPosts\n2\nSeguidores\n—\nSiguiendo\nSeguir\nmifielamigorefugio\n\n\nCompartir mi ubicación con el dueño de Sasha\nPublicaciones\nReels\nAún no hay publicaciones de Sasha 🐾\n\n🐾\nÚnete a Animaldex\nConecta con mascotas, personas y páginas de Bienestar Animal.\nCrear cuenta\nIniciar sesión"
+  }
+]
