@@ -400,6 +400,7 @@ export async function handleAuthAdoptionAction(env, body, action, now, userId, d
     const expired = row.expires_at != null && Number(row.expires_at) <= now;
 
     if (action === 'pauseAdoptionPost') {
+      if (row.expires_at == null) return json({ error: 'Esta publicación se administra desde Mis alertas.' }, 400);
       if (expired) return json({ error: 'La publicación ya está vencida. Renovala para volver a mostrarla.' }, 400);
       await deps.d1(env, 'UPDATE alerts SET paused_at = ? WHERE id = ? AND paused_at IS NULL', [now, alertId]);
     } else if (action === 'resumeAdoptionPost') {
