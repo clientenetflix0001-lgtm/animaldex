@@ -1,5 +1,5 @@
 import React, { memo, useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from './AppIcon';
 import Animated, {
@@ -24,11 +24,28 @@ interface Props {
   alert: ApiAlert;
   onToggleLike: (alertId: string) => void;
   onOpenComments: (alert: ApiAlert) => void;
+  /**
+   * Opcionales, solo los usa Animaldex Adopciones web. Sin ellos la tarjeta
+   * se ve y se comporta exactamente igual que en Alertas.
+   */
+  /** Botón Difundir junto a "Quiero adoptar…". */
+  showDifundir?: boolean;
+  /** Enlace a compartir con Difundir (por defecto `/a/:id`). */
+  shareUrl?: string;
+  /** Reemplaza la acción de "Quiero adoptar…". */
+  onAdopt?: (alert: ApiAlert) => void;
+  /** Descripción recortada con "Ver más" que abre el detalle. */
+  onOpenDetail?: (alert: ApiAlert) => void;
 }
 
-function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
+const PREVIEW_LINES = 3;
+const PREVIEW_CHARS = 140;
+const DIFUNDIR_LABEL_MIN_WIDTH = 400;
+
+function AlertCardInner({ alert, onToggleLike, onOpenComments, showDifundir, shareUrl, onAdopt, onOpenDetail }: Props) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { width } = useWindowDimensions();
   const resolved = isAlertResolved(alert);
   const badgeColor = alertBadgeColor(alert);
   const heartScale = useSharedValue(1);
@@ -47,13 +64,17 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
     if (sharing) return;
     setSharing(true);
     try {
-      await shareAlert(alert);
+      await shareAlert(alert, shareUrl);
     } finally {
       setSharing(false);
     }
-  }, [alert, sharing]);
+  }, [alert, sharing, shareUrl]);
 
   const handleAdopt = useCallback(async () => {
+    if (onAdopt) {
+      onAdopt(alert);
+      return;
+    }
     if (adopting) return;
     setAdopting(true);
     try {
@@ -61,7 +82,12 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
     } finally {
       setAdopting(false);
     }
-  }, [alert, adopting]);
+  }, [alert, adopting, onAdopt]);
+
+  const description = alert.description || '';
+  const truncated =
+    !!onOpenDetail &&
+    (description.length > PREVIEW_CHARS || description.split('\n').length > PREVIEW_LINES);
 
   const avatar = alert.userAvatar ?? userFallbackAvatar(alert.username ?? 'usuario');
   const minutesAgo = timeAgoMinutes(alert.createdAt);
@@ -131,7 +157,22 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
             <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
           </Pressable>
         ) : alert.type === 'adoption' && !resolved ? (
-          <WantToAdoptButton label={adoptCtaLabel(alert.sex)} onPress={handleAdopt} />
+          <>
+            <WantToAdoptButton label={adoptCtaLabel(alert.sex)} onPress={handleAdopt} />
+            {showDifundir ? (
+              <Pressable
+                onPress={handleShare}
+                disabled={sharing}
+                hitSlop={8}
+                style={styles.actionBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Difundir"
+              >
+                <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
+                {width >= DIFUNDIR_LABEL_MIN_WIDTH ? <Text style={styles.actionCount}>Difundir</Text> : null}
+              </Pressable>
+            ) : null}
+          </>
         ) : (
           <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
             <Ionicons name="paw" size={15} color="#fff" />
@@ -142,7 +183,14 @@ function AlertCardInner({ alert, onToggleLike, onOpenComments }: Props) {
 
       {/* Descripción */}
       {alert.description ? (
-        <Text style={styles.description}>{alert.description}</Text>
+        <Text style={styles.description} numberOfLines={truncated ? PREVIEW_LINES : undefined}>
+          {alert.description}
+        </Text>
+      ) : null}
+      {truncated ? (
+        <Pressable onPress={() => onOpenDetail?.(alert)} hitSlop={6} accessibilityRole="link">
+          <Text style={styles.seeMore}>Ver más</Text>
+        </Pressable>
       ) : null}
 
       {alert.userName && (
@@ -215,6 +263,13 @@ function makeStyles(colors: ThemeColors) {
     lineHeight: 20,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
+  },
+  seeMore: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMuted,
+    paddingHorizontal: spacing.lg,
+    paddingTop: 4,
   },
   postedBy: {
     fontSize: 11,

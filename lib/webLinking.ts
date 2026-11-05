@@ -1,4 +1,5 @@
 import { resolveAppLink } from './appLinks.ts';
+import { ADOPTIONS_SEGMENT, DEFAULT_ADOPTION_SLUG, resolveAdoptionPath } from './adoptionLocalities.ts';
 import { isPublicLegalPath } from './legalPages.ts';
 import { PUBLIC_WEB_ORIGIN } from './publicWeb.ts';
 import { extractTagCode } from './tags.ts';
@@ -64,6 +65,24 @@ export function shouldAutoOpenPendingTag(opts: {
 function tagWelcomeState(code: string) {
   const tag = { name: 'TagWelcome', params: { code } };
   return linkingHasUser ? { routes: [{ name: 'Tabs' }, tag] } : { routes: [tag] };
+}
+
+/**
+ * Animaldex Adopciones (`/adopciones/<slug>/...`). Solo lo usa la web: en
+ * Android no se llama, así los App Links no cambian. Un slug no habilitado
+ * cae al muro de la localidad por defecto.
+ */
+export function adoptionStateFromPath(path: string) {
+  const parts = pathnameOnly(path).split('/').filter(Boolean);
+  if (parts[0] !== ADOPTIONS_SEGMENT) return null;
+  const target = resolveAdoptionPath(parts) ?? {
+    screen: 'AdoptionsWall' as const,
+    params: { city: DEFAULT_ADOPTION_SLUG },
+  };
+  const wall = { name: 'AdoptionsWall', params: { city: target.params.city } };
+  const routes =
+    target.screen === 'AdoptionsWall' ? [wall] : [wall, { name: target.screen, params: target.params }];
+  return linkingHasUser ? { routes: [{ name: 'Tabs' }, ...routes] } : { routes };
 }
 
 export function getStateFromPublicPath(path: string, options?: object) {

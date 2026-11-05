@@ -52,6 +52,9 @@ import SellerShopScreen from './screens/SellerShopScreen';
 import MarketFavoritesScreen from './screens/MarketFavoritesScreen';
 import MyListingsScreen from './screens/MyListingsScreen';
 import AdoptionDiscoveryScreen from './screens/AdoptionDiscoveryScreen';
+import AdoptionsWallScreen from './screens/adoptions/AdoptionsWallScreen';
+import AdoptionPublishScreen from './screens/adoptions/AdoptionPublishScreen';
+import AdoptionMineScreen from './screens/adoptions/AdoptionMineScreen';
 import MyPetsScreen from './screens/MyPetsScreen';
 
 import { StoreProvider, useStore } from './lib/store';
@@ -82,7 +85,12 @@ import {
   applyAppLinkIfReady,
   rememberIncomingAppLink,
 } from './lib/appLinks';
-import { getStateFromPublicPath, setLinkingHasUser, shouldAutoOpenPendingTag } from './lib/webLinking';
+import {
+  adoptionStateFromPath,
+  getStateFromPublicPath,
+  setLinkingHasUser,
+  shouldAutoOpenPendingTag,
+} from './lib/webLinking';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -265,6 +273,31 @@ function Tabs() {
   );
 }
 
+// Animaldex Adopciones: solo web. No se agregan a Android (App Links y
+// navegación nativa sin cambios).
+const ADOPTION_WEB_SCREENS = {
+  AdoptionsWall: 'adopciones/:city',
+  AdoptionPublish: 'adopciones/:city/publicar',
+  AdoptionMine: 'adopciones/:city/mis-publicaciones',
+  AdoptionPost: 'adopciones/:city/:alertId',
+} as const;
+
+function adoptionWebScreens(colors: ThemeColors) {
+  if (Platform.OS !== 'web') return null;
+  return (
+    <>
+      <Stack.Screen name="AdoptionsWall" component={AdoptionsWallScreen} options={{ headerShown: false, title: 'Adopciones' }} />
+      <Stack.Screen
+        name="AdoptionPost"
+        component={AlertDetailScreen}
+        options={{ title: 'Adopción', ...headerOptions(colors) }}
+      />
+      <Stack.Screen name="AdoptionPublish" component={AdoptionPublishScreen} options={{ headerShown: false, title: 'Publicar en adopción' }} />
+      <Stack.Screen name="AdoptionMine" component={AdoptionMineScreen} options={{ headerShown: false, title: 'Mis publicaciones' }} />
+    </>
+  );
+}
+
 const linking: LinkingOptions<RootStackParamList> = {
   // `animaldex://` (esquema propio, no se toca) + dominios HTTPS públicos.
   // El prefijo HTTPS permite que un Android App Link verificado abra la app
@@ -309,10 +342,15 @@ const linking: LinkingOptions<RootStackParamList> = {
       SellerShop: 'tienda/:userId',
       MarketFavorites: 'mercado-favoritos',
       Auth: 'entrar',
+      ...(Platform.OS === 'web' ? ADOPTION_WEB_SCREENS : {}),
     },
   },
   getStateFromPath(path, options) {
-    return getStateFromPublicPath(path) ?? rnGetStateFromPath(path, options);
+    return (
+      (Platform.OS === 'web' ? adoptionStateFromPath(path) : null) ??
+      getStateFromPublicPath(path) ??
+      rnGetStateFromPath(path, options)
+    );
   },
   async getInitialURL() {
     const url = await Linking.getInitialURL();
@@ -461,6 +499,7 @@ function PublicNavigator() {
       />
       <Stack.Screen name="ListingDetail" component={ListingDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ReelViewer" component={ReelViewerScreen} options={{ headerShown: false }} />
+      {adoptionWebScreens(colors)}
     </Stack.Navigator>
   );
 }
@@ -478,7 +517,8 @@ function WebUrlSync() {
     const apply = () => {
       if (!navigationRef.isReady()) return;
       const path = `${window.location.pathname}${window.location.search}`;
-      const state = getStateFromPublicPath(path) ?? rnGetStateFromPath(path, linking.config);
+      const state =
+        adoptionStateFromPath(path) ?? getStateFromPublicPath(path) ?? rnGetStateFromPath(path, linking.config);
       if (state) navigationRef.resetRoot(state);
     };
     apply();
@@ -631,6 +671,7 @@ function RootNavigator() {
         component={AdoptionDiscoveryScreen}
         options={{ headerShown: false, contentStyle: { backgroundColor: '#000' } }}
       />
+      {adoptionWebScreens(colors)}
     </Stack.Navigator>
   );
 }

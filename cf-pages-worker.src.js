@@ -276,6 +276,28 @@ async function d1Query(env, sql, params) {
   }
 }
 
+// ---------- Animaldex Adopciones (/adopciones/:city[/:id]) ----------
+// Copia mínima de lib/adoptionLocalities.ts (este archivo no importa TS):
+// mantener sincronizado. Un slug desconocido usa la localidad por defecto,
+// igual que la SPA.
+const ADOPTION_LOCALITIES = { saltacapital: { slug: 'saltacapital', locality: 'Salta Capital' } };
+const DEFAULT_ADOPTION_SLUG = 'saltacapital';
+const ADOPTION_SUBPATHS = new Set(['publicar', 'mis-publicaciones', 'gestionar']);
+const ADOPTION_PATH_RE = /^\/adopciones(?:\/([a-z0-9-]+)(?:\/([A-Za-z0-9_-]{1,80}))?)?\/?$/i;
+
+function adoptionLocality(slug) {
+  return ADOPTION_LOCALITIES[String(slug || '').toLowerCase()] || ADOPTION_LOCALITIES[DEFAULT_ADOPTION_SLUG];
+}
+
+function adoptionWallMeta(origin, place) {
+  return {
+    title: `Adopciones en ${place.locality} · Animaldex 💜`,
+    description: `Mascotas que buscan familia en ${place.locality}. Mirá las publicaciones, difundilas o publicá una mascota en adopción.`,
+    image: petImage('perro', 11, 600),
+    url: `${origin}/adopciones/${place.slug}`,
+  };
+}
+
 async function buildOgMeta(request, env, url) {
   const origin = PUBLIC_WEB_ORIGIN;
   const pathname = url.pathname;
@@ -286,6 +308,12 @@ async function buildOgMeta(request, env, url) {
   const listingMatch = pathname.match(/^\/m\/([^/]+)\/?$/);
   const reelMatch = pathname.match(/^\/r\/([^/]+)\/?$/);
   const postMatch = pathname.match(/^\/p\/([^/]+)\/?$/);
+  const adoptionMatch = pathname.match(ADOPTION_PATH_RE);
+  const adoptionPlace = adoptionMatch ? adoptionLocality(adoptionMatch[1]) : null;
+  const adoptionPostId =
+    adoptionMatch && adoptionMatch[2] && !ADOPTION_SUBPATHS.has(adoptionMatch[2].toLowerCase())
+      ? decodeURIComponent(adoptionMatch[2])
+      : '';
   const handleMatch = pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i);
   // Keep in sync with lib/publicHandles.ts and worker/index.js
   const reserved = new Set([
@@ -294,7 +322,7 @@ async function buildOgMeta(request, env, url) {
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
     'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mis-productos', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
-    'well-known', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil',
+    'well-known', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil', 'adopciones',
   ]);
 
   if (petMatch) {
@@ -321,8 +349,8 @@ async function buildOgMeta(request, env, url) {
         };
       }
     }
-  } else if (alertMatch) {
-    const id = decodeURIComponent(alertMatch[1]);
+  } else if (alertMatch || adoptionPostId) {
+    const id = adoptionPostId || decodeURIComponent(alertMatch[1]);
     const rows = await d1Query(
       env,
       `SELECT a.*, u.username AS username
@@ -330,7 +358,12 @@ async function buildOgMeta(request, env, url) {
        WHERE a.id = ?`,
       [id]
     );
-    if (rows[0]) {
+    const hidden =
+      rows[0] &&
+      rows[0].expires_at != null &&
+      (Number(rows[0].expires_at) <= Date.now() || rows[0].paused_at != null);
+    const wrongSection = adoptionPostId && rows[0] && rows[0].type !== 'adoption';
+    if (rows[0] && !hidden && !wrongSection) {
       const a = rows[0];
       const resolved = !!(a.resolved_at || a.status === 'resolved');
       const name = a.pet_name ? String(a.pet_name).trim() : '';
@@ -385,9 +418,14 @@ async function buildOgMeta(request, env, url) {
         title,
         description,
         image: a.image,
-        url: `${origin}/a/${a.id}`,
+        url: adoptionPostId
+          ? `${origin}/adopciones/${adoptionPlace.slug}/${encodeURIComponent(a.id)}`
+          : `${origin}/a/${a.id}`,
       };
     }
+    if (!meta && adoptionPostId) meta = adoptionWallMeta(origin, adoptionPlace);
+  } else if (adoptionMatch) {
+    meta = adoptionWallMeta(origin, adoptionPlace);
   } else if (listingMatch) {
     const id = decodeURIComponent(listingMatch[1]);
     const rows = await d1Query(env, 'SELECT * FROM listings WHERE id = ?', [id]);
@@ -554,7 +592,7 @@ async function buildOgMeta(request, env, url) {
   return meta;
 }
 
-const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/|\/r\/)|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
+const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/|\/r\/|\/adopciones(\/|$))|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
 
 export default {
   async fetch(request, env, ctx) {
@@ -634,7 +672,7 @@ export default {
       'p','pet','a','m','r','reels','alertas','mercado','crear','mascotas','actividad','perfil',
       'explorar','verificar','escanear','entrar','tienda','admin','vender',
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
-      'privacidad','eliminar-cuenta','seguridad-infantil',
+      'privacidad','eliminar-cuenta','seguridad-infantil','adopciones',
     ]);
     const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase());
     const maybePet = /^\/pet\/[^/]+\/?$/.test(url.pathname) || (spaHandle && /\.pet$/i.test(spaHandle));
