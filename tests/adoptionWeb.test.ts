@@ -12,14 +12,11 @@ import {
 } from '../lib/adoptionLocalities.ts';
 import {
   ADOPTION_CYCLE_MS,
-  GUEST_ADOPTION_TTL_MS,
   adoptionPostState,
   adoptionRemainingLabel,
-  buildManageFragment,
   canPauseAdoptionPost,
   canRenewAdoptionPost,
   canResumeAdoptionPost,
-  parseManageFragment,
 } from '../lib/adoptionLifecycle.ts';
 import { isReservedPublicUsername } from '../lib/publicHandles.ts';
 import { resolveAppLink } from '../lib/appLinks.ts';
@@ -47,7 +44,7 @@ describe('localidades de Adopciones', () => {
     });
     assert.equal(resolveAdoptionPath(['adopciones', 'saltacapital', 'publicar'])?.screen, 'AdoptionPublish');
     assert.equal(resolveAdoptionPath(['adopciones', 'saltacapital', 'mis-publicaciones'])?.screen, 'AdoptionMine');
-    assert.equal(resolveAdoptionPath(['adopciones', 'saltacapital', 'gestionar'])?.screen, 'AdoptionManage');
+    assert.equal(resolveAdoptionPath(['adopciones', 'saltacapital', 'gestionar'])?.screen, 'AdoptionsWall');
     assert.equal(resolveAdoptionPath(['adopciones', 'cordoba']), null);
     assert.equal(adoptionPostPath('saltacapital', 'alert-1'), '/adopciones/saltacapital/alert-1');
   });
@@ -77,7 +74,6 @@ describe('ciclo de vida', () => {
 
   it('7 días, pausa y renovación de usuarios registrados', () => {
     assert.equal(ADOPTION_CYCLE_MS, 7 * DAY);
-    assert.equal(GUEST_ADOPTION_TTL_MS, 7 * DAY);
     const active = { status: 'active', expiresAt: now + 3 * DAY, pausedAt: null };
     assert.equal(adoptionPostState(active, now), 'active');
     assert.equal(adoptionRemainingLabel(active, now), 'Quedan 3 días');
@@ -91,26 +87,8 @@ describe('ciclo de vida', () => {
     assert.equal(canRenewAdoptionPost(expired, now), true);
   });
 
-  it('las publicaciones sin cuenta no se renuevan ni se pausan', () => {
-    const guest = { status: 'active', expiresAt: now - 1, isGuest: true };
-    assert.equal(canRenewAdoptionPost(guest, now), false);
-    assert.equal(canPauseAdoptionPost({ ...guest, expiresAt: now + DAY }, now), false);
-  });
-});
-
-describe('enlace privado de gestión', () => {
-  const token = 'a'.repeat(43);
-
-  it('ida y vuelta del fragmento', () => {
-    const frag = buildManageFragment('alert-1-abc', token);
-    assert.deepEqual(parseManageFragment(`#${frag}`), { alertId: 'alert-1-abc', token });
-  });
-
-  it('rechaza fragmentos incompletos o con caracteres inválidos', () => {
-    assert.equal(parseManageFragment(''), null);
-    assert.equal(parseManageFragment('#alert-1'), null);
-    assert.equal(parseManageFragment('#alert-1.corto'), null);
-    assert.equal(parseManageFragment(`#alert 1.${token}`), null);
+  it('una fila antigua activa no se puede pausar desde esta sección', () => {
+    assert.equal(canPauseAdoptionPost({ status: 'active', expiresAt: null }, now), false);
   });
 });
 
@@ -122,10 +100,15 @@ describe('Worker: publicaciones sobre alerts', () => {
     assert.doesNotMatch(mod, /ALTER TABLE/);
   });
 
-  it('guarda solo el hash del token y lo compara en tiempo constante', () => {
-    assert.match(mod, /sha256Hex\(manageToken\)/);
-    assert.match(mod, /timingSafeEqual/);
-    assert.doesNotMatch(mod, /token_hash: manageToken/);
+  it('publicar exige sesión y no existe el camino sin cuenta', () => {
+    const pub = mod.slice(mod.indexOf('export async function handlePublicAdoptionAction'), mod.indexOf('export async function handleAuthAdoptionAction'));
+    const auth = mod.slice(mod.indexOf('export async function handleAuthAdoptionAction'));
+    assert.doesNotMatch(pub, /createAdoptionPost|guestAdoption|turnstile|is_guest/);
+    assert.match(auth, /action === 'createAdoptionPost'/);
+    assert.match(auth, /Iniciá sesión para publicar/);
+    assert.doesNotMatch(mod, /guest:|adoption_guest|turnstile|is_guest/);
+    assert.doesNotMatch(read('App.tsx'), /AdoptionManage/);
+    assert.doesNotMatch(read('lib/db.ts'), /guestAdoption|turnstileToken/);
   });
 
   it('la visibilidad solo se agrega cuando existen las columnas', () => {
@@ -133,11 +116,10 @@ describe('Worker: publicaciones sobre alerts', () => {
     assert.match(worker, /alertVisibilitySql\(env, 'a', now\)/);
   });
 
-  it('la limpieza programada solo toca publicaciones sin cuenta de adopción', () => {
-    assert.match(mod, /WHERE is_guest = 1 AND type = 'adoption' AND expires_at IS NOT NULL AND expires_at <= \?/);
-    assert.match(worker, /cleanupExpiredGuestAdoptions\(env, adoptionDeps\(\), nowMs, \{ maxBatches: 1/);
-    assert.match(worker, /cleanupExpiredGuestAdoptions\(env, adoptionDeps\(\), nowMs, \{ maxBatches: 3/);
-    assert.match(mod, /env\.DB\.batch\(statements\)/);
+  it('el vencimiento oculta en el listado y no borra la publicación', () => {
+    assert.match(mod, /expires_at IS NULL OR \$\{alias\}\.expires_at > \?/);
+    assert.doesNotMatch(mod, /cleanupExpiredGuestAdoptions/);
+    assert.doesNotMatch(worker, /cleanupExpiredGuestAdoptions/);
   });
 
   it('una imagen se borra solo si ninguna alerta ni post la usa', () => {
@@ -152,7 +134,6 @@ describe('Worker: publicaciones sobre alerts', () => {
     assert.ok(insertAt > 0 && batchAt > insertAt);
     assert.match(mod, /INSERT INTO \$\{IMAGE_DELETE_TABLE\}/);
     assert.match(mod, /adoption_image_deletions/);
-    assert.match(body, /drain: false/);
   });
 
   it('un fallo de Cloudflare conserva la tarea, revisa resp.ok y no reintenta en la misma pasada', () => {
@@ -167,29 +148,6 @@ describe('Worker: publicaciones sobre alerts', () => {
   it('el cron drena la cola de imágenes en lotes chicos', () => {
     assert.match(worker, /processPendingImageDeletions\(env, adoptionDeps\(\), nowMs, \{ maxPasses: 2, budgetMs: 4_000 \}\)/);
     assert.match(worker, /processPendingImageDeletions\(env, adoptionDeps\(\), nowMs, \{ maxPasses: 1, budgetMs: 4_000 \}\)/);
-  });
-
-  it('el límite por IP usa un registro propio que eliminar no toca', () => {
-    assert.match(mod, /const GUEST_RATE_TABLE = 'adoption_guest_rate'/);
-    assert.match(mod, /reserveGuestSlot\(env, deps, ipKey, now\)/);
-    assert.doesNotMatch(mod, /DELETE FROM \$\{GUEST_RATE_TABLE\} WHERE id IN/);
-    assert.match(mod, /env\.GUEST_POSTS_PER_IP_PER_DAY/);
-    assert.match(mod, /env\.GUEST_POSTS_GLOBAL_PER_HOUR/);
-  });
-
-  it('Turnstile exige success, hostname autorizado y la acción del formulario', () => {
-    assert.match(mod, /data\.success !== true/);
-    assert.match(mod, /turnstileAllowedHostnames\(env\)\.includes\(hostname\)/);
-    assert.match(mod, /data\.action !== TURNSTILE_ACTION/);
-  });
-
-  it('los recordatorios de renovación excluyen publicaciones sin cuenta', () => {
-    const fn = worker.slice(worker.indexOf('async function runAlertRenewalReminders'));
-    assert.match(fn.slice(0, 2000), /user_id NOT LIKE 'guest:%'/);
-  });
-
-  it('alertRow no expone la identidad interna de una publicación sin cuenta', () => {
-    assert.match(worker, /userId: isGuest \? 'guest' : r\.user_id/);
   });
 
   it('createAlert (Android) no cambia', () => {
