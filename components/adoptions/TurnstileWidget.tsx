@@ -3,6 +3,7 @@
 // cuenta queda deshabilitada (el Worker también la rechaza).
 import React, { useEffect, useRef } from 'react';
 import { Platform, View } from 'react-native';
+import { TURNSTILE_ACTION } from '../../lib/adoptionLifecycle';
 
 export const TURNSTILE_SITE_KEY: string = process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY || '';
 
@@ -54,6 +55,7 @@ export function TurnstileWidget({ onToken }: Props) {
         if (cancelled || !api || !el) return;
         widgetId = api.render(el, {
           sitekey: TURNSTILE_SITE_KEY,
+          action: TURNSTILE_ACTION,
           appearance: 'interaction-only',
           theme: 'auto',
           language: 'es',

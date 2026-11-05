@@ -21,9 +21,13 @@ import { adoptionLocalityBySlug, DEFAULT_ADOPTION_SLUG } from '../lib/adoptionLo
 import {
   ADOPTION_CYCLE_MS,
   ADOPTION_REPORT_HIDE_THRESHOLD,
+  DEFAULT_TURNSTILE_HOSTNAMES,
   GUEST_ADOPTION_TTL_MS,
+  GUEST_CLEANUP_BATCH_SIZE,
   GUEST_POSTS_GLOBAL_PER_HOUR,
   GUEST_POSTS_PER_IP_PER_DAY,
+  GUEST_RATE_RETENTION_MS,
+  TURNSTILE_ACTION,
   parseAdoptionMediaKind,
 } from '../lib/adoptionLifecycle.ts';
 import { parseProtectorAdoptionContact } from '../lib/adoptionContact.ts';
@@ -32,6 +36,9 @@ import { validateImageUpload } from './imageUpload.js';
 
 const LIFECYCLE_COLUMNS = ['media_kind', 'is_guest', 'expires_at', 'paused_at'];
 const GUEST_TOKENS_TABLE = 'adoption_guest_tokens';
+const GUEST_RATE_TABLE = 'adoption_guest_rate';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 const SCHEMA_RECHECK_MS = 60 * 1000;
 const WALL_SPECIES = new Set(['perro', 'gato', 'otro']);
 const LIFECYCLE_UNAVAILABLE = 'Esta función todavía no está habilitada.';
@@ -117,21 +124,79 @@ function ipHash(env, ip) {
   return sha256Hex(`${salt}|${ip || 'unknown'}`);
 }
 
-async function verifyTurnstile(env, token, ip) {
+/** Entero positivo de una variable del Worker, con tope; si no, el valor por defecto. */
+function positiveIntVar(raw, fallback, max) {
+  const n = Number.parseInt(String(raw ?? '').trim(), 10);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, max) : fallback;
+}
+
+export function guestLimits(env) {
+  return {
+    perIpPerDay: positiveIntVar(env.GUEST_POSTS_PER_IP_PER_DAY, GUEST_POSTS_PER_IP_PER_DAY, 1000),
+    globalPerHour: positiveIntVar(env.GUEST_POSTS_GLOBAL_PER_HOUR, GUEST_POSTS_GLOBAL_PER_HOUR, 100000),
+  };
+}
+
+export function turnstileAllowedHostnames(env) {
+  const list = String(env.TURNSTILE_ALLOWED_HOSTNAMES || '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  return list.length ? list : [...DEFAULT_TURNSTILE_HOSTNAMES];
+}
+
+/**
+ * Valida el token con siteverify. Exige: success, hostname dentro de la lista
+ * autorizada y la acción de este formulario. Ante cualquier error, rechaza.
+ */
+export async function verifyTurnstile(env, token, ip) {
   if (!env.TURNSTILE_SECRET_KEY) return { ok: false, unavailable: true };
-  const t = String(token || '').slice(0, 2048);
-  if (!t) return { ok: false };
+  const t = typeof token === 'string' ? token : '';
+  if (!t || t.length > 2048 || !/^\S+$/.test(t)) return { ok: false };
   try {
     const form = new FormData();
     form.append('secret', env.TURNSTILE_SECRET_KEY);
     form.append('response', t);
     if (ip) form.append('remoteip', ip);
     const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form });
+    if (!resp.ok) return { ok: false };
     const data = await resp.json().catch(() => ({}));
-    return { ok: !!data.success };
+    if (data.success !== true) return { ok: false };
+    const hostname = String(data.hostname || '').toLowerCase();
+    if (!turnstileAllowedHostnames(env).includes(hostname)) return { ok: false };
+    if (data.action !== TURNSTILE_ACTION) return { ok: false };
+    return { ok: true };
   } catch (_) {
     return { ok: false };
   }
+}
+
+/**
+ * Reserva un lugar en el registro de límites antes de subir nada. La fila se
+ * inserta primero y después se cuenta, así dos pedidos simultáneos no pasan
+ * los dos. Si se supera el límite, la propia fila se retira. Eliminar una
+ * publicación no toca este registro.
+ */
+async function reserveGuestSlot(env, deps, ipKey, now) {
+  const limits = guestLimits(env);
+  const id = `gr-${now}-${randomBytes(6).toString('hex')}`;
+  await deps.d1(env, `INSERT INTO ${GUEST_RATE_TABLE} (id, ip_hash, created_at) VALUES (?, ?, ?)`, [id, ipKey, now]);
+  const [mine, global] = await Promise.all([
+    deps.d1(env, `SELECT COUNT(*) AS n FROM ${GUEST_RATE_TABLE} WHERE ip_hash = ? AND created_at > ?`, [ipKey, now - DAY_MS]),
+    deps.d1(env, `SELECT COUNT(*) AS n FROM ${GUEST_RATE_TABLE} WHERE created_at > ?`, [now - HOUR_MS]),
+  ]);
+  let error = null;
+  if (Number(mine[0]?.n || 0) > limits.perIpPerDay) {
+    const n = limits.perIpPerDay;
+    error = `Llegaste al límite de ${n} ${n === 1 ? 'publicación' : 'publicaciones'} sin cuenta en 24 horas. Volvé a intentar mañana o creá una cuenta para publicar más.`;
+  } else if (Number(global[0]?.n || 0) > limits.globalPerHour) {
+    error = 'Hay muchas publicaciones en este momento. Probá de nuevo en un rato.';
+  }
+  if (error) {
+    await deps.d1(env, `DELETE FROM ${GUEST_RATE_TABLE} WHERE id = ?`, [id]).catch(() => {});
+    return { ok: false, error };
+  }
+  return { ok: true };
 }
 
 function cityPlace(body) {
@@ -147,36 +212,64 @@ function lifecycleFields(row) {
   };
 }
 
+const CF_IMAGE_URL_RE = /^https:\/\/imagedelivery\.net\/[^/]+\/([^/]+)\//;
+
 /**
- * Borra la imagen de Cloudflare Images solo si ninguna otra fila la usa.
- * Las publicaciones de esta sección suben su propia imagen, pero una alerta
- * antigua podría compartir URL.
+ * Borra de Cloudflare Images las imágenes que ya ninguna fila usa. Se llama
+ * después de borrar las filas: si otra alerta o post comparte la URL, la
+ * imagen se conserva.
  */
-async function deleteImageIfUnused(env, deps, imageUrl, alertId) {
-  const url = String(imageUrl || '');
-  const match = url.match(/^https:\/\/imagedelivery\.net\/[^/]+\/([^/]+)\//);
-  if (!match || !env.CF_ACCOUNT_ID || !env.CF_IMAGES_TOKEN) return;
+async function deleteUnusedImages(env, deps, urls) {
+  const candidates = [...new Set(urls.map((u) => String(u || '')).filter((u) => CF_IMAGE_URL_RE.test(u)))];
+  if (!candidates.length || !env.CF_ACCOUNT_ID || !env.CF_IMAGES_TOKEN) return;
+  const ph = candidates.map(() => '?').join(',');
+  const used = new Set();
   try {
-    const others = await deps.d1(env, 'SELECT COUNT(*) AS n FROM alerts WHERE image = ? AND id != ?', [url, alertId]);
-    if (Number(others[0]?.n || 0) > 0) return;
-    await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/images/v1/${match[1]}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` },
-    });
-  } catch (_) {}
+    for (const r of await deps.d1(env, `SELECT image FROM alerts WHERE image IN (${ph})`, candidates)) used.add(r.image);
+    if (await tableReady(env, 'posts')) {
+      for (const r of await deps.d1(env, `SELECT image FROM posts WHERE image IN (${ph})`, candidates)) used.add(r.image);
+    }
+  } catch (_) {
+    return;
+  }
+  for (const url of candidates) {
+    if (used.has(url)) continue;
+    const imageId = url.match(CF_IMAGE_URL_RE)[1];
+    try {
+      await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/images/v1/${imageId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` },
+      });
+    } catch (_) {}
+  }
 }
 
-async function deleteAdoptionRow(env, deps, row) {
-  await deps.d1(env, 'DELETE FROM alert_likes WHERE alert_id = ?', [row.id]);
-  await deps.d1(env, 'DELETE FROM alert_comments WHERE alert_id = ?', [row.id]);
+/**
+ * Borra publicaciones de adopción con sus likes, comentarios, denuncias y
+ * token, en una sola transacción D1. El registro de límites no se toca.
+ * Solo se borran imágenes subidas por esta sección (media_kind no nulo).
+ */
+async function deleteAdoptionRows(env, deps, rows) {
+  if (!rows.length) return;
+  const ids = rows.map((r) => r.id);
+  const ph = ids.map(() => '?').join(',');
+  const statements = [
+    env.DB.prepare(`DELETE FROM alert_likes WHERE alert_id IN (${ph})`).bind(...ids),
+    env.DB.prepare(`DELETE FROM alert_comments WHERE alert_id IN (${ph})`).bind(...ids),
+  ];
   if (await tableReady(env, 'content_reports')) {
-    await deps.d1(env, "DELETE FROM content_reports WHERE target_type = 'alert' AND target_id = ?", [row.id]);
+    statements.push(env.DB.prepare(`DELETE FROM content_reports WHERE target_type = 'alert' AND target_id IN (${ph})`).bind(...ids));
   }
   if (await tableReady(env, GUEST_TOKENS_TABLE)) {
-    await deps.d1(env, `DELETE FROM ${GUEST_TOKENS_TABLE} WHERE alert_id = ?`, [row.id]);
+    statements.push(env.DB.prepare(`DELETE FROM ${GUEST_TOKENS_TABLE} WHERE alert_id IN (${ph})`).bind(...ids));
   }
-  await deps.d1(env, 'DELETE FROM alerts WHERE id = ?', [row.id]);
-  if (row.media_kind) await deleteImageIfUnused(env, deps, row.image, row.id);
+  statements.push(env.DB.prepare(`DELETE FROM alerts WHERE id IN (${ph})`).bind(...ids));
+  await env.DB.batch(statements);
+  await deleteUnusedImages(env, deps, rows.filter((r) => r.media_kind).map((r) => r.image));
+}
+
+function deleteAdoptionRow(env, deps, row) {
+  return deleteAdoptionRows(env, deps, [row]);
 }
 
 async function loadOne(env, deps, alertId, viewerId) {
@@ -261,22 +354,14 @@ export async function handlePublicAdoptionAction(env, request, body, action, now
     const isGuest = !userId;
 
     if (isGuest) {
-      if (!(await tableReady(env, GUEST_TOKENS_TABLE))) return json({ error: GUEST_UNAVAILABLE }, 503);
+      if (!(await tableReady(env, GUEST_TOKENS_TABLE)) || !(await tableReady(env, GUEST_RATE_TABLE))) {
+        return json({ error: GUEST_UNAVAILABLE }, 503);
+      }
       const human = await verifyTurnstile(env, body.turnstileToken, ip);
       if (human.unavailable) return json({ error: GUEST_UNAVAILABLE }, 503);
       if (!human.ok) return json({ error: 'No pudimos verificar que no seas un robot. Probá de nuevo.' }, 403);
-      const mine = await deps.d1(
-        env,
-        `SELECT COUNT(*) AS n FROM ${GUEST_TOKENS_TABLE} WHERE ip_hash = ? AND created_at > ?`,
-        [ipKey, now - 24 * 60 * 60 * 1000]
-      );
-      if (Number(mine[0]?.n || 0) >= GUEST_POSTS_PER_IP_PER_DAY) {
-        return json({ error: 'Llegaste al límite de publicaciones sin cuenta por hoy. Creá una cuenta para publicar más.' }, 429);
-      }
-      const global = await deps.d1(env, `SELECT COUNT(*) AS n FROM ${GUEST_TOKENS_TABLE} WHERE created_at > ?`, [now - 60 * 60 * 1000]);
-      if (Number(global[0]?.n || 0) >= GUEST_POSTS_GLOBAL_PER_HOUR) {
-        return json({ error: 'Hay muchas publicaciones en este momento. Probá de nuevo en un rato.' }, 429);
-      }
+      const slot = await reserveGuestSlot(env, deps, ipKey, now);
+      if (!slot.ok) return json({ error: slot.error }, 429);
     }
     if (deps.uploadLimited(userId || 'guest', ip, now)) {
       return json({ error: 'Demasiadas imágenes seguidas. Esperá un momento.' }, 429);
@@ -323,7 +408,7 @@ export async function handlePublicAdoptionAction(env, request, body, action, now
         [id, authorId, petName, species, description, uploaded.url, place.locality, place.province, now, now, now, sex, contactWhatsapp, contactPhone, mediaKind, isGuest ? 1 : 0, expiresAt, ...geo.values]
       );
     } catch (e) {
-      await deleteImageIfUnused(env, deps, uploaded.url, id);
+      await deleteUnusedImages(env, deps, [uploaded.url]);
       throw e;
     }
 
@@ -332,8 +417,8 @@ export async function handlePublicAdoptionAction(env, request, body, action, now
       manageToken = newManageToken();
       await deps.d1(
         env,
-        `INSERT INTO ${GUEST_TOKENS_TABLE} (alert_id, token_hash, ip_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)`,
-        [id, sha256Hex(manageToken), ipKey, now, expiresAt]
+        `INSERT INTO ${GUEST_TOKENS_TABLE} (alert_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)`,
+        [id, sha256Hex(manageToken), now, expiresAt]
       );
     }
     const loaded = await loadOne(env, deps, id, userId);
@@ -464,24 +549,40 @@ export async function renewAlertLifecycleSql(env, row, now) {
 
 /**
  * Borra publicaciones sin cuenta vencidas (fila, likes, comentarios,
- * denuncias, token e imagen). Nunca toca publicaciones de usuarios
- * registrados ni otras categorías.
+ * denuncias, token e imagen) por lotes. Nunca toca publicaciones de usuarios
+ * registrados ni otras categorías. Corre en cada cron de 5 minutos (un lote)
+ * y en el diario (varios lotes), así un atraso se absorbe sin pasar los
+ * límites de subrequests de una invocación: cada lote son ~7 consultas D1 y
+ * como máximo `batchSize` llamadas a Cloudflare Images.
+ * Lo que todavía no se borró ya está oculto (alertVisibilitySql / guestPostGone).
  */
-export async function cleanupExpiredGuestAdoptions(env, deps, now) {
-  if (!(await adoptionLifecycleReady(env))) return { deleted: 0 };
-  const rows = await deps.d1(
-    env,
-    `SELECT * FROM alerts
-     WHERE is_guest = 1 AND type = 'adoption' AND expires_at IS NOT NULL AND expires_at <= ?
-     ORDER BY expires_at ASC LIMIT 100`,
-    [now]
-  );
+export async function cleanupExpiredGuestAdoptions(env, deps, now, opts = {}) {
+  if (!(await adoptionLifecycleReady(env))) return { deleted: 0, batches: 0 };
+  const batchSize = positiveIntVar(env.GUEST_CLEANUP_BATCH_SIZE, GUEST_CLEANUP_BATCH_SIZE, 50);
+  const maxBatches = Math.max(1, opts.maxBatches || 1);
+  const deadline = Date.now() + (opts.budgetMs || 15_000);
   let deleted = 0;
-  for (const row of rows) {
+  let batches = 0;
+  while (batches < maxBatches && Date.now() < deadline) {
+    const rows = await deps.d1(
+      env,
+      `SELECT id, image, media_kind FROM alerts
+       WHERE is_guest = 1 AND type = 'adoption' AND expires_at IS NOT NULL AND expires_at <= ?
+       ORDER BY expires_at ASC LIMIT ?`,
+      [now, batchSize]
+    );
+    if (!rows.length) break;
+    batches += 1;
     try {
-      await deleteAdoptionRow(env, deps, row);
-      deleted += 1;
-    } catch (_) {}
+      await deleteAdoptionRows(env, deps, rows);
+      deleted += rows.length;
+    } catch (_) {
+      break;
+    }
+    if (rows.length < batchSize) break;
   }
-  return { deleted };
+  if (opts.purgeRate && (await tableReady(env, GUEST_RATE_TABLE))) {
+    await deps.d1(env, `DELETE FROM ${GUEST_RATE_TABLE} WHERE created_at < ?`, [now - GUEST_RATE_RETENTION_MS]).catch(() => {});
+  }
+  return { deleted, batches };
 }

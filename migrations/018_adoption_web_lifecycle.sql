@@ -11,8 +11,8 @@
 -- Sin backfill: las filas existentes quedan en NULL y conservan su
 -- comportamiento (perdidos, avistados, encontrados y adopciones actuales).
 --
--- adoption_guest_tokens guarda SOLO el hash SHA-256 del token de gestión y un
--- hash de la IP (para el límite diario). Nunca el token ni la IP en claro.
+-- adoption_guest_tokens guarda SOLO el hash SHA-256 del token de gestión.
+-- El límite por IP vive aparte (019_adoption_guest_rate.sql).
 -- ============================================================
 
 ALTER TABLE alerts ADD COLUMN media_kind TEXT;
@@ -23,13 +23,9 @@ ALTER TABLE alerts ADD COLUMN paused_at INTEGER;
 CREATE TABLE IF NOT EXISTS adoption_guest_tokens (
   alert_id TEXT PRIMARY KEY,
   token_hash TEXT NOT NULL,
-  ip_hash TEXT,
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_adoption_guest_tokens_ip ON adoption_guest_tokens (ip_hash, created_at);
-CREATE INDEX IF NOT EXISTS idx_adoption_guest_tokens_created ON adoption_guest_tokens (created_at);
 
 CREATE INDEX IF NOT EXISTS idx_alerts_type_place ON alerts (type, place_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_guest_expiry ON alerts (is_guest, expires_at);

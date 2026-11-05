@@ -19,11 +19,34 @@ export const GUEST_ADOPTION_TTL_MS = 7 * DAY_MS;
 /** Denuncias de usuarios distintos que ocultan una publicación del muro. */
 export const ADOPTION_REPORT_HIDE_THRESHOLD = 3;
 
-/** Publicaciones sin cuenta por dispositivo/red en 24 h. */
+/**
+ * Publicaciones sin cuenta por red (hash de IP) en 24 h. Valor por defecto;
+ * el Worker lo toma de la variable GUEST_POSTS_PER_IP_PER_DAY si existe.
+ */
 export const GUEST_POSTS_PER_IP_PER_DAY = 3;
 
-/** Tope global de publicaciones sin cuenta por hora (freno anti-abuso). */
+/** Tope global por hora. Variable del Worker: GUEST_POSTS_GLOBAL_PER_HOUR. */
 export const GUEST_POSTS_GLOBAL_PER_HOUR = 60;
+
+/** Tiempo que se conserva el registro de límites (más que la ventana de 24 h). */
+export const GUEST_RATE_RETENTION_MS = 2 * DAY_MS;
+
+/**
+ * Publicaciones vencidas borradas por lote. Variable: GUEST_CLEANUP_BATCH_SIZE.
+ * Con un lote cada 5 minutos son 2880 por día, más que el tope global
+ * por defecto (60 × 24 = 1440).
+ */
+export const GUEST_CLEANUP_BATCH_SIZE = 10;
+
+/** Acción que el widget declara y el Worker exige en siteverify. */
+export const TURNSTILE_ACTION = 'adoption_publish';
+
+/** Hostnames aceptados si no se define TURNSTILE_ALLOWED_HOSTNAMES. */
+export const DEFAULT_TURNSTILE_HOSTNAMES: readonly string[] = [
+  'animaldex.com',
+  'www.animaldex.com',
+  'animaldex-web.pages.dev',
+];
 
 export type AdoptionMediaKind = 'photo' | 'flyer';
 
