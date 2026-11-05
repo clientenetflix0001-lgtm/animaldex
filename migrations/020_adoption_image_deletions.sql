@@ -2,10 +2,11 @@
 -- ============================================================
 -- PREPARADA. NO ejecutar contra D1 remoto sin autorización.
 -- Aplicar después de 018_adoption_web_lifecycle.sql.
--- No depende de 019. No modifica tablas ni datos existentes.
+-- No modifica tablas ni datos existentes.
 --
--- Antes de borrar una publicación de esta sección, el Worker inserta acá
--- la imagen (misma transacción D1 que el DELETE de la alerta). Si Cloudflare
+-- Antes de borrar una publicación de esta sección (siempre de un usuario
+-- registrado), el Worker inserta acá la imagen en la misma transacción D1
+-- que el DELETE de la alerta. Si Cloudflare
 -- Images falla o el Worker se corta, la referencia sigue y el cron reintenta.
 --
 -- status:

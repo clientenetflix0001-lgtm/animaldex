@@ -11,17 +11,9 @@ database_id = "c0ae095d-b9a5-4acd-b500-8a9c2be03010"
 [vars]
 CF_ACCOUNT_ID = "76a9bc649184dfbf09c0b4319bcaa85b"
 CF_DELIVERY_HASH = "8m1UaEl3HZU-HEHN3G4Exg"
-# Animaldex Adopciones web: publicaciones sin cuenta. Mismos valores que los
-# predeterminados del código; se pueden ajustar sin tocar código.
-GUEST_POSTS_PER_IP_PER_DAY = "3"
-GUEST_POSTS_GLOBAL_PER_HOUR = "60"
-GUEST_CLEANUP_BATCH_SIZE = "10"
-TURNSTILE_ALLOWED_HOSTNAMES = "animaldex.com,www.animaldex.com,animaldex-web.pages.dev"
-# Secretos (wrangler secret put, nunca en este archivo):
-#   TURNSTILE_SECRET_KEY  — obligatorio para publicar sin cuenta
-#   GUEST_HASH_SALT       — recomendado; salt del hash de IP
 
 # Diario 11:00 UTC = 08:00 America/Argentina/Salta (cumpleaños / renovación / receipts / cleanup).
-# */5: SOLO flush de push_batches. scheduled() distingue por event.cron.
+# */5: flush de push_batches y un lote chico de la cola de imágenes.
+# scheduled() distingue por event.cron.
 [triggers]
 crons = ["0 11 * * *", "*/5 * * * *"]

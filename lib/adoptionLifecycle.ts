@@ -1,5 +1,5 @@
 // ============================================================
-// Animaldex Adopciones web — vigencia, pausa y enlace privado.
+// Animaldex Adopciones web — vigencia y pausa.
 // ============================================================
 // Puro: lo comparten el Worker y la app web.
 //
@@ -10,33 +10,11 @@
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Ciclo de una publicación de un usuario registrado. */
+/** Ciclo de una publicación nueva de la sección web. El dueño puede renovarla. */
 export const ADOPTION_CYCLE_MS = 7 * DAY_MS;
-
-/** Vigencia total de una publicación sin cuenta. No se renueva. */
-export const GUEST_ADOPTION_TTL_MS = 7 * DAY_MS;
 
 /** Denuncias de usuarios distintos que ocultan una publicación del muro. */
 export const ADOPTION_REPORT_HIDE_THRESHOLD = 3;
-
-/**
- * Publicaciones sin cuenta por red (hash de IP) en 24 h. Valor por defecto;
- * el Worker lo toma de la variable GUEST_POSTS_PER_IP_PER_DAY si existe.
- */
-export const GUEST_POSTS_PER_IP_PER_DAY = 3;
-
-/** Tope global por hora. Variable del Worker: GUEST_POSTS_GLOBAL_PER_HOUR. */
-export const GUEST_POSTS_GLOBAL_PER_HOUR = 60;
-
-/** Tiempo que se conserva el registro de límites (más que la ventana de 24 h). */
-export const GUEST_RATE_RETENTION_MS = 2 * DAY_MS;
-
-/**
- * Publicaciones vencidas borradas por lote. Variable: GUEST_CLEANUP_BATCH_SIZE.
- * Con un lote cada 5 minutos son 2880 por día, más que el tope global
- * por defecto (60 × 24 = 1440).
- */
-export const GUEST_CLEANUP_BATCH_SIZE = 10;
 
 /**
  * Imágenes de Cloudflare procesadas por pasada. El cron de 5 minutos hace
@@ -73,16 +51,6 @@ export function imageDeleteBackoffMs(attempts: number): number {
   return IMAGE_DELETE_BACKOFF_MS[i];
 }
 
-/** Acción que el widget declara y el Worker exige en siteverify. */
-export const TURNSTILE_ACTION = 'adoption_publish';
-
-/** Hostnames aceptados si no se define TURNSTILE_ALLOWED_HOSTNAMES. */
-export const DEFAULT_TURNSTILE_HOSTNAMES: readonly string[] = [
-  'animaldex.com',
-  'www.animaldex.com',
-  'animaldex-web.pages.dev',
-];
-
 export type AdoptionMediaKind = 'photo' | 'flyer';
 
 export function parseAdoptionMediaKind(raw: unknown): AdoptionMediaKind | null {
@@ -96,7 +64,6 @@ export type AdoptionLifecycleFields = {
   resolvedAt?: number | null;
   expiresAt?: number | null;
   pausedAt?: number | null;
-  isGuest?: boolean | null;
 };
 
 export function adoptionPostState(a: AdoptionLifecycleFields, now: number): AdoptionPostState {
@@ -129,39 +96,16 @@ export function adoptionStateLabel(state: AdoptionPostState): string {
   return 'Finalizada';
 }
 
-/** Un usuario registrado renueva cuando terminó el ciclo (igual que Mercado). */
+/** Renovar cuando terminó el ciclo. Las filas antiguas (sin expires_at) no entran. */
 export function canRenewAdoptionPost(a: AdoptionLifecycleFields, now: number): boolean {
-  if (a.isGuest) return false;
   if (a.expiresAt == null) return false;
-  const state = adoptionPostState(a, now);
-  return state === 'expired';
+  return adoptionPostState(a, now) === 'expired';
 }
 
 export function canResumeAdoptionPost(a: AdoptionLifecycleFields, now: number): boolean {
-  return !a.isGuest && adoptionPostState(a, now) === 'paused';
+  return adoptionPostState(a, now) === 'paused';
 }
 
 export function canPauseAdoptionPost(a: AdoptionLifecycleFields, now: number): boolean {
-  return !a.isGuest && adoptionPostState(a, now) === 'active';
-}
-
-// ---------- Enlace privado de gestión (publicaciones sin cuenta) ----------
-// El enlace es `/adopciones/<slug>/gestionar#<alertId>.<token>`. El fragmento
-// no viaja en peticiones HTTP, no queda en logs del servidor ni en Referer.
-
-const ALERT_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
-const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
-
-export function buildManageFragment(alertId: string, token: string): string {
-  return `${alertId}.${token}`;
-}
-
-export function parseManageFragment(raw: unknown): { alertId: string; token: string } | null {
-  const s = String(raw || '').replace(/^#/, '').trim();
-  const dot = s.indexOf('.');
-  if (dot <= 0) return null;
-  const alertId = s.slice(0, dot);
-  const token = s.slice(dot + 1);
-  if (!ALERT_ID_RE.test(alertId) || !TOKEN_RE.test(token)) return null;
-  return { alertId, token };
+  return adoptionPostState(a, now) === 'active' && a.expiresAt != null;
 }

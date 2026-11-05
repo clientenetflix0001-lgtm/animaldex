@@ -358,11 +358,12 @@ async function buildOgMeta(request, env, url) {
        WHERE a.id = ?`,
       [id]
     );
-    // Una publicación sin cuenta vencida ya no existe para el público.
-    const gone =
-      rows[0] && Number(rows[0].is_guest) === 1 && rows[0].expires_at != null && Number(rows[0].expires_at) <= Date.now();
+    const hidden =
+      rows[0] &&
+      rows[0].expires_at != null &&
+      (Number(rows[0].expires_at) <= Date.now() || rows[0].paused_at != null);
     const wrongSection = adoptionPostId && rows[0] && rows[0].type !== 'adoption';
-    if (rows[0] && !gone && !wrongSection) {
+    if (rows[0] && !hidden && !wrongSection) {
       const a = rows[0];
       const resolved = !!(a.resolved_at || a.status === 'resolved');
       const name = a.pet_name ? String(a.pet_name).trim() : '';

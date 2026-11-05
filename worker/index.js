@@ -34,11 +34,9 @@ import {
 } from './stories.js';
 import {
   alertVisibilitySql,
-  cleanupExpiredGuestAdoptions,
-  guestPostGone,
-  processPendingImageDeletions,
   handleAuthAdoptionAction,
   handlePublicAdoptionAction,
+  processPendingImageDeletions,
   renewAlertLifecycleSql,
 } from './adoptionPosts.js';
 import { alertWithinRadiusKm, boundingBox, localitiesMatch, validLatLng } from '../lib/feedGeo.ts';
@@ -819,7 +817,6 @@ async function runAlertRenewalReminders(env, nowMs = Date.now()) {
           AND resolved_at IS NULL
           AND COALESCE(renewed_at, created_at) <= ?
           AND (renewal_notified_at IS NULL OR renewal_notified_at < COALESCE(renewed_at, created_at))
-          AND user_id NOT LIKE 'guest:%'
         LIMIT 40`,
       [dueBefore]
     );
@@ -1612,10 +1609,9 @@ const POST_SELECT = `
 
 function alertRow(r, viewerLiked) {
   const renewedAt = r.renewed_at || r.created_at;
-  const isGuest = Number(r.is_guest) === 1;
   return {
     id: r.id,
-    userId: isGuest ? 'guest' : r.user_id,
+    userId: r.user_id,
     type: r.type,
     status: r.resolved_at || r.status === 'resolved' ? 'resolved' : (r.status || 'active'),
     petName: r.pet_name || null,
@@ -1646,7 +1642,6 @@ function alertRow(r, viewerLiked) {
     userName: r.user_name || null,
     userAvatar: r.user_avatar || null,
     mediaKind: r.media_kind || null,
-    isGuest,
     expiresAt: r.expires_at ?? null,
     pausedAt: r.paused_at ?? null,
   };
@@ -2673,7 +2668,7 @@ async function handleDb(request, env, ctx) {
       const alertId = clean(body.alertId, 80);
       const viewerId = await authUser(request, env, body);
       const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [alertId]);
-      if (!rows[0] || guestPostGone(rows[0], now)) return json({ error: 'Alerta no encontrada' }, 404);
+      if (!rows[0]) return json({ error: 'Alerta no encontrada' }, 404);
       const [alert] = await attachLikedFlags(env, rows, viewerId);
       return json({ ok: true, alert });
     }
@@ -2700,7 +2695,7 @@ async function handleDb(request, env, ctx) {
       const alertId = clean(body.alertId, 80);
       if (!alertId) return json({ error: 'Falta la alerta' }, 400);
       const rows = await d1(env, 'SELECT * FROM alerts WHERE id = ?', [alertId]);
-      if (!rows[0] || guestPostGone(rows[0], now)) return json({ error: 'Alerta no encontrada' }, 404);
+      if (!rows[0]) return json({ error: 'Alerta no encontrada' }, 404);
       if (rows[0].type !== 'adoption') return json({ error: 'Esta alerta no es de adopción' }, 400);
       const alert = rows[0];
       let shelterProfileId = null;
@@ -2991,7 +2986,7 @@ async function handleDb(request, env, ctx) {
     const authStory = await handleAuthStoryAction(env, body, json, clean, userId, notifyUserPush);
     if (authStory) return authStory;
 
-    const authAdoption = await handleAuthAdoptionAction(env, body, action, now, userId, adoptionDeps());
+    const authAdoption = await handleAuthAdoptionAction(env, request, body, action, now, userId, adoptionDeps());
     if (authAdoption) return authAdoption;
 
     if (action === 'registerPushToken') {
@@ -4705,11 +4700,6 @@ export default {
         console.log('push-batches', e && e.message);
       }
       try {
-        await cleanupExpiredGuestAdoptions(env, adoptionDeps(), nowMs, { maxBatches: 1, budgetMs: 8_000 });
-      } catch (e) {
-        console.log('guest-adoption-cleanup', e && e.message);
-      }
-      try {
         // Dos pasadas de 5, solo si la primera vino llena. Presupuesto corto.
         await processPendingImageDeletions(env, adoptionDeps(), nowMs, { maxPasses: 2, budgetMs: 4_000 });
       } catch (e) {
@@ -4746,11 +4736,6 @@ export default {
       await runStoryCleanup(env, nowMs);
     } catch (e) {
       console.log('story-cleanup', e && e.message);
-    }
-    try {
-      await cleanupExpiredGuestAdoptions(env, adoptionDeps(), nowMs, { maxBatches: 3, budgetMs: 15_000, purgeRate: true });
-    } catch (e) {
-      console.log('guest-adoption-cleanup', e && e.message);
     }
     try {
       // Una sola pasada: el cron de 5 minutos es el que drena la cola.
