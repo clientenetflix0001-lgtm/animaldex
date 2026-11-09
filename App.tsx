@@ -7,6 +7,7 @@ import {
   DarkTheme,
   RouteProp,
   LinkingOptions,
+  getPathFromState as rnGetPathFromState,
   getStateFromPath as rnGetStateFromPath,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -91,6 +92,7 @@ import {
   setLinkingHasUser,
   shouldAutoOpenPendingTag,
 } from './lib/webLinking';
+import { ADOPTIONS_ORIGIN, isAdoptionsHost, stripAdoptionsPrefix } from './lib/adoptionsHost';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -298,13 +300,24 @@ function adoptionWebScreens(colors: ThemeColors) {
   );
 }
 
+function webHost(): string | null {
+  if (Platform.OS !== 'web') return null;
+  try {
+    return window.location.hostname;
+  } catch {
+    return null;
+  }
+}
+
 const linking: LinkingOptions<RootStackParamList> = {
   // `animaldex://` (esquema propio, no se toca) + dominios HTTPS públicos.
   // El prefijo HTTPS permite que un Android App Link verificado abra la app
   // y resuelva p/:postId, pet/:petId, a/:alertId, m/:listingId, /:username.
   // UserProfile NO tiene path público: los perfiles humanos/páginas
   // se abren siempre como PublicProfile `/:username`.
-  prefixes: [...APP_LINK_PREFIXES],
+  // El origen de Adopciones va al final: no reemplaza al de animaldex.com
+  // al generar enlaces. En el subdominio, getPathFromState quita el prefijo.
+  prefixes: [...APP_LINK_PREFIXES, ADOPTIONS_ORIGIN],
   config: {
     screens: {
       Tabs: {
@@ -347,10 +360,15 @@ const linking: LinkingOptions<RootStackParamList> = {
   },
   getStateFromPath(path, options) {
     return (
-      (Platform.OS === 'web' ? adoptionStateFromPath(path) : null) ??
+      (Platform.OS === 'web' ? adoptionStateFromPath(path, webHost()) : null) ??
       getStateFromPublicPath(path) ??
       rnGetStateFromPath(path, options)
     );
+  },
+  getPathFromState(state, options) {
+    const path = rnGetPathFromState(state, options);
+    if (Platform.OS === 'web' && isAdoptionsHost(webHost())) return stripAdoptionsPrefix(path);
+    return path;
   },
   async getInitialURL() {
     const url = await Linking.getInitialURL();
@@ -518,7 +536,9 @@ function WebUrlSync() {
       if (!navigationRef.isReady()) return;
       const path = `${window.location.pathname}${window.location.search}`;
       const state =
-        adoptionStateFromPath(path) ?? getStateFromPublicPath(path) ?? rnGetStateFromPath(path, linking.config);
+        adoptionStateFromPath(path, window.location.hostname) ??
+        getStateFromPublicPath(path) ??
+        rnGetStateFromPath(path, linking.config);
       if (state) navigationRef.resetRoot(state);
     };
     apply();

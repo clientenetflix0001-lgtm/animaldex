@@ -1,13 +1,12 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { db, type ApiAlert } from '../../lib/db';
 import { openAlertAdoption } from '../../lib/openAlertAdoption';
-import { PUBLIC_WEB_ORIGIN } from '../../lib/publicWeb';
-import { adoptionPostPath } from '../../lib/adoptionLocalities';
+import { adoptionCanonicalUrl } from '../../lib/adoptionsHost';
 import { FlyerContactModal } from './FlyerContactModal';
 import { FlyerViewer } from './FlyerViewer';
 
 export function adoptionPostShareUrl(citySlug: string, alertId: string): string {
-  return `${PUBLIC_WEB_ORIGIN}${adoptionPostPath(citySlug, alertId)}`;
+  return adoptionCanonicalUrl(citySlug, alertId);
 }
 
 /**

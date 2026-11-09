@@ -4,6 +4,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { TerritoryQuery } from './geoplace/territory.ts';
+import { readWebSessionCookie, writeWebSessionCookie } from './webSessionCookie.ts';
 
 // Backend real: Cloudflare Worker con acceso nativo a D1 (rápido y confiable).
 // Las funciones serverless de Vercel no se desplegaban de forma consistente,
@@ -21,6 +22,17 @@ export async function loadToken(): Promise<string | null> {
   try {
     sessionToken = await AsyncStorage.getItem(TOKEN_KEY);
   } catch {}
+  if (!sessionToken) {
+    const fromCookie = readWebSessionCookie();
+    if (fromCookie) {
+      sessionToken = fromCookie;
+      try {
+        await AsyncStorage.setItem(TOKEN_KEY, fromCookie);
+      } catch {}
+    }
+  } else {
+    writeWebSessionCookie(sessionToken);
+  }
   return sessionToken;
 }
 
@@ -31,6 +43,7 @@ export async function setToken(token: string | null): Promise<void> {
     if (token) await AsyncStorage.setItem(TOKEN_KEY, token);
     else await AsyncStorage.removeItem(TOKEN_KEY);
   } catch {}
+  writeWebSessionCookie(token);
 }
 
 export function getToken(): string | null {

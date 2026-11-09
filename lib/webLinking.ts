@@ -1,5 +1,6 @@
 import { resolveAppLink } from './appLinks.ts';
 import { ADOPTIONS_SEGMENT, DEFAULT_ADOPTION_SLUG, resolveAdoptionPath } from './adoptionLocalities.ts';
+import { toLogicalAdoptionPath } from './adoptionsHost.ts';
 import { isPublicLegalPath } from './legalPages.ts';
 import { PUBLIC_WEB_ORIGIN } from './publicWeb.ts';
 import { extractTagCode } from './tags.ts';
@@ -68,17 +69,22 @@ function tagWelcomeState(code: string) {
 }
 
 /**
- * Animaldex Adopciones (`/adopciones/<slug>/...`). Solo lo usa la web: en
- * Android no se llama, así los App Links no cambian. Un slug no habilitado
- * cae al muro de la localidad por defecto.
+ * Animaldex Adopciones. Solo lo usa la web: en Android no se llama.
+ * En animaldex.com el path sigue siendo `/adopciones/<slug>/...`.
+ * En adopciones.animaldex.com el path visible es `/<slug>/...`.
+ * Un slug que no está habilitado no se muestra como Salta Capital.
  */
-export function adoptionStateFromPath(path: string) {
-  const parts = pathnameOnly(path).split('/').filter(Boolean);
+export function adoptionStateFromPath(path: string, host?: string | null) {
+  const logical = toLogicalAdoptionPath(pathnameOnly(path), host);
+  if (!logical) return null;
+  const parts = logical.split('/').filter(Boolean);
   if (parts[0] !== ADOPTIONS_SEGMENT) return null;
-  const target = resolveAdoptionPath(parts) ?? {
-    screen: 'AdoptionsWall' as const,
-    params: { city: DEFAULT_ADOPTION_SLUG },
-  };
+  const target =
+    resolveAdoptionPath(parts) ??
+    (parts.length === 1
+      ? { screen: 'AdoptionsWall' as const, params: { city: DEFAULT_ADOPTION_SLUG } }
+      : null);
+  if (!target) return null;
   const wall = { name: 'AdoptionsWall', params: { city: target.params.city } };
   const routes =
     target.screen === 'AdoptionsWall' ? [wall] : [wall, { name: target.screen, params: target.params }];

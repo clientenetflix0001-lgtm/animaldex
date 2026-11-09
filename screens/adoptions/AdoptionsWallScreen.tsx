@@ -1,28 +1,33 @@
 // ============================================================
 // Animaldex Adopciones — muro público por localidad (solo web).
-// /adopciones/:city · reutiliza AlertCard y alertas type='adoption'.
+// /adopciones/:city en animaldex.com y /:city en el subdominio.
 // ============================================================
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, type ApiAlert } from '../../lib/db';
 import { useStore } from '../../lib/store';
 import { useGuestAccess } from '../../lib/guestAccess';
-import { useAppTheme, type ThemeColors, radius, spacing } from '../../lib/theme';
+import { useAppTheme, type ThemeColors, spacing } from '../../lib/theme';
 import { RootStackParamList } from '../../lib/types';
 import { adoptionLocalityBySlug, DEFAULT_ADOPTION_SLUG } from '../../lib/adoptionLocalities';
-import { AlertCard } from '../../components/AlertCard';
+import {
+  matchesAdoptionSpeciesFilter,
+  type AdoptionSpeciesFilter,
+} from '../../lib/adoptionSpeciesFilter';
 import { adoptionPostShareUrl, useAdoptionPostActions } from '../../components/adoptions/useAdoptionPostActions';
 import { AdoptionAccountPrompt } from '../../components/adoptions/AdoptionAccountPrompt';
+import { AdoptionsHeader } from '../../components/adoptions/AdoptionsHeader';
+import { AdoptionGridCard } from '../../components/adoptions/AdoptionGridCard';
 
 type Rt = RouteProp<RootStackParamList, 'AdoptionsWall'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const LOGO = require('../../assets/images/animaldex-logo-mark.png');
 const PAGE = 12;
+const GRID_MAX_WIDTH = 880;
+const FILTER_FILL_CAP = 6;
 export const ADOPTIONS_MAX_WIDTH = 640;
 
 export default function AdoptionsWallScreen() {
@@ -43,7 +48,9 @@ export default function AdoptionsWallScreen() {
   const [error, setError] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [askAccount, setAskAccount] = useState(false);
+  const [species, setSpecies] = useState<AdoptionSpeciesFilter>('all');
   const loadingRef = useRef(false);
+  const fillAttempts = useRef(0);
 
   const load = useCallback(
     async (before?: number) => {
@@ -68,8 +75,33 @@ export default function AdoptionsWallScreen() {
 
   useEffect(() => {
     setLoading(true);
+    setSpecies('all');
+    fillAttempts.current = 0;
     load();
   }, [load, user?.id]);
+
+  useEffect(() => {
+    const close = () => setAskAccount(false);
+    const unsub = navigation.addListener('blur', close);
+    return unsub;
+  }, [navigation]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || askAccount) return;
+    const doc = (globalThis as { document?: { body: { style: { overflow: string } }; documentElement: { style: { overflow: string } } } }).document;
+    if (!doc) return;
+    doc.body.style.overflow = '';
+    doc.documentElement.style.overflow = '';
+  }, [askAccount]);
+
+  const visible = useMemo(
+    () => alerts.filter((alert) => matchesAdoptionSpeciesFilter(alert, species)),
+    [alerts, species]
+  );
+  const gridData = useMemo(
+    () => (visible.length % 2 === 1 ? [...visible, null] : visible),
+    [visible]
+  );
 
   const loadMore = useCallback(() => {
     if (!hasMore || loadingMore || alerts.length === 0) return;
@@ -77,10 +109,29 @@ export default function AdoptionsWallScreen() {
     load(last.bumpedAt || last.renewedAt || last.createdAt);
   }, [alerts, hasMore, loadingMore, load]);
 
+  useEffect(() => {
+    fillAttempts.current = 0;
+  }, [species, city]);
+
+  useEffect(() => {
+    if (species === 'all' || loading || loadingMore || !hasMore || alerts.length === 0) return;
+    if (visible.length >= PAGE || fillAttempts.current >= FILTER_FILL_CAP) return;
+    fillAttempts.current += 1;
+    loadMore();
+  }, [species, visible.length, loading, loadingMore, hasMore, alerts.length, loadMore]);
+
   const askLogin = useCallback(() => {
     setShowInvite(true);
     requireLogin();
   }, [requireLogin]);
+
+  const openAuth = useCallback(
+    (mode: 'login' | 'register') => {
+      setAskAccount(false);
+      navigation.navigate('Auth', { mode });
+    },
+    [navigation]
+  );
 
   const onToggleLike = useCallback(
     (alertId: string) => {
@@ -107,79 +158,79 @@ export default function AdoptionsWallScreen() {
   );
 
   const header = (
-    <View style={styles.header}>
-      <View style={styles.brandRow}>
-        <Image source={LOGO} style={styles.logo} contentFit="contain" accessibilityLabel="Animaldex" />
-        <Text style={styles.brandText}>Adopciones</Text>
-      </View>
-      <View style={styles.placeRow}>
-        <Text style={styles.placeText} numberOfLines={1}>
-          {place.locality}
-        </Text>
-        <Pressable
-          onPress={() => navigation.navigate('AdoptionMine', { city })}
-          hitSlop={8}
-          accessibilityRole="link"
-        >
-          <Text style={styles.mineText}>Mis publicaciones</Text>
-        </Pressable>
-      </View>
-      <Pressable
-        style={styles.publishBtn}
-        onPress={() => (guest ? setAskAccount(true) : navigation.navigate('AdoptionPublish', { city }))}
-        accessibilityRole="button"
-      >
-        <Text style={styles.publishText}>+ Publicar mascota en adopción</Text>
-      </Pressable>
+    <AdoptionsHeader
+      city={city}
+      locality={place.locality}
+      species={species}
+      onSpecies={setSpecies}
+      onPublish={() => (guest ? setAskAccount(true) : navigation.navigate('AdoptionPublish', { city }))}
+      onMine={() => navigation.navigate('AdoptionMine', { city })}
+    />
+  );
+
+  const fillingFilter =
+    species !== 'all' &&
+    visible.length === 0 &&
+    hasMore &&
+    !error &&
+    fillAttempts.current < FILTER_FILL_CAP;
+  const empty = loading || loadingMore || fillingFilter ? (
+    <ActivityIndicator style={styles.loader} color={colors.primary} size="large" />
+  ) : (
+    <View style={styles.empty}>
+      <Text style={styles.emptyText}>
+        {error ||
+          (species === 'all'
+            ? `Todavía no hay mascotas en adopción en ${place.locality}.`
+            : `No hay publicaciones de esta especie en ${place.locality}.`)}
+      </Text>
     </View>
   );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <FlatList
-        data={alerts}
-        keyExtractor={(a) => a.id}
+        data={gridData}
+        keyExtractor={(item) => item?.id ?? 'grid-pad'}
+        numColumns={2}
         style={styles.list}
         contentContainerStyle={styles.listContent}
+        columnWrapperStyle={visible.length > 0 ? styles.row : undefined}
         ListHeaderComponent={header}
-        renderItem={({ item }) => (
-          <AlertCard
-            alert={item}
-            onToggleLike={onToggleLike}
-            onOpenComments={openDetail}
-            onOpenDetail={openDetail}
-            onAdopt={adopt}
-            showDifundir
-            shareUrl={adoptionPostShareUrl(city, item.id)}
-          />
-        )}
-        ListEmptyComponent={
-          loading ? (
-            <ActivityIndicator style={styles.loader} color={colors.primary} size="large" />
+        renderItem={({ item }) =>
+          item ? (
+            <AdoptionGridCard
+              alert={item}
+              onToggleLike={onToggleLike}
+              onOpen={openDetail}
+              onAdopt={adopt}
+              shareUrl={adoptionPostShareUrl(city, item.id)}
+            />
           ) : (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>
-                {error || `Todavía no hay mascotas en adopción en ${place.locality}.`}
-              </Text>
-            </View>
+            <View style={styles.pad} />
           )
         }
+        ListEmptyComponent={empty}
         ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.loader} color={colors.primary} /> : null}
         onEndReached={loadMore}
         onEndReachedThreshold={0.6}
         showsVerticalScrollIndicator={false}
+        initialNumToRender={6}
+        windowSize={7}
       />
       {guest && showInvite ? inviteBar : null}
       <Modal visible={askAccount} transparent animationType="fade" onRequestClose={() => setAskAccount(false)}>
-        <View style={styles.modalBackdrop}>
-          <AdoptionAccountPrompt
-            title="Publicá una mascota en adopción"
-            message="Para publicar y administrar tus mascotas, necesitás una cuenta de Animaldex."
-            onLogin={() => navigation.navigate('Auth', { mode: 'login' })}
-            onRegister={() => navigation.navigate('Auth', { mode: 'register' })}
-            onCancel={() => setAskAccount(false)}
-          />
-        </View>
+        <Pressable style={styles.modalBackdrop} onPress={() => setAskAccount(false)}>
+          <Pressable onPress={() => {}}>
+            <AdoptionAccountPrompt
+              title="Publicá una mascota en adopción"
+              message="Para publicar y administrar tus mascotas, necesitás una cuenta de Animaldex."
+              onLogin={() => openAuth('login')}
+              onRegister={() => openAuth('register')}
+              onCancel={() => setAskAccount(false)}
+            />
+          </Pressable>
+        </Pressable>
       </Modal>
       {overlays}
     </SafeAreaView>
@@ -190,22 +241,15 @@ function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     list: { flex: 1 },
-    listContent: { width: '100%', maxWidth: ADOPTIONS_MAX_WIDTH, alignSelf: 'center', paddingBottom: spacing.xxl },
-    header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, gap: spacing.sm },
-    brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    logo: { width: 28, height: 28 },
-    brandText: { fontSize: 13, fontWeight: '700', color: colors.textMuted },
-    placeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-    placeText: { flexShrink: 1, fontSize: 16, fontWeight: '800', color: colors.text },
-    mineText: { fontSize: 13, fontWeight: '700', color: colors.primary },
-    publishBtn: {
-      alignSelf: 'flex-start',
-      backgroundColor: colors.primary,
-      borderRadius: radius.full,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
+    listContent: {
+      width: '100%',
+      maxWidth: GRID_MAX_WIDTH,
+      alignSelf: 'center',
+      paddingBottom: spacing.xxl,
+      paddingHorizontal: spacing.xs,
     },
-    publishText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+    row: { gap: spacing.sm, marginBottom: spacing.sm },
+    pad: { flex: 1 },
     loader: { marginTop: spacing.xl },
     empty: { padding: spacing.xl, alignItems: 'center' },
     emptyText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
