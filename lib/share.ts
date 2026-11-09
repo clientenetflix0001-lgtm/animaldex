@@ -216,9 +216,9 @@ export function alertShareUrl(alertId: string): string {
   return `${siteOrigin()}/a/${alertId}`;
 }
 
-export async function shareAlert(alert: ApiAlert): Promise<void> {
+/** `url` permite compartir la ruta de Animaldex Adopciones; por defecto `/a/:id`. */
+export async function shareAlert(alert: ApiAlert, url: string = alertShareUrl(alert.id)): Promise<void> {
   const meta = alertShareMeta(alert);
-  const url = alertShareUrl(alert.id);
   await shareLink(meta.title, meta.shareText || meta.title, url);
 }
 

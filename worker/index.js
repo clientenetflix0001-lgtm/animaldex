@@ -32,6 +32,13 @@ import {
   currentIdentity,
   runStoryCleanup,
 } from './stories.js';
+import {
+  alertVisibilitySql,
+  handleAuthAdoptionAction,
+  handlePublicAdoptionAction,
+  processPendingImageDeletions,
+  renewAlertLifecycleSql,
+} from './adoptionPosts.js';
 import { alertWithinRadiusKm, boundingBox, localitiesMatch, validLatLng } from '../lib/feedGeo.ts';
 import { storageFilename, validateImageUpload } from './imageUpload.js';
 import {
@@ -364,7 +371,7 @@ const RESERVED_PUBLIC_USERNAMES = new Set([
   'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
   'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mis-productos', 'mercado-favoritos', 'transfer',
   'favicon.ico', 'robots.txt',
-  'well-known',
+  'well-known', 'adopciones',
 ]);
 
 function isReservedPublicUsername(username) {
@@ -1634,6 +1641,9 @@ function alertRow(r, viewerLiked) {
     username: r.username || null,
     userName: r.user_name || null,
     userAvatar: r.user_avatar || null,
+    mediaKind: r.media_kind || null,
+    expiresAt: r.expires_at ?? null,
+    pausedAt: r.paused_at ?? null,
   };
 }
 
@@ -1924,12 +1934,13 @@ async function loadHomeAlerts(env, viewerId, viewer, now) {
     conditions.push(territorial.sql);
     params.push(...territorial.values);
   }
+  const visibility = await alertVisibilitySql(env, 'a', now);
   const rows = await d1(
     env,
-    `${ALERT_SELECT} WHERE ${conditions.join(' AND ')}
+    `${ALERT_SELECT} WHERE ${conditions.join(' AND ')}${visibility.sql}
      ORDER BY COALESCE(a.renewed_at, a.created_at) DESC
      LIMIT 16`,
-    params
+    [...params, ...visibility.values]
   );
   const filtered = rows.filter((r) => {
     if (hasPoint && validLatLng(r.lat, r.lon)) {
@@ -2065,6 +2076,9 @@ async function handleDb(request, env, ctx) {
 
     const publicStory = await handlePublicStoryAction(env, body, json, clean, request, authUser);
     if (publicStory) return publicStory;
+
+    const publicAdoption = await handlePublicAdoptionAction(env, request, body, action, now, adoptionDeps());
+    if (publicAdoption) return publicAdoption;
 
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
@@ -2631,16 +2645,18 @@ async function handleDb(request, env, ctx) {
       const matchBreedId = clean(body.breedId, 40);
       const extraSql = `${matchType === 'found' ? " AND a.type = 'found'" : ''}${matchBreedId ? ' AND a.breed_id = ?' : ''}`;
       const extraValues = matchBreedId ? [matchBreedId] : [];
+      const visibility = await alertVisibilitySql(env, 'a', now);
       const rows = await d1(
         env,
         `${ALERT_SELECT} WHERE ${territorial.sql}
            AND (a.status IS NULL OR a.status = 'active')
            AND a.resolved_at IS NULL
+           ${visibility.sql}
            AND COALESCE(a.renewed_at, a.created_at) < ?
            ${extraSql}
          ORDER BY COALESCE(a.renewed_at, a.created_at) DESC
          LIMIT ?`,
-        [...territorial.values, before, ...extraValues, limit + 1]
+        [...territorial.values, ...visibility.values, before, ...extraValues, limit + 1]
       );
       const hasMore = rows.length > limit;
       const page = hasMore ? rows.slice(0, limit) : rows;
@@ -2969,6 +2985,9 @@ async function handleDb(request, env, ctx) {
 
     const authStory = await handleAuthStoryAction(env, body, json, clean, userId, notifyUserPush);
     if (authStory) return authStory;
+
+    const authAdoption = await handleAuthAdoptionAction(env, request, body, action, now, userId, adoptionDeps());
+    if (authAdoption) return authAdoption;
 
     if (action === 'registerPushToken') {
       const expoPushToken = clean(body.expoPushToken, 200);
@@ -3370,7 +3389,12 @@ async function handleDb(request, env, ctx) {
       if (now - last < ALERT_RENEW_MS) {
         return json({ error: 'Todavía no pasaron 7 días desde la última renovación.' }, 400);
       }
-      await d1(env, 'UPDATE alerts SET renewed_at = ?, renewal_notified_at = NULL WHERE id = ?', [now, alertId]);
+      const lifecycle = await renewAlertLifecycleSql(env, owned[0], now);
+      await d1(
+        env,
+        `UPDATE alerts SET renewed_at = ?, renewal_notified_at = NULL${lifecycle.sql} WHERE id = ?`,
+        [now, ...lifecycle.values, alertId]
+      );
       const rows = await d1(env, `${ALERT_SELECT} WHERE a.id = ?`, [alertId]);
       const [alert] = await attachLikedFlags(env, rows, userId);
       return json({ ok: true, alert });
@@ -4478,6 +4502,13 @@ async function handleUpload(request, env) {
     return json({ ok: true, provider: 'demo', url: String(body.image || ''), message: 'Cloudflare Images no configurado' });
   }
 
+  const uploaded = await uploadCheckedImage(env, { mime, ext, bytes });
+  if (!uploaded.ok) return json({ error: uploaded.error }, 502);
+  return json({ ok: true, provider: 'cloudflare', url: uploaded.url, id: uploaded.id });
+}
+
+/** Sube bytes ya validados por validateImageUpload a Cloudflare Images. */
+async function uploadCheckedImage(env, { mime, ext, bytes }) {
   try {
     const blob = new Blob([bytes], { type: mime });
     const form = new FormData();
@@ -4491,14 +4522,28 @@ async function handleUpload(request, env) {
     const result = await resp.json();
     if (!resp.ok || !result.success) {
       const msg = (result.errors && result.errors[0] && result.errors[0].message) || 'error al subir a Cloudflare Images';
-      return json({ error: `Cloudflare: ${msg}` }, 502);
+      return { ok: false, error: `Cloudflare: ${msg}` };
     }
     const variants = result.result.variants || [];
     const url = variants.find((v) => /\/public$/.test(v)) || variants[0];
-    return json({ ok: true, provider: 'cloudflare', url, id: result.result.id });
+    return { ok: true, url, id: result.result.id };
   } catch (e) {
-    return json({ error: `No se pudo subir la imagen: ${e.message}` }, 502);
+    return { ok: false, error: `No se pudo subir la imagen: ${e.message}` };
   }
+}
+
+function adoptionDeps() {
+  return {
+    d1,
+    json,
+    clean,
+    authUser,
+    ALERT_SELECT,
+    attachLikedFlags,
+    requestTerritoryCondition,
+    uploadCheckedImage,
+    uploadLimited,
+  };
 }
 
 // ============================================================
@@ -4646,12 +4691,19 @@ export default {
 
   async scheduled(event, env) {
     const nowMs = event && event.scheduledTime ? Number(event.scheduledTime) : Date.now();
-    // */5 * * * * → solo flush. 0 11 * * * → tareas diarias (y un flush extra).
+    // */5 * * * * → flush, un lote de publicaciones vencidas y la cola de imágenes.
+    // 0 11 * * * → tareas diarias (y un flush extra).
     if (scheduledJobKind(event && event.cron) === 'push_flush') {
       try {
         await flushDuePushBatches(env, notifyUserPush, nowMs);
       } catch (e) {
         console.log('push-batches', e && e.message);
+      }
+      try {
+        // Dos pasadas de 5, solo si la primera vino llena. Presupuesto corto.
+        await processPendingImageDeletions(env, adoptionDeps(), nowMs, { maxPasses: 2, budgetMs: 4_000 });
+      } catch (e) {
+        console.log('adoption-image-cleanup', e && e.message);
       }
       return;
     }
@@ -4684,6 +4736,12 @@ export default {
       await runStoryCleanup(env, nowMs);
     } catch (e) {
       console.log('story-cleanup', e && e.message);
+    }
+    try {
+      // Una sola pasada: el cron de 5 minutos es el que drena la cola.
+      await processPendingImageDeletions(env, adoptionDeps(), nowMs, { maxPasses: 1, budgetMs: 4_000 });
+    } catch (e) {
+      console.log('adoption-image-cleanup', e && e.message);
     }
   },
 };

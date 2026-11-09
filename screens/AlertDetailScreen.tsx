@@ -1,7 +1,7 @@
 // ============================================================
 // Animaldex — Detalle de alerta + comentarios
 // ============================================================
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,15 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
+  Platform,
+  Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '../components/AppIcon';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { db, ApiAlert, ApiComment, timeAgoMinutes } from '../lib/db';
 import { useStore } from '../lib/store';
 import { shareAlert } from '../lib/share';
@@ -30,24 +34,64 @@ import { CommentKeyboardView } from '../components/CommentKeyboardView';
 import { adoptCtaLabel } from '../lib/adoptionContact';
 import { openAlertAdoption } from '../lib/openAlertAdoption';
 import { useGuestAccess } from '../lib/guestAccess';
+import { DEFAULT_ADOPTION_SLUG } from '../lib/adoptionLocalities';
+import { adoptionPostShareUrl, useAdoptionPostActions } from '../components/adoptions/useAdoptionPostActions';
+import {
+  adoptionThumbFrame,
+  beginAdoptionOpen,
+  cancelHeldAdoptionImage,
+  finishHeldAdoptionImage,
+  flyAdoptionImage,
+  heldAdoptionImageActive,
+  peekAdoptionPreview,
+  prefersReducedMotion,
+  returnHeldAdoptionImage,
+  setHeldDismissListener,
+  type FlightRect,
+} from '../components/adoptions/adoptionImageFlight';
+import { convertImage } from '../lib/images';
 
-type Rt = RouteProp<RootStackParamList, 'AlertDetail'>;
+type Rt = RouteProp<RootStackParamList, 'AlertDetail' | 'AdoptionPost'>;
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+const DIFUNDIR_LABEL_MIN_WIDTH = 400;
 
 export default function AlertDetailScreen() {
-  const { colors } = useAppTheme();
+  const { colors, scheme } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const route = useRoute<Rt>();
+  const navigation = useNavigation<Nav>();
+  const { width } = useWindowDimensions();
   const { user } = useStore();
-  const { guest, requireLogin, inviteBar, goBackOrClose } = useGuestAccess({ headerClose: true });
   const { alertId } = route.params;
+  // Solo la ruta web /adopciones/:city/:alertId (Difundir, denuncia, URL de la sección).
+  const adoptionSection = route.name === 'AdoptionPost';
+  const { guest, requireLogin, inviteBar, goBackOrClose } = useGuestAccess({ headerClose: !adoptionSection });
+  // Modal de flyer sin contacto: también en /a/:id, pero solo en web. Android no cambia.
+  const flyerModalEnabled = adoptionSection || Platform.OS === 'web';
+  const adoptionCity =
+    (route.params as RootStackParamList['AdoptionPost']).city || DEFAULT_ADOPTION_SLUG;
+  const adoptionActions = useAdoptionPostActions();
+  const [reported, setReported] = useState(false);
 
-  const [alert, setAlert] = useState<ApiAlert | null>(null);
-  const [loading, setLoading] = useState(true);
+  const stagedPreview = adoptionSection ? peekAdoptionPreview(alertId) : null;
+  const hadPreview = useRef(!!stagedPreview);
+  const [alert, setAlert] = useState<ApiAlert | null>(stagedPreview);
+  const [loading, setLoading] = useState(!stagedPreview);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [comments, setComments] = useState<ApiComment[]>([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [adopting, setAdopting] = useState(false);
+  const [revealPhoto, setRevealPhoto] = useState(() => !adoptionSection || !heldAdoptionImageActive());
+  const [photoReady, setPhotoReady] = useState(false);
+  const [photoError, setPhotoError] = useState(false);
+  const [loadedSize, setLoadedSize] = useState<{ width: number; height: number } | null>(null);
+  const [chromeOn, setChromeOn] = useState(() => !adoptionSection || prefersReducedMotion());
+  const detailFrame = useRef<FlightRect | null>(null);
+  const imageWrapRef = useRef<View>(null);
+  const handedOff = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -58,8 +102,9 @@ export default function AlertDetailScreen() {
       setAlert(a);
       setComments(c);
     } catch {
-      setAlert(null);
+      if (!hadPreview.current) setAlert(null);
     } finally {
+      setCommentsLoaded(true);
       setLoading(false);
     }
   }, [alertId]);
@@ -68,7 +113,105 @@ export default function AlertDetailScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (chromeOn) return;
+    const frame = requestAnimationFrame(() => setChromeOn(true));
+    return () => cancelAnimationFrame(frame);
+  }, [chromeOn]);
+
+  const seenImage = useRef(alert?.image);
+  useEffect(() => {
+    if (seenImage.current === alert?.image) return;
+    seenImage.current = alert?.image;
+    setPhotoReady(false);
+    setPhotoError(false);
+    setLoadedSize(null);
+    handedOff.current = false;
+    setRevealPhoto(!heldAdoptionImageActive());
+  }, [alert?.image]);
+
+  const measureDetailImage = useCallback(() => {
+    imageWrapRef.current?.measureInWindow((x, y, width, height) => {
+      if (width <= 8 || height <= 8) return;
+      detailFrame.current = { x, y, width, height };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!adoptionSection || !photoError) return;
+    cancelHeldAdoptionImage();
+    setRevealPhoto(true);
+  }, [adoptionSection, photoError]);
+
   const natural = useImageNaturalSize(alert?.image);
+  const flightSize = loadedSize ?? natural;
+  useEffect(() => {
+    if (!adoptionSection || photoError || !photoReady || !flightSize || handedOff.current) return;
+    if (!heldAdoptionImageActive()) {
+      setRevealPhoto(true);
+      return;
+    }
+    let cancelled = false;
+    let attempts = 0;
+    let last: FlightRect | null = null;
+    let stable = 0;
+    let raf = 0;
+    const tick = () => {
+      if (cancelled || handedOff.current) return;
+      imageWrapRef.current?.measureInWindow((x, y, width, height) => {
+        if (cancelled || handedOff.current) return;
+        attempts += 1;
+        if (width <= 8 || height <= 8) {
+          if (attempts < 12) raf = requestAnimationFrame(tick);
+          return;
+        }
+        const next = { x, y, width, height };
+        detailFrame.current = next;
+        const matches = !!last && Math.abs(last.x - x) < 1 && Math.abs(last.y - y) < 1 && Math.abs(last.width - width) < 1 && Math.abs(last.height - height) < 1;
+        stable = matches ? stable + 1 : 0;
+        last = next;
+        if (stable < 1 && attempts < 10) {
+          raf = requestAnimationFrame(tick);
+          return;
+        }
+        handedOff.current = true;
+        beginAdoptionOpen({
+          to: next,
+          imageWidth: flightSize.width,
+          imageHeight: flightSize.height,
+          onArrived: () => setRevealPhoto(true),
+        });
+      });
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [adoptionSection, photoError, photoReady, flightSize]);
+
+  useEffect(() => {
+    if (!adoptionSection) return;
+    setHeldDismissListener(() => setRevealPhoto(true));
+    return () => setHeldDismissListener(null);
+  }, [adoptionSection]);
+
+  useEffect(() => {
+    if (!adoptionSection || !revealPhoto) return;
+    finishHeldAdoptionImage();
+  }, [adoptionSection, revealPhoto]);
+
+  useEffect(() => {
+    if (!adoptionSection) return;
+    return navigation.addListener('beforeRemove', () => {
+      const to = adoptionThumbFrame(alertId);
+      if (to && !prefersReducedMotion() && returnHeldAdoptionImage(to)) return;
+      const from = detailFrame.current;
+      const uri = alert?.image ? convertImage(alert.image, 720, 74, 'cover') : '';
+      if (!from || !to || !uri || prefersReducedMotion()) return;
+      void flyAdoptionImage({ uri, from, to, fit: 'cover', duration: 240 });
+    });
+  }, [adoptionSection, navigation, alertId, alert?.image]);
 
   const handleToggleLike = useCallback(() => {
     if (guest) { requireLogin(); return; }
@@ -82,21 +225,52 @@ export default function AlertDetailScreen() {
     if (!alert || sharing) return;
     setSharing(true);
     try {
-      await shareAlert(alert);
+      await shareAlert(alert, adoptionSection ? adoptionPostShareUrl(adoptionCity, alert.id) : undefined);
     } finally {
       setSharing(false);
     }
-  }, [alert, sharing]);
+  }, [alert, sharing, adoptionSection, adoptionCity]);
 
   const handleAdopt = useCallback(async () => {
     if (!alert || adopting) return;
     setAdopting(true);
     try {
-      await openAlertAdoption(alert);
+      if (flyerModalEnabled) await adoptionActions.adopt(alert);
+      else await openAlertAdoption(alert);
     } finally {
       setAdopting(false);
     }
-  }, [alert, adopting]);
+  }, [alert, adopting, flyerModalEnabled, adoptionActions]);
+
+  const handleReport = useCallback(() => {
+    if (!alert || reported) return;
+    if (guest) { requireLogin(); return; }
+    const send = () => {
+      db.reportAlert(alert.id)
+        .then(() => {
+          setReported(true);
+          if (Platform.OS === 'web') window.alert('Gracias. Vamos a revisar la publicación.');
+          else Alert.alert('Gracias', 'Vamos a revisar la publicación.');
+        })
+        .catch((e: any) => {
+          const msg = e?.message || 'No se pudo enviar la denuncia.';
+          if (Platform.OS === 'web') window.alert(msg);
+          else Alert.alert('Error', msg);
+        });
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Denunciar esta publicación por contenido inapropiado o engañoso?')) send();
+    } else {
+      Alert.alert('Denunciar', '¿Denunciar esta publicación?', [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Denunciar', style: 'destructive', onPress: send },
+      ]);
+    }
+  }, [alert, reported, guest, requireLogin]);
+
+  const backToWall = useCallback(() => {
+    navigation.navigate('AdoptionsWall', { city: adoptionCity });
+  }, [navigation, adoptionCity]);
 
   const send = useCallback(async () => {
     if (guest) { requireLogin(); return; }
@@ -128,7 +302,18 @@ export default function AlertDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <SafeAreaView style={styles.safe} edges={adoptionSection ? ['top', 'bottom'] : ['bottom']}>
+        {adoptionSection ? (
+          <Pressable
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : backToWall)}
+            hitSlop={10}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
+          >
+            <Ionicons name="chevron-back" size={26} color={colors.text} />
+          </Pressable>
+        ) : null}
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
@@ -145,9 +330,9 @@ export default function AlertDetailScreen() {
           <Text style={styles.notFoundText}>Este enlace ya no está disponible.</Text>
           <Pressable
             style={styles.notFoundBtn}
-            onPress={goBackOrClose}
+            onPress={adoptionSection ? backToWall : goBackOrClose}
           >
-            <Text style={styles.notFoundBtnText}>Volver</Text>
+            <Text style={styles.notFoundBtnText}>{adoptionSection ? 'Ver adopciones' : 'Volver'}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -158,43 +343,94 @@ export default function AlertDetailScreen() {
   const resolved = isAlertResolved(alert);
   const badgeColor = alertBadgeColor(alert);
 
+  const chromeStyle = adoptionSection && !prefersReducedMotion()
+    ? ({ opacity: chromeOn ? 1 : 0, transition: 'opacity 200ms ease' } as const)
+    : undefined;
+  const detailWidth = loadedSize?.width ?? natural?.width ?? (adoptionSection ? 4 : undefined);
+  const detailHeight = loadedSize?.height ?? natural?.height ?? (adoptionSection ? 5 : undefined);
+
   const header = (
     <View>
-      <View style={[styles.badgeRow, { backgroundColor: `${badgeColor}14` }]}>
-        <Text style={[styles.badgeText, { color: badgeColor }]}>
-          {alertBadgeText(alert)}
-        </Text>
-      </View>
-
-      <View style={styles.userRow}>
-        <Image source={{ uri: thumb(avatar, 100) }} style={styles.avatar} transition={200} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.petName}>{alertContextLine(alert)}</Text>
-          <View style={styles.locRow}>
-            <Ionicons name="location" size={12} color={colors.textMuted} />
+      {adoptionSection ? (
+        <View style={[styles.adoptTop, chromeStyle]}>
+          <Pressable
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : backToWall)}
+            hitSlop={10}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
+          >
+            <Ionicons name="chevron-back" size={26} color={colors.text} />
+          </Pressable>
+          <Image source={{ uri: thumb(avatar, 100) }} style={styles.avatar} transition={200} />
+          <View style={styles.adoptCopy}>
+            <Text style={styles.petName} numberOfLines={2}>
+              {alertContextLine(alert)}
+            </Text>
+            <Text style={styles.adoptMeta} numberOfLines={2}>
+              {formatTime(timeAgoMinutes(alert.createdAt))} · {alert.locality}
+              {alert.locationReference ? ` · ${alert.locationReference}` : ''}
+            </Text>
+            {alertFoundSafeNote(alert) ? <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text> : null}
+          </View>
+        </View>
+      ) : (
+        <>
+          <View style={[styles.badgeRow, { backgroundColor: `${badgeColor}14` }]}>
+            <Text style={[styles.badgeText, { color: badgeColor }]}>
+              {alertBadgeText(alert)}
+            </Text>
+          </View>
+          <View style={styles.userRow}>
+            <Image source={{ uri: thumb(avatar, 100) }} style={styles.avatar} transition={200} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.locText}>{alert.locality}</Text>
-              {alert.locationReference ? (
-                <Text style={styles.locText}>{alert.locationReference}</Text>
+              <Text style={styles.petName}>{alertContextLine(alert)}</Text>
+              <View style={styles.locRow}>
+                <Ionicons name="location" size={12} color={colors.textMuted} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.locText}>{alert.locality}</Text>
+                  {alert.locationReference ? (
+                    <Text style={styles.locText}>{alert.locationReference}</Text>
+                  ) : null}
+                </View>
+              </View>
+              {alertFoundSafeNote(alert) ? (
+                <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text>
               ) : null}
             </View>
+            <Text style={styles.time}>{formatTime(timeAgoMinutes(alert.createdAt))}</Text>
           </View>
-          {alertFoundSafeNote(alert) ? (
-            <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text>
-          ) : null}
-        </View>
-        <Text style={styles.time}>{formatTime(timeAgoMinutes(alert.createdAt))}</Text>
+        </>
+      )}
+
+      <View
+        ref={imageWrapRef}
+        collapsable={false}
+        onLayout={adoptionSection ? measureDetailImage : undefined}
+        style={adoptionSection && !revealPhoto && !photoError ? { opacity: 0 } : undefined}
+      >
+        {photoError ? (
+          <View style={styles.photoError}>
+            <Text style={styles.notFoundText}>No se pudo mostrar la imagen.</Text>
+          </View>
+        ) : (
+          <AdaptivePostImage
+            uri={alert.image}
+            imageWidth={detailWidth}
+            imageHeight={detailHeight}
+            layout="feed"
+            recyclingKey={alert.id}
+            contentFit={adoptionSection ? 'contain' : 'cover'}
+            onLoad={adoptionSection ? (size) => {
+              if (size) setLoadedSize(size);
+              setPhotoReady(true);
+            } : undefined}
+            onError={adoptionSection ? () => setPhotoError(true) : undefined}
+          />
+        )}
       </View>
 
-      <AdaptivePostImage
-        uri={alert.image}
-        imageWidth={natural?.width}
-        imageHeight={natural?.height}
-        layout="feed"
-        recyclingKey={alert.id}
-      />
-
-      <View style={styles.actions}>
+      <View style={[styles.actions, chromeStyle]}>
         <Pressable onPress={handleToggleLike} hitSlop={8} style={styles.actionBtn}>
           <Ionicons
             name={alert.isLiked ? 'heart' : 'heart-outline'}
@@ -213,7 +449,22 @@ export default function AlertDetailScreen() {
             <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
           </Pressable>
         ) : alert.type === 'adoption' && !resolved ? (
-          <WantToAdoptButton label={adoptCtaLabel(alert.sex)} onPress={handleAdopt} />
+          <>
+            <WantToAdoptButton label={adoptCtaLabel(alert.sex)} onPress={handleAdopt} />
+            {adoptionSection ? (
+              <Pressable
+                onPress={handleShare}
+                disabled={sharing}
+                hitSlop={8}
+                style={styles.actionBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Difundir"
+              >
+                <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
+                {width >= DIFUNDIR_LABEL_MIN_WIDTH ? <Text style={styles.actionCount}>Difundir</Text> : null}
+              </Pressable>
+            ) : null}
+          </>
         ) : (
           <Pressable onPress={handleShare} disabled={sharing} style={styles.difundirBtn}>
             <Ionicons name="paw" size={15} color="#fff" />
@@ -222,23 +473,32 @@ export default function AlertDetailScreen() {
         )}
       </View>
 
+      <View style={chromeStyle}>
       <Text style={styles.description}>{alert.description}</Text>
       {alert.username && <Text style={styles.postedBy}>Publicado por {alert.username}</Text>}
+      {adoptionSection && user?.id !== alert.userId ? (
+        <Pressable onPress={handleReport} disabled={reported} hitSlop={6} accessibilityRole="button">
+          <Text style={styles.postedBy}>{reported ? 'Denuncia enviada' : 'Denunciar publicación'}</Text>
+        </Pressable>
+      ) : null}
 
       <Text style={styles.commentsTitle}>
         Comentarios {displayComments.length > 0 ? `(${displayComments.length})` : ''}
       </Text>
-      {displayComments.length === 0 && (
+      {displayComments.length === 0 && (!adoptionSection || commentsLoaded) && (
         <View style={styles.emptyComments}>
           <Text style={styles.emptyEmoji}>💬</Text>
           <Text style={styles.emptyText}>Sé el primero en comentar</Text>
         </View>
       )}
+      </View>
     </View>
   );
 
+  const pageBg = adoptionSection && scheme === 'light' ? { backgroundColor: '#FFFFFF' } : null;
+
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, pageBg]} edges={adoptionSection ? ['top', 'bottom'] : ['bottom']}>
       {guest ? (
         <>
           <FlatList
@@ -315,6 +575,7 @@ export default function AlertDetailScreen() {
           </View>
         </CommentKeyboardView>
       )}
+      {flyerModalEnabled ? adoptionActions.overlays : null}
     </SafeAreaView>
   );
 }
@@ -328,6 +589,11 @@ function makeStyles(colors: ThemeColors) {
   notFoundText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
   notFoundBtn: { marginTop: 12, backgroundColor: colors.primary, paddingHorizontal: 26, paddingVertical: 11, borderRadius: radius.full },
   notFoundBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  adoptTop: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingHorizontal: spacing.sm, paddingTop: 4, paddingBottom: 8 },
+  adoptCopy: { flex: 1, paddingTop: 2, paddingRight: spacing.sm },
+  adoptMeta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  photoError: { width: '100%', aspectRatio: 4 / 5, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   badgeRow: { paddingHorizontal: spacing.lg, paddingVertical: 10 },
   badgeText: { fontWeight: '800', fontSize: 13, letterSpacing: 0.3 },
   userRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },

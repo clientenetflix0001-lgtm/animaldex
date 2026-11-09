@@ -4,6 +4,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { TerritoryQuery } from './geoplace/territory.ts';
+import { readWebSessionCookie, writeWebSessionCookie } from './webSessionCookie.ts';
 
 // Backend real: Cloudflare Worker con acceso nativo a D1 (rápido y confiable).
 // Las funciones serverless de Vercel no se desplegaban de forma consistente,
@@ -21,6 +22,17 @@ export async function loadToken(): Promise<string | null> {
   try {
     sessionToken = await AsyncStorage.getItem(TOKEN_KEY);
   } catch {}
+  if (!sessionToken) {
+    const fromCookie = readWebSessionCookie();
+    if (fromCookie) {
+      sessionToken = fromCookie;
+      try {
+        await AsyncStorage.setItem(TOKEN_KEY, fromCookie);
+      } catch {}
+    }
+  } else {
+    writeWebSessionCookie(sessionToken);
+  }
   return sessionToken;
 }
 
@@ -31,6 +43,7 @@ export async function setToken(token: string | null): Promise<void> {
     if (token) await AsyncStorage.setItem(TOKEN_KEY, token);
     else await AsyncStorage.removeItem(TOKEN_KEY);
   } catch {}
+  writeWebSessionCookie(token);
 }
 
 export function getToken(): string | null {
@@ -256,6 +269,10 @@ export interface ApiAlert {
   username: string | null;
   userName: string | null;
   userAvatar: string | null;
+  /** Solo publicaciones creadas desde Animaldex Adopciones web. */
+  mediaKind?: 'photo' | 'flyer' | null;
+  expiresAt?: number | null;
+  pausedAt?: number | null;
 }
 
 export interface ApiListing {
@@ -767,6 +784,32 @@ export const db = {
     adoptionWhatsapp: string | null;
     adoptionPhone: string | null;
   }> => call('/db', { action: 'alertAdoptionContact', alertId }),
+
+  // ---------- Animaldex Adopciones web (sobre alertas de adopción) ----------
+  adoptionWall: (citySlug: string, before?: number, limit = 12): Promise<{ alerts: ApiAlert[]; hasMore: boolean }> =>
+    call('/db', { action: 'adoptionWall', citySlug, before, limit }),
+  createAdoptionPost: (post: {
+    citySlug: string;
+    mediaKind: 'photo' | 'flyer';
+    image: string;
+    petName?: string;
+    species?: string;
+    sex?: 'macho' | 'hembra' | null;
+    description?: string;
+    contactWhatsapp?: string;
+    contactPhone?: string;
+  }): Promise<{ alert: ApiAlert; expiresAt: number }> =>
+    call('/db', { action: 'createAdoptionPost', ...post }),
+  myAdoptionPosts: (): Promise<{ alerts: ApiAlert[] }> => call('/db', { action: 'myAdoptionPosts' }),
+  pauseAdoptionPost: (alertId: string): Promise<{ alert: ApiAlert }> =>
+    call('/db', { action: 'pauseAdoptionPost', alertId }),
+  resumeAdoptionPost: (alertId: string): Promise<{ alert: ApiAlert }> =>
+    call('/db', { action: 'resumeAdoptionPost', alertId }),
+  renewAdoptionPost: (alertId: string): Promise<{ alert: ApiAlert }> =>
+    call('/db', { action: 'renewAdoptionPost', alertId }),
+  deleteAdoptionPost: (alertId: string): Promise<{ ok: boolean }> =>
+    call('/db', { action: 'deleteAdoptionPost', alertId }),
+  reportAlert: (alertId: string): Promise<{ ok: boolean }> => call('/db', { action: 'reportAlert', alertId }),
 
   // ---------- Mercado (productos y servicios) ----------
   listingsFeed: (params: {

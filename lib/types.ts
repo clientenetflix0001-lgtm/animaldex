@@ -57,6 +57,11 @@ export type RootStackParamList = {
   MarketFavorites: undefined;
   PublicProfile: { profileId?: string; username?: string };
   AdoptionDiscovery: undefined;
+  /** Animaldex Adopciones web. `city` es el slug (`saltacapital`). */
+  AdoptionsWall: { city: string };
+  AdoptionPost: { city: string; alertId: string };
+  AdoptionPublish: { city: string };
+  AdoptionMine: { city: string };
   CreateReel: undefined;
   CreateStory: undefined;
   StoryViewer: {
