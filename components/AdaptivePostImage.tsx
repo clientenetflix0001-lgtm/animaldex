@@ -27,6 +27,8 @@ interface Props {
    * El Feed y las Alertas siguen en `cover`.
    */
   contentFit?: 'cover' | 'contain';
+  onLoad?: (size: { width: number; height: number } | null) => void;
+  onError?: () => void;
 }
 
 /**
@@ -45,6 +47,8 @@ export function AdaptivePostImage({
   allowFullScreen = true,
   onDoubleTap,
   contentFit = 'cover',
+  onLoad,
+  onError,
 }: Props) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -101,6 +105,13 @@ export function AdaptivePostImage({
           style={styles.image}
           contentFit={contentFit}
           contentPosition="center"
+          onLoad={(event) => {
+            const source = (event as { source?: { width?: number; height?: number } })?.source;
+            const width = Number(source?.width);
+            const height = Number(source?.height);
+            onLoad?.(width > 0 && height > 0 ? { width, height } : null);
+          }}
+          onError={() => onError?.()}
           cachePolicy={layout === 'feed' ? 'memory-disk' : 'disk'}
           recyclingKey={recyclingKey || uri}
           transition={layout === 'feed' ? 0 : 200}

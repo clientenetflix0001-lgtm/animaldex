@@ -1,4 +1,4 @@
-// Celda del muro. La foto llena un cuadro 1:1. El detalle muestra el original.
+// Celda del muro. La foto llena un cuadro 4:5. El detalle muestra el original.
 import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
@@ -9,11 +9,11 @@ import { convertImage, thumb, userFallbackAvatar } from '../../lib/images';
 import { formatCount } from '../../lib/data';
 import { useAppTheme, type ThemeColors } from '../../lib/theme';
 import {
-  beginAdoptionFlight,
   estimatedDetailFrame,
-  flyAdoptionImage,
+  holdAdoptionImage,
   prefersReducedMotion,
   rememberAdoptionThumb,
+  stageAdoptionPreview,
   type FlightRect,
 } from './adoptionImageFlight';
 
@@ -53,16 +53,15 @@ function AdoptionGridCardInner({ alert, onToggleLike, onOpen, shareUrl }: Props)
 
   const open = useCallback(() => {
     const go = (rect?: FlightRect) => {
+      stageAdoptionPreview(alert);
       if (rect) {
         rememberAdoptionThumb(alert.id, rect);
         if (!prefersReducedMotion() && typeof window !== 'undefined') {
-          beginAdoptionFlight(280);
-          void flyAdoptionImage({
+          holdAdoptionImage({
             uri: photo,
             from: rect,
             to: estimatedDetailFrame(),
-            fit: 'cover',
-            duration: 260,
+            duration: 280,
           });
         }
       }
@@ -82,7 +81,7 @@ function AdoptionGridCardInner({ alert, onToggleLike, onOpen, shareUrl }: Props)
   return (
     <View style={styles.cell}>
       <Pressable onPress={open} accessibilityRole="link" accessibilityLabel="Abrir publicación">
-        <View ref={imageRef} collapsable={false}>
+        <View ref={imageRef} collapsable={false} style={styles.photoFrame}>
           <Image
             source={{ uri: photo }}
             style={styles.photo}
@@ -148,7 +147,13 @@ function makeStyles(colors: ThemeColors, dark: boolean) {
   const page = dark ? colors.bg : '#FFFFFF';
   return StyleSheet.create({
     cell: { flex: 1, backgroundColor: page, minWidth: 0 },
-    photo: { width: '100%', aspectRatio: 1, backgroundColor: dark ? colors.surface : '#F2F2F2' },
+    photoFrame: { borderRadius: 10, overflow: 'hidden' },
+    photo: {
+      width: '100%',
+      aspectRatio: 4 / 5,
+      borderRadius: 10,
+      backgroundColor: dark ? colors.surface : '#F2F2F2',
+    },
     title: {
       color: colors.text,
       fontWeight: '700',

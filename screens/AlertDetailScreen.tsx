@@ -37,10 +37,17 @@ import { useGuestAccess } from '../lib/guestAccess';
 import { DEFAULT_ADOPTION_SLUG } from '../lib/adoptionLocalities';
 import { adoptionPostShareUrl, useAdoptionPostActions } from '../components/adoptions/useAdoptionPostActions';
 import {
-  adoptionFlightRemaining,
   adoptionThumbFrame,
+  cancelHeldAdoptionImage,
   flyAdoptionImage,
+  heldAdoptionImageActive,
+  peekAdoptionPreview,
   prefersReducedMotion,
+  fadeHeldAdoptionImage,
+  releaseHeldAdoptionImage,
+  retargetHeldAdoptionImage,
+  returnHeldAdoptionImage,
+  setHeldDismissListener,
   type FlightRect,
 } from '../components/adoptions/adoptionImageFlight';
 import { convertImage } from '../lib/images';
@@ -68,16 +75,24 @@ export default function AlertDetailScreen() {
   const adoptionActions = useAdoptionPostActions();
   const [reported, setReported] = useState(false);
 
-  const [alert, setAlert] = useState<ApiAlert | null>(null);
-  const [loading, setLoading] = useState(true);
+  const stagedPreview = adoptionSection ? peekAdoptionPreview(alertId) : null;
+  const hadPreview = useRef(!!stagedPreview);
+  const [alert, setAlert] = useState<ApiAlert | null>(stagedPreview);
+  const [loading, setLoading] = useState(!stagedPreview);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [comments, setComments] = useState<ApiComment[]>([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [adopting, setAdopting] = useState(false);
-  const [revealPhoto, setRevealPhoto] = useState(() => !adoptionSection || adoptionFlightRemaining() === 0);
+  const [revealPhoto, setRevealPhoto] = useState(() => !adoptionSection || !heldAdoptionImageActive());
+  const [photoReady, setPhotoReady] = useState(false);
+  const [photoError, setPhotoError] = useState(false);
+  const [loadedSize, setLoadedSize] = useState<{ width: number; height: number } | null>(null);
+  const [chromeOn, setChromeOn] = useState(() => !adoptionSection || prefersReducedMotion());
   const detailFrame = useRef<FlightRect | null>(null);
   const imageWrapRef = useRef<View>(null);
+  const handedOff = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -88,8 +103,9 @@ export default function AlertDetailScreen() {
       setAlert(a);
       setComments(c);
     } catch {
-      setAlert(null);
+      if (!hadPreview.current) setAlert(null);
     } finally {
+      setCommentsLoaded(true);
       setLoading(false);
     }
   }, [alertId]);
@@ -99,23 +115,80 @@ export default function AlertDetailScreen() {
   }, [load]);
 
   useEffect(() => {
-    if (!adoptionSection || revealPhoto) return;
-    const wait = adoptionFlightRemaining();
-    const timer = setTimeout(() => setRevealPhoto(true), wait);
-    return () => clearTimeout(timer);
-  }, [adoptionSection, revealPhoto]);
+    if (chromeOn) return;
+    const frame = requestAnimationFrame(() => setChromeOn(true));
+    return () => cancelAnimationFrame(frame);
+  }, [chromeOn]);
+
+  const seenImage = useRef(alert?.image);
+  useEffect(() => {
+    if (seenImage.current === alert?.image) return;
+    seenImage.current = alert?.image;
+    setPhotoReady(false);
+    setPhotoError(false);
+    setLoadedSize(null);
+    handedOff.current = false;
+    setRevealPhoto(!heldAdoptionImageActive());
+  }, [alert?.image]);
 
   const measureDetailImage = useCallback(() => {
     imageWrapRef.current?.measureInWindow((x, y, width, height) => {
-      if (width > 8 && height > 8) detailFrame.current = { x, y, width, height };
+      if (width <= 8 || height <= 8) return;
+      const frame = { x, y, width, height };
+      detailFrame.current = frame;
+      if (heldAdoptionImageActive() && !handedOff.current) retargetHeldAdoptionImage(frame);
     });
   }, []);
 
   useEffect(() => {
+    if (!adoptionSection || !photoError) return;
+    cancelHeldAdoptionImage();
+    setRevealPhoto(true);
+  }, [adoptionSection, photoError]);
+
+  useEffect(() => {
+    if (!adoptionSection || photoError || !photoReady || handedOff.current) return;
+    let cancelled = false;
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        imageWrapRef.current?.measureInWindow((x, y, width, height) => {
+          if (cancelled || handedOff.current) return;
+          handedOff.current = true;
+          if (width > 8 && height > 8) {
+            const next = { x, y, width, height };
+            detailFrame.current = next;
+            if (heldAdoptionImageActive()) retargetHeldAdoptionImage(next);
+          }
+          if (heldAdoptionImageActive()) releaseHeldAdoptionImage(() => setRevealPhoto(true));
+          else setRevealPhoto(true);
+        });
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [adoptionSection, photoError, photoReady, loadedSize]);
+
+  useEffect(() => {
+    if (!adoptionSection) return;
+    setHeldDismissListener(() => setRevealPhoto(true));
+    return () => setHeldDismissListener(null);
+  }, [adoptionSection]);
+
+  useEffect(() => {
+    if (!adoptionSection || !revealPhoto) return;
+    fadeHeldAdoptionImage();
+  }, [adoptionSection, revealPhoto]);
+
+  useEffect(() => {
     if (!adoptionSection) return;
     return navigation.addListener('beforeRemove', () => {
-      const from = detailFrame.current;
       const to = adoptionThumbFrame(alertId);
+      if (to && !prefersReducedMotion() && returnHeldAdoptionImage(to)) return;
+      const from = detailFrame.current;
       const uri = alert?.image ? convertImage(alert.image, 720, 74, 'cover') : '';
       if (!from || !to || !uri || prefersReducedMotion()) return;
       void flyAdoptionImage({ uri, from, to, fit: 'cover', duration: 240 });
@@ -254,33 +327,37 @@ export default function AlertDetailScreen() {
   const resolved = isAlertResolved(alert);
   const badgeColor = alertBadgeColor(alert);
 
+  const chromeStyle = adoptionSection && !prefersReducedMotion()
+    ? ({ opacity: chromeOn ? 1 : 0, transition: 'opacity 200ms ease' } as const)
+    : undefined;
+  const detailWidth = loadedSize?.width ?? natural?.width ?? (adoptionSection ? 4 : undefined);
+  const detailHeight = loadedSize?.height ?? natural?.height ?? (adoptionSection ? 5 : undefined);
+
   const header = (
     <View>
       {adoptionSection ? (
-        <>
-          <View style={styles.adoptTop}>
-            <Pressable
-              onPress={() => (navigation.canGoBack() ? navigation.goBack() : backToWall)}
-              hitSlop={10}
-              style={styles.backBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Volver"
-            >
-              <Ionicons name="chevron-back" size={26} color={colors.text} />
-            </Pressable>
-            <Image source={{ uri: thumb(avatar, 100) }} style={styles.avatar} transition={200} />
-            <Text style={[styles.petName, { flex: 1 }]} numberOfLines={2}>
+        <View style={[styles.adoptTop, chromeStyle]}>
+          <Pressable
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : backToWall)}
+            hitSlop={10}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
+          >
+            <Ionicons name="chevron-back" size={26} color={colors.text} />
+          </Pressable>
+          <Image source={{ uri: thumb(avatar, 100) }} style={styles.avatar} transition={200} />
+          <View style={styles.adoptCopy}>
+            <Text style={styles.petName} numberOfLines={2}>
               {alertContextLine(alert)}
             </Text>
+            <Text style={styles.adoptMeta} numberOfLines={2}>
+              {formatTime(timeAgoMinutes(alert.createdAt))} · {alert.locality}
+              {alert.locationReference ? ` · ${alert.locationReference}` : ''}
+            </Text>
+            {alertFoundSafeNote(alert) ? <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text> : null}
           </View>
-          <Text style={styles.subLine}>
-            {formatTime(timeAgoMinutes(alert.createdAt))} · {alert.locality}
-            {alert.locationReference ? ` · ${alert.locationReference}` : ''}
-          </Text>
-          {alertFoundSafeNote(alert) ? (
-            <Text style={[styles.safeNote, { paddingHorizontal: spacing.lg }]}>{alertFoundSafeNote(alert)}</Text>
-          ) : null}
-        </>
+        </View>
       ) : (
         <>
           <View style={[styles.badgeRow, { backgroundColor: `${badgeColor}14` }]}>
@@ -314,19 +391,30 @@ export default function AlertDetailScreen() {
         ref={imageWrapRef}
         collapsable={false}
         onLayout={adoptionSection ? measureDetailImage : undefined}
-        style={adoptionSection && !revealPhoto ? { opacity: 0 } : undefined}
+        style={adoptionSection && !revealPhoto && !photoError ? { opacity: 0 } : undefined}
       >
-        <AdaptivePostImage
-          uri={alert.image}
-          imageWidth={natural?.width}
-          imageHeight={natural?.height}
-          layout="feed"
-          recyclingKey={alert.id}
-          contentFit={adoptionSection ? 'contain' : 'cover'}
-        />
+        {photoError ? (
+          <View style={styles.photoError}>
+            <Text style={styles.notFoundText}>No se pudo mostrar la imagen.</Text>
+          </View>
+        ) : (
+          <AdaptivePostImage
+            uri={alert.image}
+            imageWidth={detailWidth}
+            imageHeight={detailHeight}
+            layout="feed"
+            recyclingKey={alert.id}
+            contentFit={adoptionSection ? 'contain' : 'cover'}
+            onLoad={adoptionSection ? (size) => {
+              if (size) setLoadedSize(size);
+              setPhotoReady(true);
+            } : undefined}
+            onError={adoptionSection ? () => setPhotoError(true) : undefined}
+          />
+        )}
       </View>
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, chromeStyle]}>
         <Pressable onPress={handleToggleLike} hitSlop={8} style={styles.actionBtn}>
           <Ionicons
             name={alert.isLiked ? 'heart' : 'heart-outline'}
@@ -369,6 +457,7 @@ export default function AlertDetailScreen() {
         )}
       </View>
 
+      <View style={chromeStyle}>
       <Text style={styles.description}>{alert.description}</Text>
       {alert.username && <Text style={styles.postedBy}>Publicado por {alert.username}</Text>}
       {adoptionSection && user?.id !== alert.userId ? (
@@ -380,12 +469,13 @@ export default function AlertDetailScreen() {
       <Text style={styles.commentsTitle}>
         Comentarios {displayComments.length > 0 ? `(${displayComments.length})` : ''}
       </Text>
-      {displayComments.length === 0 && (
+      {displayComments.length === 0 && (!adoptionSection || commentsLoaded) && (
         <View style={styles.emptyComments}>
           <Text style={styles.emptyEmoji}>💬</Text>
           <Text style={styles.emptyText}>Sé el primero en comentar</Text>
         </View>
       )}
+      </View>
     </View>
   );
 
@@ -483,9 +573,11 @@ function makeStyles(colors: ThemeColors) {
   notFoundText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
   notFoundBtn: { marginTop: 12, backgroundColor: colors.primary, paddingHorizontal: 26, paddingVertical: 11, borderRadius: radius.full },
   notFoundBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  adoptTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm, paddingTop: spacing.xs },
-  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  subLine: { fontSize: 13, color: colors.textMuted, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  adoptTop: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingHorizontal: spacing.sm, paddingTop: 4, paddingBottom: 8 },
+  adoptCopy: { flex: 1, paddingTop: 2, paddingRight: spacing.sm },
+  adoptMeta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  photoError: { width: '100%', aspectRatio: 4 / 5, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   badgeRow: { paddingHorizontal: spacing.lg, paddingVertical: 10 },
   badgeText: { fontWeight: '800', fontSize: 13, letterSpacing: 0.3 },
   userRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },
