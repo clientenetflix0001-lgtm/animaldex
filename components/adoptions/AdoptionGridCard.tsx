@@ -5,11 +5,10 @@ import { Image } from 'expo-image';
 import Ionicons from '../AppIcon';
 import { ApiAlert } from '../../lib/db';
 import { shareAlert } from '../../lib/share';
-import { convertImage, thumb, userFallbackAvatar } from '../../lib/images';
+import { convertImage, large, thumb, userFallbackAvatar } from '../../lib/images';
 import { formatCount } from '../../lib/data';
 import { useAppTheme, type ThemeColors } from '../../lib/theme';
 import {
-  estimatedDetailFrame,
   holdAdoptionImage,
   prefersReducedMotion,
   rememberAdoptionThumb,
@@ -58,10 +57,9 @@ function AdoptionGridCardInner({ alert, onToggleLike, onOpen, shareUrl }: Props)
         rememberAdoptionThumb(alert.id, rect);
         if (!prefersReducedMotion() && typeof window !== 'undefined') {
           holdAdoptionImage({
-            uri: photo,
+            thumbUri: photo,
+            fullUri: large(alert.image),
             from: rect,
-            to: estimatedDetailFrame(),
-            duration: 280,
           });
         }
       }

@@ -298,8 +298,8 @@ function adoptionWebScreens(colors: ThemeColors) {
         component={AlertDetailScreen}
         options={{
           headerShown: false,
-          animation: 'fade',
-          animationDuration: 180,
+          // La foto es la única transición. Un fade de la pantalla se ve como una segunda apertura.
+          animation: 'none',
           ...headerOptions(colors),
         }}
       />

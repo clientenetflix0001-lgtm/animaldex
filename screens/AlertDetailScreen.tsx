@@ -38,14 +38,13 @@ import { DEFAULT_ADOPTION_SLUG } from '../lib/adoptionLocalities';
 import { adoptionPostShareUrl, useAdoptionPostActions } from '../components/adoptions/useAdoptionPostActions';
 import {
   adoptionThumbFrame,
+  beginAdoptionOpen,
   cancelHeldAdoptionImage,
+  finishHeldAdoptionImage,
   flyAdoptionImage,
   heldAdoptionImageActive,
   peekAdoptionPreview,
   prefersReducedMotion,
-  fadeHeldAdoptionImage,
-  releaseHeldAdoptionImage,
-  retargetHeldAdoptionImage,
   returnHeldAdoptionImage,
   setHeldDismissListener,
   type FlightRect,
@@ -134,9 +133,7 @@ export default function AlertDetailScreen() {
   const measureDetailImage = useCallback(() => {
     imageWrapRef.current?.measureInWindow((x, y, width, height) => {
       if (width <= 8 || height <= 8) return;
-      const frame = { x, y, width, height };
-      detailFrame.current = frame;
-      if (heldAdoptionImageActive() && !handedOff.current) retargetHeldAdoptionImage(frame);
+      detailFrame.current = { x, y, width, height };
     });
   }, []);
 
@@ -146,31 +143,52 @@ export default function AlertDetailScreen() {
     setRevealPhoto(true);
   }, [adoptionSection, photoError]);
 
+  const natural = useImageNaturalSize(alert?.image);
+  const flightSize = loadedSize ?? natural;
   useEffect(() => {
-    if (!adoptionSection || photoError || !photoReady || handedOff.current) return;
+    if (!adoptionSection || photoError || !photoReady || !flightSize || handedOff.current) return;
+    if (!heldAdoptionImageActive()) {
+      setRevealPhoto(true);
+      return;
+    }
     let cancelled = false;
-    let inner = 0;
-    const outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => {
-        imageWrapRef.current?.measureInWindow((x, y, width, height) => {
-          if (cancelled || handedOff.current) return;
-          handedOff.current = true;
-          if (width > 8 && height > 8) {
-            const next = { x, y, width, height };
-            detailFrame.current = next;
-            if (heldAdoptionImageActive()) retargetHeldAdoptionImage(next);
-          }
-          if (heldAdoptionImageActive()) releaseHeldAdoptionImage(() => setRevealPhoto(true));
-          else setRevealPhoto(true);
+    let attempts = 0;
+    let last: FlightRect | null = null;
+    let stable = 0;
+    let raf = 0;
+    const tick = () => {
+      if (cancelled || handedOff.current) return;
+      imageWrapRef.current?.measureInWindow((x, y, width, height) => {
+        if (cancelled || handedOff.current) return;
+        attempts += 1;
+        if (width <= 8 || height <= 8) {
+          if (attempts < 12) raf = requestAnimationFrame(tick);
+          return;
+        }
+        const next = { x, y, width, height };
+        detailFrame.current = next;
+        const matches = !!last && Math.abs(last.x - x) < 1 && Math.abs(last.y - y) < 1 && Math.abs(last.width - width) < 1 && Math.abs(last.height - height) < 1;
+        stable = matches ? stable + 1 : 0;
+        last = next;
+        if (stable < 1 && attempts < 10) {
+          raf = requestAnimationFrame(tick);
+          return;
+        }
+        handedOff.current = true;
+        beginAdoptionOpen({
+          to: next,
+          imageWidth: flightSize.width,
+          imageHeight: flightSize.height,
+          onArrived: () => setRevealPhoto(true),
         });
       });
-    });
+    };
+    raf = requestAnimationFrame(tick);
     return () => {
       cancelled = true;
-      cancelAnimationFrame(outer);
-      cancelAnimationFrame(inner);
+      cancelAnimationFrame(raf);
     };
-  }, [adoptionSection, photoError, photoReady, loadedSize]);
+  }, [adoptionSection, photoError, photoReady, flightSize]);
 
   useEffect(() => {
     if (!adoptionSection) return;
@@ -180,7 +198,7 @@ export default function AlertDetailScreen() {
 
   useEffect(() => {
     if (!adoptionSection || !revealPhoto) return;
-    fadeHeldAdoptionImage();
+    finishHeldAdoptionImage();
   }, [adoptionSection, revealPhoto]);
 
   useEffect(() => {
@@ -194,8 +212,6 @@ export default function AlertDetailScreen() {
       void flyAdoptionImage({ uri, from, to, fit: 'cover', duration: 240 });
     });
   }, [adoptionSection, navigation, alertId, alert?.image]);
-
-  const natural = useImageNaturalSize(alert?.image);
 
   const handleToggleLike = useCallback(() => {
     if (guest) { requireLogin(); return; }
