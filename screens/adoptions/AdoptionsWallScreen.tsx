@@ -17,7 +17,7 @@ import {
   matchesAdoptionSpeciesFilter,
   type AdoptionSpeciesFilter,
 } from '../../lib/adoptionSpeciesFilter';
-import { adoptionPostShareUrl, useAdoptionPostActions } from '../../components/adoptions/useAdoptionPostActions';
+import { adoptionPostShareUrl } from '../../components/adoptions/useAdoptionPostActions';
 import { AdoptionAccountPrompt } from '../../components/adoptions/AdoptionAccountPrompt';
 import { AdoptionsHeader } from '../../components/adoptions/AdoptionsHeader';
 import { AdoptionGridCard } from '../../components/adoptions/AdoptionGridCard';
@@ -31,7 +31,7 @@ const FILTER_FILL_CAP = 6;
 export const ADOPTIONS_MAX_WIDTH = 640;
 
 export default function AdoptionsWallScreen() {
-  const { colors } = useAppTheme();
+  const { colors, scheme } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const route = useRoute<Rt>();
   const navigation = useNavigation<Nav>();
@@ -39,7 +39,7 @@ export default function AdoptionsWallScreen() {
   const { guest, requireLogin, inviteBar } = useGuestAccess({ treatAsExternal: false });
   const place = adoptionLocalityBySlug(route.params?.city) || adoptionLocalityBySlug(DEFAULT_ADOPTION_SLUG)!;
   const city = place.slug;
-  const { adopt, overlays } = useAdoptionPostActions();
+  const pageBg = scheme === 'dark' ? colors.bg : '#FFFFFF';
 
   const [alerts, setAlerts] = useState<ApiAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -188,12 +188,12 @@ export default function AdoptionsWallScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: pageBg }]} edges={['top', 'bottom']}>
       <FlatList
         data={gridData}
         keyExtractor={(item) => item?.id ?? 'grid-pad'}
         numColumns={2}
-        style={styles.list}
+        style={[styles.list, { backgroundColor: pageBg }]}
         contentContainerStyle={styles.listContent}
         columnWrapperStyle={visible.length > 0 ? styles.row : undefined}
         ListHeaderComponent={header}
@@ -203,7 +203,6 @@ export default function AdoptionsWallScreen() {
               alert={item}
               onToggleLike={onToggleLike}
               onOpen={openDetail}
-              onAdopt={adopt}
               shareUrl={adoptionPostShareUrl(city, item.id)}
             />
           ) : (
@@ -232,7 +231,6 @@ export default function AdoptionsWallScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-      {overlays}
     </SafeAreaView>
   );
 }
@@ -246,9 +244,9 @@ function makeStyles(colors: ThemeColors) {
       maxWidth: GRID_MAX_WIDTH,
       alignSelf: 'center',
       paddingBottom: spacing.xxl,
-      paddingHorizontal: spacing.xs,
+      paddingHorizontal: 4,
     },
-    row: { gap: spacing.sm, marginBottom: spacing.sm },
+    row: { gap: 6, marginBottom: 2 },
     pad: { flex: 1 },
     loader: { marginTop: spacing.xl },
     empty: { padding: spacing.xl, alignItems: 'center' },

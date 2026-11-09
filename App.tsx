@@ -288,11 +288,20 @@ function adoptionWebScreens(colors: ThemeColors) {
   if (Platform.OS !== 'web') return null;
   return (
     <>
-      <Stack.Screen name="AdoptionsWall" component={AdoptionsWallScreen} options={{ headerShown: false, title: 'Adopciones' }} />
+      <Stack.Screen
+        name="AdoptionsWall"
+        component={AdoptionsWallScreen}
+        options={{ headerShown: false, freezeOnBlur: true, title: 'Adopciones' }}
+      />
       <Stack.Screen
         name="AdoptionPost"
         component={AlertDetailScreen}
-        options={{ title: 'Adopción', ...headerOptions(colors) }}
+        options={{
+          headerShown: false,
+          animation: 'fade',
+          animationDuration: 180,
+          ...headerOptions(colors),
+        }}
       />
       <Stack.Screen name="AdoptionPublish" component={AdoptionPublishScreen} options={{ headerShown: false, title: 'Publicar en adopción' }} />
       <Stack.Screen name="AdoptionMine" component={AdoptionMineScreen} options={{ headerShown: false, title: 'Mis publicaciones' }} />

@@ -1,7 +1,7 @@
 // ============================================================
 // Animaldex — Detalle de alerta + comentarios
 // ============================================================
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,14 @@ import { openAlertAdoption } from '../lib/openAlertAdoption';
 import { useGuestAccess } from '../lib/guestAccess';
 import { DEFAULT_ADOPTION_SLUG } from '../lib/adoptionLocalities';
 import { adoptionPostShareUrl, useAdoptionPostActions } from '../components/adoptions/useAdoptionPostActions';
+import {
+  adoptionFlightRemaining,
+  adoptionThumbFrame,
+  flyAdoptionImage,
+  prefersReducedMotion,
+  type FlightRect,
+} from '../components/adoptions/adoptionImageFlight';
+import { convertImage } from '../lib/images';
 
 type Rt = RouteProp<RootStackParamList, 'AlertDetail' | 'AdoptionPost'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -43,16 +51,16 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const DIFUNDIR_LABEL_MIN_WIDTH = 400;
 
 export default function AlertDetailScreen() {
-  const { colors } = useAppTheme();
+  const { colors, scheme } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const route = useRoute<Rt>();
   const navigation = useNavigation<Nav>();
   const { width } = useWindowDimensions();
   const { user } = useStore();
-  const { guest, requireLogin, inviteBar, goBackOrClose } = useGuestAccess({ headerClose: true });
   const { alertId } = route.params;
   // Solo la ruta web /adopciones/:city/:alertId (Difundir, denuncia, URL de la sección).
   const adoptionSection = route.name === 'AdoptionPost';
+  const { guest, requireLogin, inviteBar, goBackOrClose } = useGuestAccess({ headerClose: !adoptionSection });
   // Modal de flyer sin contacto: también en /a/:id, pero solo en web. Android no cambia.
   const flyerModalEnabled = adoptionSection || Platform.OS === 'web';
   const adoptionCity =
@@ -67,6 +75,9 @@ export default function AlertDetailScreen() {
   const [sending, setSending] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [adopting, setAdopting] = useState(false);
+  const [revealPhoto, setRevealPhoto] = useState(() => !adoptionSection || adoptionFlightRemaining() === 0);
+  const detailFrame = useRef<FlightRect | null>(null);
+  const imageWrapRef = useRef<View>(null);
 
   const load = useCallback(async () => {
     try {
@@ -86,6 +97,30 @@ export default function AlertDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!adoptionSection || revealPhoto) return;
+    const wait = adoptionFlightRemaining();
+    const timer = setTimeout(() => setRevealPhoto(true), wait);
+    return () => clearTimeout(timer);
+  }, [adoptionSection, revealPhoto]);
+
+  const measureDetailImage = useCallback(() => {
+    imageWrapRef.current?.measureInWindow((x, y, width, height) => {
+      if (width > 8 && height > 8) detailFrame.current = { x, y, width, height };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!adoptionSection) return;
+    return navigation.addListener('beforeRemove', () => {
+      const from = detailFrame.current;
+      const to = adoptionThumbFrame(alertId);
+      const uri = alert?.image ? convertImage(alert.image, 720, 74, 'cover') : '';
+      if (!from || !to || !uri || prefersReducedMotion()) return;
+      void flyAdoptionImage({ uri, from, to, fit: 'cover', duration: 240 });
+    });
+  }, [adoptionSection, navigation, alertId, alert?.image]);
 
   const natural = useImageNaturalSize(alert?.image);
 
@@ -178,7 +213,18 @@ export default function AlertDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <SafeAreaView style={styles.safe} edges={adoptionSection ? ['top', 'bottom'] : ['bottom']}>
+        {adoptionSection ? (
+          <Pressable
+            onPress={() => (navigation.canGoBack() ? navigation.goBack() : backToWall)}
+            hitSlop={10}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
+          >
+            <Ionicons name="chevron-back" size={26} color={colors.text} />
+          </Pressable>
+        ) : null}
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
@@ -210,39 +256,75 @@ export default function AlertDetailScreen() {
 
   const header = (
     <View>
-      <View style={[styles.badgeRow, { backgroundColor: `${badgeColor}14` }]}>
-        <Text style={[styles.badgeText, { color: badgeColor }]}>
-          {alertBadgeText(alert)}
-        </Text>
-      </View>
-
-      <View style={styles.userRow}>
-        <Image source={{ uri: thumb(avatar, 100) }} style={styles.avatar} transition={200} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.petName}>{alertContextLine(alert)}</Text>
-          <View style={styles.locRow}>
-            <Ionicons name="location" size={12} color={colors.textMuted} />
+      {adoptionSection ? (
+        <>
+          <View style={styles.adoptTop}>
+            <Pressable
+              onPress={() => (navigation.canGoBack() ? navigation.goBack() : backToWall)}
+              hitSlop={10}
+              style={styles.backBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Volver"
+            >
+              <Ionicons name="chevron-back" size={26} color={colors.text} />
+            </Pressable>
+            <Image source={{ uri: thumb(avatar, 100) }} style={styles.avatar} transition={200} />
+            <Text style={[styles.petName, { flex: 1 }]} numberOfLines={2}>
+              {alertContextLine(alert)}
+            </Text>
+          </View>
+          <Text style={styles.subLine}>
+            {formatTime(timeAgoMinutes(alert.createdAt))} · {alert.locality}
+            {alert.locationReference ? ` · ${alert.locationReference}` : ''}
+          </Text>
+          {alertFoundSafeNote(alert) ? (
+            <Text style={[styles.safeNote, { paddingHorizontal: spacing.lg }]}>{alertFoundSafeNote(alert)}</Text>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <View style={[styles.badgeRow, { backgroundColor: `${badgeColor}14` }]}>
+            <Text style={[styles.badgeText, { color: badgeColor }]}>
+              {alertBadgeText(alert)}
+            </Text>
+          </View>
+          <View style={styles.userRow}>
+            <Image source={{ uri: thumb(avatar, 100) }} style={styles.avatar} transition={200} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.locText}>{alert.locality}</Text>
-              {alert.locationReference ? (
-                <Text style={styles.locText}>{alert.locationReference}</Text>
+              <Text style={styles.petName}>{alertContextLine(alert)}</Text>
+              <View style={styles.locRow}>
+                <Ionicons name="location" size={12} color={colors.textMuted} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.locText}>{alert.locality}</Text>
+                  {alert.locationReference ? (
+                    <Text style={styles.locText}>{alert.locationReference}</Text>
+                  ) : null}
+                </View>
+              </View>
+              {alertFoundSafeNote(alert) ? (
+                <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text>
               ) : null}
             </View>
+            <Text style={styles.time}>{formatTime(timeAgoMinutes(alert.createdAt))}</Text>
           </View>
-          {alertFoundSafeNote(alert) ? (
-            <Text style={styles.safeNote}>{alertFoundSafeNote(alert)}</Text>
-          ) : null}
-        </View>
-        <Text style={styles.time}>{formatTime(timeAgoMinutes(alert.createdAt))}</Text>
-      </View>
+        </>
+      )}
 
-      <AdaptivePostImage
-        uri={alert.image}
-        imageWidth={natural?.width}
-        imageHeight={natural?.height}
-        layout="feed"
-        recyclingKey={alert.id}
-      />
+      <View
+        ref={imageWrapRef}
+        collapsable={false}
+        onLayout={adoptionSection ? measureDetailImage : undefined}
+        style={adoptionSection && !revealPhoto ? { opacity: 0 } : undefined}
+      >
+        <AdaptivePostImage
+          uri={alert.image}
+          imageWidth={natural?.width}
+          imageHeight={natural?.height}
+          layout="feed"
+          recyclingKey={alert.id}
+          contentFit={adoptionSection ? 'contain' : 'cover'}
+        />
+      </View>
 
       <View style={styles.actions}>
         <Pressable onPress={handleToggleLike} hitSlop={8} style={styles.actionBtn}>
@@ -307,8 +389,10 @@ export default function AlertDetailScreen() {
     </View>
   );
 
+  const pageBg = adoptionSection && scheme === 'light' ? { backgroundColor: '#FFFFFF' } : null;
+
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, pageBg]} edges={adoptionSection ? ['top', 'bottom'] : ['bottom']}>
       {guest ? (
         <>
           <FlatList
@@ -399,6 +483,9 @@ function makeStyles(colors: ThemeColors) {
   notFoundText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
   notFoundBtn: { marginTop: 12, backgroundColor: colors.primary, paddingHorizontal: 26, paddingVertical: 11, borderRadius: radius.full },
   notFoundBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  adoptTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm, paddingTop: spacing.xs },
+  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  subLine: { fontSize: 13, color: colors.textMuted, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   badgeRow: { paddingHorizontal: spacing.lg, paddingVertical: 10 },
   badgeText: { fontWeight: '800', fontSize: 13, letterSpacing: 0.3 },
   userRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },

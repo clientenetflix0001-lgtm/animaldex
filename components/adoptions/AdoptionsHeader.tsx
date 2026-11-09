@@ -1,6 +1,5 @@
 // Header del muro. El wordmark es el de Inicio (marca + «nimaldex»).
-// La pastilla de lugar sigue el gesto de Alertas, pero solo lista
-// localidades que el muro sabe consultar.
+// Tres filas: logo y lugar, publicar y mis publicaciones, filtros.
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { Image } from 'expo-image';
@@ -32,8 +31,8 @@ interface Props {
 }
 
 export function AdoptionsHeader({ city, locality, species, onSpecies, onPublish, onMine }: Props) {
-  const { colors } = useAppTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { colors, scheme } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors, scheme === 'dark'), [colors, scheme]);
   const navigation = useNavigation<Nav>();
   const [placeOpen, setPlaceOpen] = useState(false);
 
@@ -45,7 +44,7 @@ export function AdoptionsHeader({ city, locality, species, onSpecies, onPublish,
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.top}>
+      <View style={styles.between}>
         <View style={styles.brand}>
           <Image source={LOGO} style={styles.mark} contentFit="contain" accessibilityLabel="Animaldex" />
           <Text style={styles.word}>nimaldex</Text>
@@ -60,16 +59,16 @@ export function AdoptionsHeader({ city, locality, species, onSpecies, onPublish,
           <Text style={styles.placeText} numberOfLines={1}>
             {locality}
           </Text>
-          <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
+          <Ionicons name="chevron-down" size={14} color={colors.text} />
         </Pressable>
-        <View style={styles.actions}>
-          <Pressable style={styles.publish} onPress={onPublish} accessibilityRole="button">
-            <Text style={styles.publishText}>Publicar</Text>
-          </Pressable>
-          <Pressable onPress={onMine} hitSlop={8} accessibilityRole="link">
-            <Text style={styles.mine}>Mis publicaciones</Text>
-          </Pressable>
-        </View>
+      </View>
+      <View style={styles.between}>
+        <Pressable onPress={onPublish} hitSlop={6} style={styles.publishHit} accessibilityRole="button">
+          <Text style={styles.publish} numberOfLines={1}>+ Publicar una adopción</Text>
+        </Pressable>
+        <Pressable onPress={onMine} hitSlop={6} accessibilityRole="link">
+          <Text style={styles.mine}>Mis publicaciones</Text>
+        </Pressable>
       </View>
       <View style={styles.filters}>
         {ADOPTION_SPECIES_FILTERS.map((item) => {
@@ -82,7 +81,9 @@ export function AdoptionsHeader({ city, locality, species, onSpecies, onPublish,
               accessibilityRole="button"
               accessibilityState={{ selected }}
             >
-              <Text style={[styles.chipText, selected && styles.chipTextOn]}>{item.label}</Text>
+              <Text style={[styles.chipText, selected && styles.chipTextOn]} numberOfLines={1}>
+                {item.label}
+              </Text>
             </Pressable>
           );
         })}
@@ -121,59 +122,49 @@ export function AdoptionsHeader({ city, locality, species, onSpecies, onPublish,
   );
 }
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles(colors: ThemeColors, dark: boolean) {
+  const page = dark ? colors.bg : '#FFFFFF';
   return StyleSheet.create({
     wrap: {
-      paddingHorizontal: spacing.md,
-      paddingTop: spacing.sm,
-      paddingBottom: spacing.sm,
-      gap: spacing.sm,
+      backgroundColor: page,
+      paddingHorizontal: 12,
+      paddingTop: 4,
+      paddingBottom: 6,
+      gap: 2,
     },
-    top: {
+    between: {
       flexDirection: 'row',
       alignItems: 'center',
-      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      minHeight: 32,
       gap: spacing.sm,
     },
-    brand: { flexDirection: 'row', alignItems: 'center' },
-    mark: { width: 24, height: 24 },
-    word: { fontSize: 22, fontWeight: '900', color: colors.primary, letterSpacing: -0.5 },
+    brand: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
+    mark: { width: 22, height: 22 },
+    word: { fontSize: 20, fontWeight: '900', color: colors.primary, letterSpacing: -0.5 },
     place: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
-      backgroundColor: colors.primarysoft,
-      borderRadius: radius.full,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      maxWidth: '100%',
+      gap: 3,
+      flexShrink: 1,
+      maxWidth: '48%',
+      paddingVertical: 4,
     },
-    placeText: { fontWeight: '800', fontSize: 13, color: colors.text, flexShrink: 1 },
-    actions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      marginLeft: 'auto',
-    },
-    publish: {
-      backgroundColor: colors.primary,
-      borderRadius: radius.full,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-    },
-    publishText: { color: '#fff', fontWeight: '800', fontSize: 12.5 },
-    mine: { color: colors.primary, fontWeight: '800', fontSize: 12.5 },
-    filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    placeText: { fontWeight: '700', fontSize: 14, color: colors.text, flexShrink: 1 },
+    publishHit: { flexShrink: 1, paddingVertical: 4 },
+    publish: { color: colors.primary, fontWeight: '700', fontSize: 14 },
+    mine: { color: colors.text, fontWeight: '500', fontSize: 14 },
+    filters: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
     chip: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
       borderRadius: radius.full,
-      paddingHorizontal: 12,
       paddingVertical: 6,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
+      paddingHorizontal: 4,
     },
-    chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-    chipText: { fontSize: 12.5, fontWeight: '800', color: colors.text },
+    chipOn: { backgroundColor: colors.primary },
+    chipText: { fontSize: 13, fontWeight: '700', color: colors.text },
     chipTextOn: { color: '#fff' },
     backdrop: {
       flex: 1,
@@ -189,8 +180,6 @@ function makeStyles(colors: ThemeColors) {
       maxWidth: 420,
       width: '100%',
       alignSelf: 'center',
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
     },
     sheetTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
     placeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 8 },

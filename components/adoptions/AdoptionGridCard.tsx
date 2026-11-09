@@ -1,35 +1,45 @@
-// Celda del muro. No reemplaza a AlertCard: Alertas sigue igual.
-// La ficha es compacta; el detalle completo se abre al tocarla.
-import React, { memo, useCallback, useMemo, useState } from 'react';
+// Celda del muro. La foto llena un cuadro 1:1. El detalle muestra el original.
+import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import Ionicons from '../AppIcon';
-import { ApiAlert, timeAgoMinutes } from '../../lib/db';
+import { ApiAlert } from '../../lib/db';
 import { shareAlert } from '../../lib/share';
 import { convertImage, thumb, userFallbackAvatar } from '../../lib/images';
-import { formatCount, formatTime } from '../../lib/data';
-import { useAppTheme, type ThemeColors, radius, spacing } from '../../lib/theme';
-import { adoptCtaLabel } from '../../lib/adoptionContact';
+import { formatCount } from '../../lib/data';
+import { useAppTheme, type ThemeColors } from '../../lib/theme';
+import {
+  beginAdoptionFlight,
+  estimatedDetailFrame,
+  flyAdoptionImage,
+  prefersReducedMotion,
+  rememberAdoptionThumb,
+  type FlightRect,
+} from './adoptionImageFlight';
 
 interface Props {
   alert: ApiAlert;
   onToggleLike: (alertId: string) => void;
   onOpen: (alert: ApiAlert) => void;
-  onAdopt: (alert: ApiAlert) => void;
   shareUrl: string;
 }
 
-const PREVIEW_CHARS = 72;
+function gridTitle(alert: ApiAlert): string {
+  const text = String(alert.description || '').replace(/\s+/g, ' ').trim();
+  if (text) return text;
+  const name = String(alert.petName || '').trim();
+  if (name) return name;
+  return 'Mascota en adopción';
+}
 
-function AdoptionGridCardInner({ alert, onToggleLike, onOpen, onAdopt, shareUrl }: Props) {
-  const { colors } = useAppTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+function AdoptionGridCardInner({ alert, onToggleLike, onOpen, shareUrl }: Props) {
+  const { colors, scheme } = useAppTheme();
+  const styles = useMemo(() => makeStyles(colors, scheme === 'dark'), [colors, scheme]);
+  const imageRef = useRef<View>(null);
   const [sharing, setSharing] = useState(false);
   const avatar = alert.userAvatar ?? userFallbackAvatar(alert.username ?? 'usuario');
-  const description = (alert.description || '').trim();
-  const truncated = description.length > PREVIEW_CHARS || description.includes('\n');
-  const preview = description.replace(/\s+/g, ' ').trim();
-  const photo = convertImage(alert.image, 640, 72, 'contain');
+  const photo = convertImage(alert.image, 720, 74, 'cover');
+  const title = gridTitle(alert);
 
   const share = useCallback(async () => {
     if (sharing) return;
@@ -41,169 +51,132 @@ function AdoptionGridCardInner({ alert, onToggleLike, onOpen, onAdopt, shareUrl 
     }
   }, [alert, shareUrl, sharing]);
 
+  const open = useCallback(() => {
+    const go = (rect?: FlightRect) => {
+      if (rect) {
+        rememberAdoptionThumb(alert.id, rect);
+        if (!prefersReducedMotion() && typeof window !== 'undefined') {
+          beginAdoptionFlight(280);
+          void flyAdoptionImage({
+            uri: photo,
+            from: rect,
+            to: estimatedDetailFrame(),
+            fit: 'cover',
+            duration: 260,
+          });
+        }
+      }
+      onOpen(alert);
+    };
+    const node = imageRef.current;
+    if (!node) {
+      go();
+      return;
+    }
+    node.measureInWindow((x, y, width, height) => {
+      if (width > 8 && height > 8) go({ x, y, width, height });
+      else go();
+    });
+  }, [alert, onOpen, photo]);
+
   return (
-    <View style={styles.card}>
-      <Pressable onPress={() => onOpen(alert)} accessibilityRole="link" accessibilityLabel="Abrir publicación">
-        <Image
-          source={{ uri: photo }}
-          style={styles.photo}
-          contentFit="contain"
-          recyclingKey={alert.id}
-          transition={120}
-          accessibilityLabel={alert.petName || 'Mascota en adopción'}
-        />
-        <View style={styles.meta}>
-          <Image source={{ uri: thumb(avatar, 64) }} style={styles.avatar} />
-          <View style={styles.metaText}>
-            <Text style={styles.author} numberOfLines={1}>
-              {alert.username || 'usuario'}
-            </Text>
-            <Text style={styles.time} numberOfLines={1}>
-              {formatTime(timeAgoMinutes(alert.createdAt))}
-            </Text>
-          </View>
+    <View style={styles.cell}>
+      <Pressable onPress={open} accessibilityRole="link" accessibilityLabel="Abrir publicación">
+        <View ref={imageRef} collapsable={false}>
+          <Image
+            source={{ uri: photo }}
+            style={styles.photo}
+            contentFit="cover"
+            recyclingKey={alert.id}
+            transition={80}
+            accessibilityLabel={alert.petName || 'Mascota en adopción'}
+          />
         </View>
-        <View style={styles.locRow}>
-          <Ionicons name="location" size={11} color={colors.textMuted} />
-          <Text style={styles.loc} numberOfLines={1}>
-            {alert.locality}
-          </Text>
-        </View>
-        {preview ? (
-          <Text style={styles.body} numberOfLines={2}>
-            {preview}
-          </Text>
-        ) : null}
-        {truncated ? <Text style={styles.more}>Ver más</Text> : null}
+        <Text style={styles.title} numberOfLines={2}>
+          {title}
+        </Text>
       </Pressable>
-      <View style={styles.actions}>
+      <View style={styles.meta}>
+        <Pressable style={styles.author} onPress={open} accessibilityRole="link">
+          <Image source={{ uri: thumb(avatar, 64) }} style={styles.avatar} />
+          <Text style={styles.name} numberOfLines={1}>
+            {alert.username || 'usuario'}
+          </Text>
+        </Pressable>
         <Pressable
           onPress={() => onToggleLike(alert.id)}
           style={styles.iconBtn}
-          hitSlop={4}
+          hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel="Me gusta"
         >
           <Ionicons
             name={alert.isLiked ? 'heart' : 'heart-outline'}
-            size={20}
-            color={alert.isLiked ? colors.heart : colors.text}
+            size={16}
+            color={alert.isLiked ? colors.heart : colors.textMuted}
           />
           <Text style={styles.count}>{formatCount(alert.likeCount)}</Text>
         </Pressable>
         <Pressable
-          onPress={() => onOpen(alert)}
+          onPress={open}
           style={styles.iconBtn}
-          hitSlop={4}
+          hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel="Comentarios"
         >
-          <Ionicons name="chatbubble-outline" size={18} color={colors.text} />
+          <Ionicons name="chatbubble-outline" size={15} color={colors.textMuted} />
           <Text style={styles.count}>{formatCount(alert.commentCount)}</Text>
         </Pressable>
         <Pressable
           onPress={share}
           disabled={sharing}
           style={styles.iconBtn}
-          hitSlop={4}
+          hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel="Difundir"
         >
-          <Ionicons name="arrow-redo-outline" size={18} color={colors.text} />
+          <Ionicons name="arrow-redo-outline" size={15} color={colors.textMuted} />
         </Pressable>
       </View>
-      <Pressable
-        style={styles.adopt}
-        onPress={() => onAdopt(alert)}
-        accessibilityRole="button"
-        accessibilityLabel={adoptCtaLabel(alert.sex)}
-      >
-        <Text style={styles.adoptText} numberOfLines={2}>
-          {adoptCtaLabel(alert.sex)}
-        </Text>
-      </Pressable>
     </View>
   );
 }
 
 export const AdoptionGridCard = memo(AdoptionGridCardInner);
 
-function makeStyles(colors: ThemeColors) {
+function makeStyles(colors: ThemeColors, dark: boolean) {
+  const page = dark ? colors.bg : '#FFFFFF';
   return StyleSheet.create({
-    card: {
-      flex: 1,
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      overflow: 'hidden',
-    },
-    photo: {
-      width: '100%',
-      aspectRatio: 1,
-      backgroundColor: colors.surface,
+    cell: { flex: 1, backgroundColor: page, minWidth: 0 },
+    photo: { width: '100%', aspectRatio: 1, backgroundColor: dark ? colors.surface : '#F2F2F2' },
+    title: {
+      color: colors.text,
+      fontWeight: '700',
+      fontSize: 14,
+      lineHeight: 18,
+      paddingHorizontal: 6,
+      paddingTop: 6,
     },
     meta: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: spacing.sm,
-      paddingTop: spacing.sm,
-    },
-    avatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.border },
-    metaText: { flex: 1, minWidth: 0 },
-    author: { fontSize: 12.5, fontWeight: '800', color: colors.text },
-    time: { fontSize: 11, color: colors.textMuted },
-    locRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 3,
-      paddingHorizontal: spacing.sm,
-      marginTop: 4,
-    },
-    loc: { flex: 1, fontSize: 11, color: colors.textMuted },
-    body: {
-      fontSize: 12.5,
-      lineHeight: 17,
-      color: colors.text,
-      paddingHorizontal: spacing.sm,
-      paddingTop: 4,
-    },
-    more: {
-      fontSize: 12,
-      fontWeight: '800',
-      color: colors.primary,
-      paddingHorizontal: spacing.sm,
+      paddingHorizontal: 4,
+      paddingBottom: 8,
       paddingTop: 2,
-    },
-    actions: {
-      flexDirection: 'row',
-      alignItems: 'center',
       gap: 2,
-      paddingHorizontal: 4,
-      paddingTop: 4,
     },
+    author: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0, minHeight: 32 },
+    avatar: { width: 18, height: 18, borderRadius: 9, backgroundColor: colors.border },
+    name: { flex: 1, fontSize: 13, fontWeight: '400', color: colors.textMuted },
     iconBtn: {
-      minWidth: 40,
-      minHeight: 40,
+      minWidth: 28,
+      minHeight: 32,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 3,
-      paddingHorizontal: 4,
+      gap: 2,
+      paddingHorizontal: 2,
     },
-    count: { fontSize: 12, fontWeight: '700', color: colors.text },
-    adopt: {
-      marginHorizontal: spacing.sm,
-      marginBottom: spacing.sm,
-      marginTop: 2,
-      minHeight: 40,
-      borderRadius: radius.full,
-      backgroundColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 8,
-    },
-    adoptText: { color: '#fff', fontWeight: '800', fontSize: 12.5, textAlign: 'center' },
+    count: { fontSize: 12, fontWeight: '500', color: colors.textMuted },
   });
 }
