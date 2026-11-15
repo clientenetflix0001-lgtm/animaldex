@@ -61,6 +61,7 @@ export const RESERVED_PUBLIC_USERNAMES: readonly string[] = [
   'privacidad',
   'eliminar-cuenta',
   'seguridad-infantil',
+  'adopciones',
 ];
 
 const RESERVED_SET = new Set(RESERVED_PUBLIC_USERNAMES);

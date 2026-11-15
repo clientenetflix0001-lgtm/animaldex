@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import Ionicons from './AppIcon';
 import { large } from '../lib/images';
 import { useAppTheme, type ThemeColors } from '../lib/theme';
-import { feedMediaBoxStyle } from '../lib/feedMediaLayout';
+import { feedMediaBoxStyle, rawMediaAspect } from '../lib/feedMediaLayout';
 import { feedMediaPerfNoteMediaBox } from '../lib/feedMediaPerf';
 
 interface Props {
@@ -22,6 +22,13 @@ interface Props {
   recyclingKey?: string;
   allowFullScreen?: boolean;
   onDoubleTap?: () => void;
+  /**
+   * `contain` muestra el archivo completo. Lo usa el detalle de Adopciones.
+   * El Feed y las Alertas siguen en `cover`.
+   */
+  contentFit?: 'cover' | 'contain';
+  onLoad?: (size: { width: number; height: number } | null) => void;
+  onError?: () => void;
 }
 
 /**
@@ -39,6 +46,9 @@ export function AdaptivePostImage({
   recyclingKey,
   allowFullScreen = true,
   onDoubleTap,
+  contentFit = 'cover',
+  onLoad,
+  onError,
 }: Props) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -74,9 +84,11 @@ export function AdaptivePostImage({
   }, [allowFullScreen, onDoubleTap]);
 
   const boxStyle =
-    layout === 'feed'
-      ? feedMediaBoxStyle(imageWidth, imageHeight)
-      : { width: '100%' as const, height: containerHeight };
+    contentFit === 'contain'
+      ? { width: '100%' as const, aspectRatio: rawMediaAspect(imageWidth, imageHeight) ?? 1 }
+      : layout === 'feed'
+        ? feedMediaBoxStyle(imageWidth, imageHeight)
+        : { width: '100%' as const, height: containerHeight };
 
   if (layout === 'feed') {
     feedMediaPerfNoteMediaBox('aspectRatio' in boxStyle ? 'aspect' : 'fallback');
@@ -84,12 +96,22 @@ export function AdaptivePostImage({
 
   return (
     <>
-      <Pressable onPress={handlePress} style={[styles.container, boxStyle]}>
+      <Pressable
+        onPress={handlePress}
+        style={[styles.container, boxStyle, contentFit === 'contain' && { backgroundColor: colors.bg }]}
+      >
         <Image
           source={{ uri: large(uri) }}
           style={styles.image}
-          contentFit="cover"
+          contentFit={contentFit}
           contentPosition="center"
+          onLoad={(event) => {
+            const source = (event as { source?: { width?: number; height?: number } })?.source;
+            const width = Number(source?.width);
+            const height = Number(source?.height);
+            onLoad?.(width > 0 && height > 0 ? { width, height } : null);
+          }}
+          onError={() => onError?.()}
           cachePolicy={layout === 'feed' ? 'memory-disk' : 'disk'}
           recyclingKey={recyclingKey || uri}
           transition={layout === 'feed' ? 0 : 200}

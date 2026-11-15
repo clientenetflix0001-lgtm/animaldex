@@ -34,9 +34,13 @@
 // 1) EAS/Preview (upload)
 // 2) SHA copiado de Play Console
 // 3) SHA del APK instalado desde Play Internal Testing (pm get-app-links)
-// Dominio público oficial. OG/canonical siempre usan este origin,
+// Dominio público oficial. OG/canonical de la red principal usan este origin,
 // aunque la visita llegue por animaldex-web.pages.dev (legacy, sin redirect).
 const PUBLIC_WEB_ORIGIN = 'https://animaldex.com';
+// Animaldex Adopciones. El muro canónico es /saltacapital en este host.
+// animaldex.com/adopciones/... redirige acá. No es una base ni un Worker nuevos.
+const ADOPTIONS_ORIGIN = 'https://adopciones.animaldex.com';
+const ADOPTIONS_HOST = 'adopciones.animaldex.com';
 
 /** HTML estático de Play/privacidad. Se sirve ANTES de OG y de la SPA. */
 function legalPageAssetPath(pathname) {
@@ -276,6 +280,32 @@ async function d1Query(env, sql, params) {
   }
 }
 
+// ---------- Animaldex Adopciones (/adopciones/:city[/:id]) ----------
+// Copia mínima de lib/adoptionLocalities.ts (este archivo no importa TS):
+// mantener sincronizado. Un slug desconocido usa la localidad por defecto,
+// igual que la SPA.
+const ADOPTION_LOCALITIES = { saltacapital: { slug: 'saltacapital', locality: 'Salta Capital' } };
+const DEFAULT_ADOPTION_SLUG = 'saltacapital';
+const ADOPTION_SUBPATHS = new Set(['publicar', 'mis-publicaciones', 'gestionar']);
+const ADOPTION_PATH_RE = /^\/adopciones(?:\/([a-z0-9-]+)(?:\/([A-Za-z0-9_-]{1,80}))?)?\/?$/i;
+
+function adoptionLocality(slug) {
+  return ADOPTION_LOCALITIES[String(slug || '').toLowerCase()] || ADOPTION_LOCALITIES[DEFAULT_ADOPTION_SLUG];
+}
+
+function adoptionWallMeta(place) {
+  return {
+    title: `Adopciones en ${place.locality} · Animaldex 💜`,
+    description: `Mascotas que buscan familia en ${place.locality}. Mirá las publicaciones, difundilas o publicá una mascota en adopción.`,
+    image: petImage('perro', 11, 600),
+    url: `${ADOPTIONS_ORIGIN}/${place.slug}`,
+  };
+}
+
+function adoptionPostPublicUrl(place, alertId) {
+  return `${ADOPTIONS_ORIGIN}/${place.slug}/${encodeURIComponent(alertId)}`;
+}
+
 async function buildOgMeta(request, env, url) {
   const origin = PUBLIC_WEB_ORIGIN;
   const pathname = url.pathname;
@@ -286,6 +316,12 @@ async function buildOgMeta(request, env, url) {
   const listingMatch = pathname.match(/^\/m\/([^/]+)\/?$/);
   const reelMatch = pathname.match(/^\/r\/([^/]+)\/?$/);
   const postMatch = pathname.match(/^\/p\/([^/]+)\/?$/);
+  const adoptionMatch = pathname.match(ADOPTION_PATH_RE);
+  const adoptionPlace = adoptionMatch ? adoptionLocality(adoptionMatch[1]) : null;
+  const adoptionPostId =
+    adoptionMatch && adoptionMatch[2] && !ADOPTION_SUBPATHS.has(adoptionMatch[2].toLowerCase())
+      ? decodeURIComponent(adoptionMatch[2])
+      : '';
   const handleMatch = pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i);
   // Keep in sync with lib/publicHandles.ts and worker/index.js
   const reserved = new Set([
@@ -294,7 +330,7 @@ async function buildOgMeta(request, env, url) {
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
     'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mis-productos', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
-    'well-known', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil',
+    'well-known', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil', 'adopciones',
   ]);
 
   if (petMatch) {
@@ -321,8 +357,8 @@ async function buildOgMeta(request, env, url) {
         };
       }
     }
-  } else if (alertMatch) {
-    const id = decodeURIComponent(alertMatch[1]);
+  } else if (alertMatch || adoptionPostId) {
+    const id = adoptionPostId || decodeURIComponent(alertMatch[1]);
     const rows = await d1Query(
       env,
       `SELECT a.*, u.username AS username
@@ -330,7 +366,12 @@ async function buildOgMeta(request, env, url) {
        WHERE a.id = ?`,
       [id]
     );
-    if (rows[0]) {
+    const hidden =
+      rows[0] &&
+      rows[0].expires_at != null &&
+      (Number(rows[0].expires_at) <= Date.now() || rows[0].paused_at != null);
+    const wrongSection = adoptionPostId && rows[0] && rows[0].type !== 'adoption';
+    if (rows[0] && !hidden && !wrongSection) {
       const a = rows[0];
       const resolved = !!(a.resolved_at || a.status === 'resolved');
       const name = a.pet_name ? String(a.pet_name).trim() : '';
@@ -385,9 +426,14 @@ async function buildOgMeta(request, env, url) {
         title,
         description,
         image: a.image,
-        url: `${origin}/a/${a.id}`,
+        url: adoptionPostId
+          ? adoptionPostPublicUrl(adoptionPlace, a.id)
+          : `${origin}/a/${a.id}`,
       };
     }
+    if (!meta && adoptionPostId) meta = adoptionWallMeta(adoptionPlace);
+  } else if (adoptionMatch) {
+    meta = adoptionWallMeta(adoptionPlace);
   } else if (listingMatch) {
     const id = decodeURIComponent(listingMatch[1]);
     const rows = await d1Query(env, 'SELECT * FROM listings WHERE id = ?', [id]);
@@ -554,7 +600,62 @@ async function buildOgMeta(request, env, url) {
   return meta;
 }
 
-const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/|\/r\/)|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
+const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/|\/r\/|\/adopciones(\/|$))|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
+
+const ADOPTIONS_RESERVED = new Set([
+  'p', 'pet', 'a', 'm', 'r', 'reels', 'alertas', 'mercado', 'crear', 'mascotas', 'actividad', 'perfil',
+  'explorar', 'verificar', 'escanear', 'entrar', 'tienda', 'admin', 'vender', 'assets', '_expo',
+  'favicon.ico', 'robots.txt', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil',
+  'editar-perfil', 'editar-perfil-publico', 'nueva-mascota', 'crear-alerta', 'mis-alertas',
+  'mis-productos', 'mercado-favoritos', 'transfer', 'well-known', 'login', 'register', 'auth', 'adopciones',
+]);
+
+function cleanPath(pathname) {
+  return String(pathname || '').replace(/\/+$/, '') || '/';
+}
+
+/** 301 hacia el subdominio. No corre en pages.dev, así el preview conserva /adopciones. */
+function adoptionsRedirectTarget(url) {
+  const host = url.hostname.toLowerCase();
+  const path = cleanPath(url.pathname);
+  if (
+    path.startsWith('/_expo') ||
+    path.startsWith('/assets') ||
+    path.startsWith('/legal') ||
+    path === '/favicon.ico' ||
+    path.startsWith('/.well-known')
+  ) {
+    return null;
+  }
+  const onSub = host === ADOPTIONS_HOST;
+  const onMain = host === 'animaldex.com' || host === 'www.animaldex.com';
+  if (onSub && path === '/') return `${ADOPTIONS_ORIGIN}/${DEFAULT_ADOPTION_SLUG}${url.search}`;
+  const legacy = path === '/adopciones' || path.startsWith('/adopciones/');
+  if ((onSub || onMain) && legacy) {
+    let rest = path.replace(/^\/adopciones/, '') || `/${DEFAULT_ADOPTION_SLUG}`;
+    if (rest === '/') rest = `/${DEFAULT_ADOPTION_SLUG}`;
+    return `${ADOPTIONS_ORIGIN}${rest}${url.search}`;
+  }
+  return null;
+}
+
+/** El OG histórico entiende /adopciones/... El subdominio muestra /saltacapital. */
+function urlForOg(url) {
+  if (url.hostname.toLowerCase() !== ADOPTIONS_HOST) return url;
+  const path = cleanPath(url.pathname);
+  if (path.startsWith('/_expo') || path.startsWith('/assets') || path === '/favicon.ico') return url;
+  if (path === '/' || path === '/adopciones') {
+    const next = new URL(url.toString());
+    next.pathname = `/adopciones/${DEFAULT_ADOPTION_SLUG}`;
+    return next;
+  }
+  if (path.startsWith('/adopciones/')) return url;
+  const first = path.split('/').filter(Boolean)[0] || '';
+  if (ADOPTIONS_RESERVED.has(first.toLowerCase())) return url;
+  const next = new URL(url.toString());
+  next.pathname = `/adopciones${path}`;
+  return next;
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -595,9 +696,24 @@ export default {
       );
     }
 
+    // 0.8) Adopciones: el subdominio es la entrada. Las rutas viejas redirigen.
+    // No se aplica en *.pages.dev para no romper un preview antes del DNS.
+    const adoptionsTarget = adoptionsRedirectTarget(url);
+    if (adoptionsTarget) {
+      return new Response(null, {
+        status: 301,
+        headers: {
+          Location: adoptionsTarget,
+          'Cache-Control': 'public, max-age=300',
+        },
+      });
+    }
+
     // 1) Bots de redes sociales en rutas con preview: servir OG HTML.
-    if (BOT_RE.test(ua) && OG_PATH_RE.test(url.pathname)) {
-      const meta = await buildOgMeta(request, env, url);
+    // En el subdominio, /saltacapital se lee como /adopciones/saltacapital.
+    const ogUrl = urlForOg(url);
+    if (BOT_RE.test(ua) && OG_PATH_RE.test(ogUrl.pathname)) {
+      const meta = await buildOgMeta(request, env, ogUrl);
       return new Response(ogHtml(meta), {
         status: 200,
         headers: {
@@ -629,14 +745,15 @@ export default {
 
     const assetResponse = await env.ASSETS.fetch(assetRequest);
 
+    const adoptionPage = /^\/adopciones(\/|$)/.test(cleanPath(urlForOg(url).pathname));
     const spaHandle = (url.pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i) || [])[1];
     const spaReserved = new Set([
       'p','pet','a','m','r','reels','alertas','mercado','crear','mascotas','actividad','perfil',
       'explorar','verificar','escanear','entrar','tienda','admin','vender',
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
-      'privacidad','eliminar-cuenta','seguridad-infantil',
+      'privacidad','eliminar-cuenta','seguridad-infantil','adopciones',
     ]);
-    const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase());
+    const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase()) && !adoptionPage;
     const maybePet = /^\/pet\/[^/]+\/?$/.test(url.pathname) || (spaHandle && /\.pet$/i.test(spaHandle));
     const assetType = (assetResponse.headers.get('content-type') || '').toLowerCase();
     const assetIsHtml = assetResponse.status === 404 || assetType.includes('text/html');

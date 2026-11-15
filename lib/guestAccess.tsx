@@ -14,13 +14,13 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * Acceso de invitado reutilizable para recursos públicos compartidos.
  * Un solo panel Únete a Animaldex (GuestInviteBar) en posts, perfiles y alertas.
  */
-export function useGuestAccess(opts?: { headerClose?: boolean; treatAsExternal?: boolean }) {
+export function useGuestAccess(opts?: { headerClose?: boolean; treatAsExternal?: boolean; startCollapsed?: boolean }) {
   const { colors } = useAppTheme();
   const navigation = useNavigation<Nav>();
   const { user } = useStore();
   const guest = !user;
   const cameFromLink = (opts?.treatAsExternal ?? true) && !navigation.canGoBack();
-  const [inviteCollapsed, setInviteCollapsed] = useState(false);
+  const [inviteCollapsed, setInviteCollapsed] = useState(!!opts?.startCollapsed);
   const requireLogin = useCallback(() => setInviteCollapsed(false), []);
   const goRegister = useCallback(() => navigation.navigate('Auth', { mode: 'register' }), [navigation]);
   const goLogin = useCallback(() => navigation.navigate('Auth', { mode: 'login' }), [navigation]);

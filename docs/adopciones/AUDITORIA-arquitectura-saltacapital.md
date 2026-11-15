@@ -1,5 +1,7 @@
 # Adopciones web — auditoría de arquitectura para `/adopciones/saltacapital`
 
+> Decisión posterior: publicar y administrar exige una cuenta de Animaldex. No hay publicación sin cuenta, tokens de gestión ni Turnstile. El muro sigue siendo público. La cola `adoption_image_deletions` se conserva para las publicaciones de usuarios registrados. El texto de abajo es la auditoría original, anterior a esa decisión.
+
 Base: `0ca9a61d62af0e5ee2889fd611d40669c406be25` (tag `backup/adopciones-web-antes-rediseno`).
 Inventario de lo que existe hoy: `INVENTARIO-antes-rediseno.md`.
 
@@ -50,15 +52,17 @@ Columnas **aditivas** que harían falta en `alerts`, todas `NULL` por defecto y 
 | `extra_images TEXT` | JSON con fotos adicionales; `image` sigue siendo la portada. |
 | `pet_id TEXT` | Vínculo opcional a un perfil de mascota existente. |
 | `paused_at INTEGER` | Pausa manual o automática. |
-| `expires_at INTEGER` | Vencimiento de las publicaciones de invitado. |
-| `is_guest INTEGER` | Indica una publicación sin cuenta. |
+| `expires_at INTEGER` | Vencimiento del ciclo de 7 días. NULL = alerta anterior, sin vencimiento. No borra la fila. |
+| `is_guest INTEGER` | Descartada. Publicar exige una cuenta. |
 
 **Restricción:** `alerts.user_id` es `NOT NULL` en D1. SQLite no permite quitar esa restricción
 sin reconstruir la tabla. Propuesta: guardar en `user_id` un identificador sintético
 `guest:<uuid>` y crear una tabla lateral `guest_posts`. Las consultas con `LEFT JOIN users`
 devolverán un autor nulo, y la interfaz tiene que mostrar «Publicado por un vecino».
 
-### 2.2 Tabla nueva solo para invitados: `guest_posts`
+### 2.2 Tabla nueva solo para invitados: `guest_posts` (descartada)
+
+No se crea. Publicar y administrar exigen cuenta. No hay token ni enlace privado.
 
 ```
 guest_posts(

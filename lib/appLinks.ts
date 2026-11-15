@@ -92,6 +92,7 @@ const RESERVED_SEGMENTS = new Set([
   'privacidad',
   'eliminar-cuenta',
   'seguridad-infantil',
+  'adopciones',
 ]);
 
 const SCHEME_PLACEHOLDER_HOST = 'animaldex.local';
