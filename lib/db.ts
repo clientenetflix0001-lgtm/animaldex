@@ -271,6 +271,8 @@ export interface ApiAlert {
   userAvatar: string | null;
   /** Solo publicaciones creadas desde Animaldex Adopciones web. */
   mediaKind?: 'photo' | 'flyer' | null;
+  /** Flyer cuya especie eligió quien publica. NULL/false en flyers anteriores. */
+  speciesConfirmed?: boolean | null;
   expiresAt?: number | null;
   pausedAt?: number | null;
 }

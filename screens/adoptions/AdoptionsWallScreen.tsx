@@ -27,6 +27,7 @@ type Rt = RouteProp<RootStackParamList, 'AdoptionsWall'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const PAGE = 12;
+const WALL_REFRESH_MAX = 30;
 const GRID_MAX_WIDTH = 880;
 const FILTER_FILL_CAP = 6;
 export const ADOPTIONS_MAX_WIDTH = 640;
@@ -51,6 +52,8 @@ export default function AdoptionsWallScreen() {
   const [askAccount, setAskAccount] = useState(false);
   const [species, setSpecies] = useState<AdoptionSpeciesFilter>('all');
   const [photoLimit, setPhotoLimit] = useState(4);
+  const alertsRef = useRef(alerts);
+  alertsRef.current = alerts;
   const loadingRef = useRef(false);
   const fillAttempts = useRef(0);
   const pendingRefresh = useRef<'mine' | 'created' | null>(null);
@@ -112,20 +115,12 @@ export default function AdoptionsWallScreen() {
       }
       loadingRef.current = true;
       try {
-        const res = await db.adoptionWall(city, undefined, PAGE);
+        const loaded = Math.max(PAGE, alertsRef.current.length);
+        const limit = Math.min(WALL_REFRESH_MAX, loaded);
+        const res = await db.adoptionWall(city, undefined, limit);
         if (cityRef.current !== city) return;
-        setAlerts((prev) => {
-          const ids = new Set(res.alerts.map((alert) => alert.id));
-          const oldest = res.alerts[res.alerts.length - 1];
-          const cutoff = oldest ? oldest.bumpedAt || oldest.renewedAt || oldest.createdAt : 0;
-          const rest = prev.filter((alert) => {
-            if (ids.has(alert.id)) return false;
-            const at = alert.bumpedAt || alert.renewedAt || alert.createdAt;
-            return !!oldest && at < cutoff;
-          });
-          return [...res.alerts, ...rest];
-        });
-        setHasMore((prev) => res.hasMore || prev);
+        setAlerts(res.alerts);
+        setHasMore(res.hasMore);
         if (reason === 'created') setError(null);
       } catch {
         // El muro visible se conserva si la consulta falla.

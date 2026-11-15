@@ -1642,6 +1642,7 @@ function alertRow(r, viewerLiked) {
     userName: r.user_name || null,
     userAvatar: r.user_avatar || null,
     mediaKind: r.media_kind || null,
+    speciesConfirmed: Number(r.species_confirmed) === 1,
     expiresAt: r.expires_at ?? null,
     pausedAt: r.paused_at ?? null,
   };

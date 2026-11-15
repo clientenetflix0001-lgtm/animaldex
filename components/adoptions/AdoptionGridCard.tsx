@@ -15,8 +15,6 @@ import {
   stageAdoptionPreview,
   type FlightRect,
 } from './adoptionImageFlight';
-import { adoptionVisibleDescription } from '../../lib/adoptionSpeciesFilter';
-
 interface Props {
   alert: ApiAlert;
   onToggleLike: (alertId: string) => void;
@@ -28,7 +26,7 @@ interface Props {
 }
 
 function gridTitle(alert: ApiAlert): string {
-  const text = adoptionVisibleDescription(alert.description).replace(/\s+/g, ' ').trim();
+  const text = String(alert.description || '').replace(/\s+/g, ' ').trim();
   if (text) return text;
   const name = String(alert.petName || '').trim();
   if (name) return name;

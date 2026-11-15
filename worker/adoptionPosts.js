@@ -30,7 +30,6 @@ import {
 import { parseProtectorAdoptionContact } from '../lib/adoptionContact.ts';
 import { geoInsertFragment } from './geoWrite.js';
 import { validateImageUpload } from './imageUpload.js';
-import { ADOPTION_FLYER_SPECIES_MARK } from '../lib/adoptionSpeciesFilter.ts';
 
 const LIFECYCLE_COLUMNS = ['media_kind', 'expires_at', 'paused_at'];
 const IMAGE_DELETE_TABLE = 'adoption_image_deletions';
@@ -55,12 +54,21 @@ async function cachedSchemaCheck(env, key, probe) {
   return ok;
 }
 
-/** true cuando las cuatro columnas de ciclo de vida existen en `alerts`. */
+/** true cuando las columnas de ciclo de vida existen en `alerts`. */
 export function adoptionLifecycleReady(env) {
   return cachedSchemaCheck(env, '_adoptionLifecycleColumns', async () => {
     const res = await env.DB.prepare('PRAGMA table_info(alerts)').all();
     const names = new Set((res.results || []).map((r) => String(r.name)));
     return LIFECYCLE_COLUMNS.every((c) => names.has(c));
+  });
+}
+
+/** Columna de 021. Publicar sigue funcionando si todavía no se migró. */
+function speciesConfirmedColumnReady(env) {
+  return cachedSchemaCheck(env, '_adoptionSpeciesConfirmed', async () => {
+    const res = await env.DB.prepare('PRAGMA table_info(alerts)').all();
+    const names = new Set((res.results || []).map((r) => String(r.name)));
+    return names.has('species_confirmed');
   });
 }
 
@@ -498,6 +506,7 @@ export async function handleAuthAdoptionAction(env, request, body, action, now, 
     let description = '';
     let contactWhatsapp = null;
     let contactPhone = null;
+    let speciesConfirmed = null;
     if (mediaKind === 'photo') {
       petName = clean(body.petName, 40) || null;
       const sp = clean(body.species, 20);
@@ -509,16 +518,17 @@ export async function handleAuthAdoptionAction(env, request, body, action, now, 
       contactWhatsapp = contact.whatsapp;
       contactPhone = contact.phone;
     } else {
-      // Flyer: si el cliente manda especie, se guarda y se marca en description.
-      // Sin especie (clientes anteriores) sigue el relleno `otro`, sin marca,
-      // y el muro lo deja solo en Todos. No agrega columnas.
+      // Flyer: la especie elegida queda en `species`. La confirmación va en
+      // species_confirmed, no en la descripción. Sin especie (clientes viejos)
+      // sigue el relleno `otro` y la columna queda NULL.
       const sp = clean(body.species, 20);
       if (sp) {
         if (!WALL_SPECIES.has(sp)) return json({ error: 'Elegí si es perro, gato u otro.' }, 400);
         species = sp;
-        description = ADOPTION_FLYER_SPECIES_MARK;
+        speciesConfirmed = 1;
       }
     }
+    const confirmedColumn = await speciesConfirmedColumnReady(env);
 
     let id = `alert-${now}-${Math.random().toString(36).slice(2, 8)}`;
     if (/^alert-[a-z0-9-]{12,70}$/i.test(requested)) id = requested;
@@ -539,9 +549,9 @@ export async function handleAuthAdoptionAction(env, request, body, action, now, 
     try {
       await deps.d1(
         env,
-        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, event_date, created_at, renewed_at, sex, contact_whatsapp, contact_phone, media_kind, expires_at, paused_at${geo.columns})
-         VALUES (?, ?, 'adoption', 'active', ?, ?, '', ?, ?, ?, ?, 'AR', ?, ?, ?, ?, ?, ?, ?, ?, NULL${geo.placeholders})`,
-        [id, userId, petName, species, description, uploaded.url, place.locality, place.province, now, now, now, sex, contactWhatsapp, contactPhone, mediaKind, expiresAt, ...geo.values]
+        `INSERT INTO alerts (id, user_id, type, status, pet_name, species, breed, description, image, locality, province, country, event_date, created_at, renewed_at, sex, contact_whatsapp, contact_phone, media_kind, expires_at, paused_at${confirmedColumn ? ', species_confirmed' : ''}${geo.columns})
+         VALUES (?, ?, 'adoption', 'active', ?, ?, '', ?, ?, ?, ?, 'AR', ?, ?, ?, ?, ?, ?, ?, ?, NULL${confirmedColumn ? ', ?' : ''}${geo.placeholders})`,
+        [id, userId, petName, species, description, uploaded.url, place.locality, place.province, now, now, now, sex, contactWhatsapp, contactPhone, mediaKind, expiresAt, ...(confirmedColumn ? [speciesConfirmed] : []), ...geo.values]
       );
     } catch (e) {
       const image = cloudflareImage({ media_kind: mediaKind, image: uploaded.url });

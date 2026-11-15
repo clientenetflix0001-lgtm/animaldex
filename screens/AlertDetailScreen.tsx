@@ -50,7 +50,6 @@ import {
   type FlightRect,
 } from '../components/adoptions/adoptionImageFlight';
 import { convertImage } from '../lib/images';
-import { adoptionVisibleDescription } from '../lib/adoptionSpeciesFilter';
 
 type Rt = RouteProp<RootStackParamList, 'AlertDetail' | 'AdoptionPost'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -478,9 +477,7 @@ export default function AlertDetailScreen() {
       </View>
 
       <View style={chromeStyle}>
-      <Text style={styles.description}>
-        {adoptionSection ? adoptionVisibleDescription(alert.description) : alert.description}
-      </Text>
+      <Text style={styles.description}>{alert.description}</Text>
       {alert.username && <Text style={styles.postedBy}>Publicado por {alert.username}</Text>}
       {adoptionSection && user?.id !== alert.userId ? (
         <Pressable onPress={handleReport} disabled={reported} hitSlop={6} accessibilityRole="button">

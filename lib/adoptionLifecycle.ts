@@ -78,15 +78,23 @@ export function adoptionRemainingMs(a: AdoptionLifecycleFields, now: number): nu
   return Math.max(0, a.expiresAt - now);
 }
 
-/** "Quedan 3 días" / "Queda 1 día" / "Quedan 5 h" / "Vencida". */
+/**
+ * "Quedan 7 días" / "Quedan 6 días" / "Queda 1 día" / "Quedan 5 h" / "Vencida".
+ * El día en curso cuenta: un ciclo de 7 días que acaba de empezar sigue
+ * diciendo 7 aunque el reloj del cliente ya haya restado unos segundos.
+ * A los 6 días exactos pasa a 6, y así. No cambia la fecha de vencimiento.
+ */
 export function adoptionRemainingLabel(a: AdoptionLifecycleFields, now: number): string {
   const ms = adoptionRemainingMs(a, now);
   if (ms == null) return 'Sin vencimiento';
   if (ms <= 0) return 'Vencida';
-  const days = Math.floor(ms / DAY_MS);
-  if (days >= 1) return days === 1 ? 'Queda 1 día' : `Quedan ${days} días`;
-  const hours = Math.max(1, Math.floor(ms / (60 * 60 * 1000)));
-  return hours === 1 ? 'Queda 1 hora' : `Quedan ${hours} horas`;
+  if (ms < DAY_MS) {
+    const hours = Math.max(1, Math.floor(ms / (60 * 60 * 1000)));
+    return hours === 1 ? 'Queda 1 hora' : `Quedan ${hours} horas`;
+  }
+  const cycleDays = ADOPTION_CYCLE_MS / DAY_MS;
+  const days = Math.min(cycleDays, Math.ceil(ms / DAY_MS));
+  return days === 1 ? 'Queda 1 día' : `Quedan ${days} días`;
 }
 
 export function adoptionStateLabel(state: AdoptionPostState): string {
