@@ -30,6 +30,7 @@ import {
 import { parseProtectorAdoptionContact } from '../lib/adoptionContact.ts';
 import { geoInsertFragment } from './geoWrite.js';
 import { validateImageUpload } from './imageUpload.js';
+import { ADOPTION_FLYER_SPECIES_MARK } from '../lib/adoptionSpeciesFilter.ts';
 
 const LIFECYCLE_COLUMNS = ['media_kind', 'expires_at', 'paused_at'];
 const IMAGE_DELETE_TABLE = 'adoption_image_deletions';
@@ -472,6 +473,21 @@ export async function handleAuthAdoptionAction(env, request, body, action, now, 
 
     const mediaKind = parseAdoptionMediaKind(body.mediaKind);
     if (!mediaKind) return json({ error: 'Elegí cómo publicar' }, 400);
+    const requested = clean(body.clientRequestId, 80);
+    if (/^alert-[a-z0-9-]{12,70}$/i.test(requested)) {
+      const existing = await deps.d1(env, 'SELECT id, user_id, type FROM alerts WHERE id = ?', [requested]);
+      if (existing[0]) {
+        if (existing[0].user_id !== userId || existing[0].type !== 'adoption') {
+          return json({ error: 'No se pudo confirmar la publicación. Probá de nuevo.' }, 409);
+        }
+        const loadedExisting = await loadOne(env, deps, requested, userId);
+        return json({
+          ok: true,
+          alert: loadedExisting && loadedExisting.alert,
+          expiresAt: loadedExisting && loadedExisting.alert && loadedExisting.alert.expiresAt,
+        });
+      }
+    }
     if (deps.uploadLimited(userId, requestIp(request), now)) {
       return json({ error: 'Demasiadas imágenes seguidas. Esperá un momento.' }, 429);
     }
@@ -492,7 +508,20 @@ export async function handleAuthAdoptionAction(env, request, body, action, now, 
       if (!contact.ok) return json({ error: contact.error || 'Agregá un WhatsApp o teléfono de contacto' }, 400);
       contactWhatsapp = contact.whatsapp;
       contactPhone = contact.phone;
+    } else {
+      // Flyer: si el cliente manda especie, se guarda y se marca en description.
+      // Sin especie (clientes anteriores) sigue el relleno `otro`, sin marca,
+      // y el muro lo deja solo en Todos. No agrega columnas.
+      const sp = clean(body.species, 20);
+      if (sp) {
+        if (!WALL_SPECIES.has(sp)) return json({ error: 'Elegí si es perro, gato u otro.' }, 400);
+        species = sp;
+        description = ADOPTION_FLYER_SPECIES_MARK;
+      }
     }
+
+    let id = `alert-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    if (/^alert-[a-z0-9-]{12,70}$/i.test(requested)) id = requested;
 
     // La imagen viaja con la publicación y se sube acá: no quedan imágenes
     // huérfanas en Cloudflare si el formulario se abandona.
@@ -501,7 +530,6 @@ export async function handleAuthAdoptionAction(env, request, body, action, now, 
     const uploaded = await deps.uploadCheckedImage(env, checked);
     if (!uploaded.ok) return json({ error: uploaded.error }, 502);
 
-    const id = `alert-${now}-${Math.random().toString(36).slice(2, 8)}`;
     const expiresAt = now + ADOPTION_CYCLE_MS;
     const geo = await geoInsertFragment(env, 'alerts', {
       placeId: place.placeId,
@@ -525,6 +553,15 @@ export async function handleAuthAdoptionAction(env, request, body, action, now, 
         } catch (_) {}
       } else if (image && env.CF_ACCOUNT_ID && env.CF_IMAGES_TOKEN) {
         try { await deleteCloudflareImage(env, image.imageId); } catch (_) {}
+      }
+      const raced = await deps.d1(env, 'SELECT id, user_id, type FROM alerts WHERE id = ?', [id]);
+      if (raced[0] && raced[0].user_id === userId && raced[0].type === 'adoption') {
+        const loadedExisting = await loadOne(env, deps, id, userId);
+        return json({
+          ok: true,
+          alert: loadedExisting && loadedExisting.alert,
+          expiresAt: loadedExisting && loadedExisting.alert && loadedExisting.alert.expiresAt,
+        });
       }
       throw e;
     }

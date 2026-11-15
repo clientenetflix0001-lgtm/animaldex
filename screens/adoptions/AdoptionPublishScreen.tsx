@@ -3,7 +3,7 @@
 // A) Tomar foto  B) Subir foto  C) Subir flyer (sin datos extra).
 // Crea una alerta type='adoption' con la localidad fija de la URL.
 // ============================================================
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,8 @@ import { useStore } from '../../lib/store';
 import { useAppTheme, type ThemeColors, radius, spacing } from '../../lib/theme';
 import { RootStackParamList } from '../../lib/types';
 import { adoptionLocalityBySlug, DEFAULT_ADOPTION_SLUG } from '../../lib/adoptionLocalities';
-import { prepareAdoptionImage, type AdoptionImageKind } from '../../lib/adoptionImagePrep';
+import { explainAdoptionImageError, prepareAdoptionImage, type AdoptionImageKind } from '../../lib/adoptionImagePrep';
+import { markAdoptionWallRefresh } from '../../lib/adoptionWallRefresh';
 import { AdoptionAccountPrompt } from '../../components/adoptions/AdoptionAccountPrompt';
 import { shareAlert } from '../../lib/share';
 import { adoptionPostShareUrl } from '../../components/adoptions/useAdoptionPostActions';
@@ -36,7 +37,11 @@ type Source = 'camera' | 'gallery' | 'flyer';
 type Species = 'perro' | 'gato' | 'otro';
 type Sex = 'macho' | 'hembra' | null;
 
-const PICKER: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], allowsEditing: false, quality: 0.9, base64: true };
+const PICKER: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], allowsEditing: false, quality: 1 };
+
+function newAdoptionRequestId(): string {
+  return `alert-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export default function AdoptionPublishScreen() {
   const { colors } = useAppTheme();
@@ -52,14 +57,36 @@ export default function AdoptionPublishScreen() {
   const [preparing, setPreparing] = useState(false);
   const [petName, setPetName] = useState('');
   const [species, setSpecies] = useState<Species>('perro');
+  const [flyerSpecies, setFlyerSpecies] = useState<Species | null>(null);
   const [sex, setSex] = useState<Sex>(null);
   const [description, setDescription] = useState('');
   const [contact, setContact] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<ApiAlert | null>(null);
+  const [retryPick, setRetryPick] = useState<{ asset: ImagePicker.ImagePickerAsset; source: Source } | null>(null);
+  const publishingRef = useRef(false);
+  const requestIdRef = useRef('');
 
   const kind: AdoptionImageKind = source === 'flyer' ? 'flyer' : 'photo';
+
+  const preparePicked = useCallback(async (asset: ImagePicker.ImagePickerAsset, next: Source) => {
+    setPreparing(true);
+    setError(null);
+    setRetryPick({ asset, source: next });
+    try {
+      const prepared = await prepareAdoptionImage(asset, next === 'flyer' ? 'flyer' : 'photo');
+      requestIdRef.current = newAdoptionRequestId();
+      setSource(next);
+      setImage(prepared);
+      if (next === 'flyer') setFlyerSpecies(null);
+      setRetryPick(null);
+    } catch (e: unknown) {
+      setError(explainAdoptionImageError(e, 'read'));
+    } finally {
+      setPreparing(false);
+    }
+  }, []);
 
   const pick = useCallback(async (next: Source) => {
     setError(null);
@@ -67,21 +94,19 @@ export default function AdoptionPublishScreen() {
       const result =
         next === 'camera' ? await ImagePicker.launchCameraAsync(PICKER) : await ImagePicker.launchImageLibraryAsync(PICKER);
       if (result.canceled || !result.assets?.[0]) return;
-      setPreparing(true);
-      const prepared = await prepareAdoptionImage(result.assets[0], next === 'flyer' ? 'flyer' : 'photo');
-      setSource(next);
-      setImage(prepared);
-    } catch (e: any) {
-      setError(e?.message || 'No se pudo leer la imagen. Probá con otra.');
-    } finally {
-      setPreparing(false);
+      await preparePicked(result.assets[0], next);
+    } catch (e: unknown) {
+      setError(explainAdoptionImageError(e, 'read'));
     }
-  }, []);
+  }, [preparePicked]);
 
   const reset = useCallback(() => {
     setSource(null);
     setImage(null);
+    setFlyerSpecies(null);
+    setRetryPick(null);
     setError(null);
+    requestIdRef.current = '';
   }, []);
 
   const goBack = useCallback(() => {
@@ -90,11 +115,17 @@ export default function AdoptionPublishScreen() {
   }, [navigation, city]);
 
   const publish = useCallback(async () => {
-    if (!image || !source || publishing || !user) return;
+    if (!image || !source || publishingRef.current || !user) return;
     if (kind === 'photo' && !contact.trim()) {
       setError('Agregá un WhatsApp o teléfono para que puedan contactarte.');
       return;
     }
+    if (kind === 'flyer' && !flyerSpecies) {
+      setError('Elegí si la mascota es perro, gato u otro.');
+      return;
+    }
+    if (!requestIdRef.current) requestIdRef.current = newAdoptionRequestId();
+    publishingRef.current = true;
     setPublishing(true);
     setError(null);
     try {
@@ -102,17 +133,19 @@ export default function AdoptionPublishScreen() {
         citySlug: city,
         mediaKind: kind,
         image: image.dataUrl,
+        clientRequestId: requestIdRef.current,
         ...(kind === 'photo'
           ? { petName: petName.trim(), species, sex, description: description.trim(), contactWhatsapp: contact.trim() }
-          : {}),
+          : { species: flyerSpecies || undefined }),
       });
       setDone(res.alert);
-    } catch (e: any) {
-      setError(e?.message || 'No se pudo publicar. Probá de nuevo.');
+    } catch (e: unknown) {
+      setError(explainAdoptionImageError(e, 'upload'));
     } finally {
+      publishingRef.current = false;
       setPublishing(false);
     }
-  }, [image, source, publishing, user, kind, contact, city, petName, species, sex, description]);
+  }, [image, source, user, kind, contact, city, petName, species, sex, description, flyerSpecies]);
 
   const topBar = (
     <View style={styles.topBar}>
@@ -138,7 +171,10 @@ export default function AdoptionPublishScreen() {
             </Text>
             <Pressable
               style={styles.primaryBtn}
-              onPress={() => navigation.replace('AdoptionPost', { city, alertId: done.id })}
+              onPress={() => {
+                markAdoptionWallRefresh(city, 'created');
+                navigation.replace('AdoptionPost', { city, alertId: done.id });
+              }}
             >
               <Text style={styles.primaryBtnText}>Ver publicación</Text>
             </Pressable>
@@ -206,6 +242,31 @@ export default function AdoptionPublishScreen() {
               disabled={preparing}
             />
             {preparing ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.md }} /> : null}
+            {retryPick && !preparing ? (
+              <Pressable style={styles.primaryBtn} onPress={() => preparePicked(retryPick.asset, retryPick.source)}>
+                <Text style={styles.primaryBtnText}>Reintentar</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : source === 'flyer' && !flyerSpecies ? (
+          <View style={styles.form}>
+            <Text style={styles.question}>¿Qué mascota estás publicando?</Text>
+            <View style={styles.speciesRow}>
+              {(['perro', 'gato', 'otro'] as Species[]).map((item) => (
+                <Pressable
+                  key={item}
+                  style={styles.speciesChoice}
+                  onPress={() => setFlyerSpecies(item)}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.speciesChoiceText}>{item === 'perro' ? 'Perro' : item === 'gato' ? 'Gato' : 'Otro'}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.hint}>Flyer seleccionado. Después vas a ver la vista previa.</Text>
+            <Pressable onPress={reset} hitSlop={6}>
+              <Text style={styles.changeLink}>Cambiar imagen</Text>
+            </Pressable>
           </View>
         ) : (
           <View style={styles.form}>
@@ -218,7 +279,26 @@ export default function AdoptionPublishScreen() {
               <Text style={styles.changeLink}>Cambiar imagen</Text>
             </Pressable>
 
-            {source !== 'flyer' ? (
+            {source === 'flyer' ? (
+              <>
+                <Text style={styles.label}>¿Qué mascota estás publicando?</Text>
+                <View style={styles.speciesRow}>
+                  {(['perro', 'gato', 'otro'] as Species[]).map((item) => (
+                    <Pressable
+                      key={item}
+                      style={[styles.speciesChoice, flyerSpecies === item && styles.speciesChoiceOn]}
+                      onPress={() => setFlyerSpecies(item)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: flyerSpecies === item }}
+                    >
+                      <Text style={[styles.speciesChoiceText, flyerSpecies === item && styles.speciesChoiceTextOn]}>
+                        {item === 'perro' ? 'Perro' : item === 'gato' ? 'Gato' : 'Otro'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            ) : (
               <>
                 <Text style={styles.label}>Nombre (opcional)</Text>
                 <TextInput
@@ -264,7 +344,7 @@ export default function AdoptionPublishScreen() {
                   placeholderTextColor={colors.textMuted}
                 />
               </>
-            ) : null}
+            )}
 
             <Text style={styles.hint}>
               {`Se publica en ${place.locality}. Activa 7 días; después podés renovarla.`}
@@ -376,6 +456,22 @@ function makeStyles(colors: ThemeColors) {
     },
     multiline: { minHeight: 80, textAlignVertical: 'top' },
     chips: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+    question: { fontSize: 18, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
+    speciesRow: { flexDirection: 'row', gap: spacing.sm },
+    speciesChoice: {
+      flex: 1,
+      minHeight: 72,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      paddingHorizontal: 8,
+    },
+    speciesChoiceOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+    speciesChoiceText: { fontSize: 16, fontWeight: '800', color: colors.text },
+    speciesChoiceTextOn: { color: '#fff' },
     chip: {
       paddingHorizontal: 14,
       paddingVertical: 7,

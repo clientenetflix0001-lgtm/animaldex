@@ -50,6 +50,7 @@ import {
   type FlightRect,
 } from '../components/adoptions/adoptionImageFlight';
 import { convertImage } from '../lib/images';
+import { adoptionVisibleDescription } from '../lib/adoptionSpeciesFilter';
 
 type Rt = RouteProp<RootStackParamList, 'AlertDetail' | 'AdoptionPost'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -66,7 +67,10 @@ export default function AlertDetailScreen() {
   const { alertId } = route.params;
   // Solo la ruta web /adopciones/:city/:alertId (Difundir, denuncia, URL de la sección).
   const adoptionSection = route.name === 'AdoptionPost';
-  const { guest, requireLogin, inviteBar, goBackOrClose } = useGuestAccess({ headerClose: !adoptionSection });
+  const { guest, requireLogin, inviteBar, goBackOrClose } = useGuestAccess({
+    headerClose: !adoptionSection,
+    startCollapsed: adoptionSection,
+  });
   // Modal de flyer sin contacto: también en /a/:id, pero solo en web. Android no cambia.
   const flyerModalEnabled = adoptionSection || Platform.OS === 'web';
   const adoptionCity =
@@ -474,7 +478,9 @@ export default function AlertDetailScreen() {
       </View>
 
       <View style={chromeStyle}>
-      <Text style={styles.description}>{alert.description}</Text>
+      <Text style={styles.description}>
+        {adoptionSection ? adoptionVisibleDescription(alert.description) : alert.description}
+      </Text>
       {alert.username && <Text style={styles.postedBy}>Publicado por {alert.username}</Text>}
       {adoptionSection && user?.id !== alert.userId ? (
         <Pressable onPress={handleReport} disabled={reported} hitSlop={6} accessibilityRole="button">

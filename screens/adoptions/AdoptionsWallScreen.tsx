@@ -18,6 +18,7 @@ import {
   type AdoptionSpeciesFilter,
 } from '../../lib/adoptionSpeciesFilter';
 import { adoptionPostShareUrl } from '../../components/adoptions/useAdoptionPostActions';
+import { consumeAdoptionWallRefresh } from '../../lib/adoptionWallRefresh';
 import { AdoptionAccountPrompt } from '../../components/adoptions/AdoptionAccountPrompt';
 import { AdoptionsHeader } from '../../components/adoptions/AdoptionsHeader';
 import { AdoptionGridCard } from '../../components/adoptions/AdoptionGridCard';
@@ -49,16 +50,39 @@ export default function AdoptionsWallScreen() {
   const [showInvite, setShowInvite] = useState(false);
   const [askAccount, setAskAccount] = useState(false);
   const [species, setSpecies] = useState<AdoptionSpeciesFilter>('all');
+  const [photoLimit, setPhotoLimit] = useState(4);
   const loadingRef = useRef(false);
   const fillAttempts = useRef(0);
+  const pendingRefresh = useRef<'mine' | 'created' | null>(null);
+  const cityRef = useRef(city);
+  cityRef.current = city;
+  const refreshQuietRef = useRef<(reason: 'mine' | 'created') => void>(() => {});
+  const loadRef = useRef<(before?: number) => Promise<void>>(async () => {});
+  const reloadAfter = useRef(false);
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
+      let max = -1;
+      for (const item of viewableItems) {
+        if (typeof item.index === 'number' && item.index > max) max = item.index;
+      }
+      if (max < 0) return;
+      const next = Math.max(4, max + 1 + 3);
+      setPhotoLimit((prev) => (next > prev ? next : prev));
+    }
+  ).current;
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 25, minimumViewTime: 0 }).current;
 
   const load = useCallback(
     async (before?: number) => {
-      if (loadingRef.current) return;
+      if (loadingRef.current) {
+        if (!before) reloadAfter.current = true;
+        return;
+      }
       loadingRef.current = true;
       if (before) setLoadingMore(true);
       try {
         const res = await db.adoptionWall(city, before, PAGE);
+        if (cityRef.current !== city) return;
         setAlerts((prev) => (before ? [...prev, ...res.alerts.filter((a) => !prev.some((p) => p.id === a.id))] : res.alerts));
         setHasMore(res.hasMore);
         setError(null);
@@ -68,10 +92,69 @@ export default function AdoptionsWallScreen() {
         loadingRef.current = false;
         setLoading(false);
         setLoadingMore(false);
+        const again = pendingRefresh.current;
+        const reload = reloadAfter.current;
+        pendingRefresh.current = null;
+        reloadAfter.current = false;
+        if (reload) void loadRef.current();
+        else if (again) refreshQuietRef.current(again);
       }
     },
     [city]
   );
+  loadRef.current = load;
+
+  const refreshQuiet = useCallback(
+    async (reason: 'mine' | 'created') => {
+      if (loadingRef.current) {
+        if (pendingRefresh.current !== 'created') pendingRefresh.current = reason;
+        return;
+      }
+      loadingRef.current = true;
+      try {
+        const res = await db.adoptionWall(city, undefined, PAGE);
+        if (cityRef.current !== city) return;
+        setAlerts((prev) => {
+          const ids = new Set(res.alerts.map((alert) => alert.id));
+          const oldest = res.alerts[res.alerts.length - 1];
+          const cutoff = oldest ? oldest.bumpedAt || oldest.renewedAt || oldest.createdAt : 0;
+          const rest = prev.filter((alert) => {
+            if (ids.has(alert.id)) return false;
+            const at = alert.bumpedAt || alert.renewedAt || alert.createdAt;
+            return !!oldest && at < cutoff;
+          });
+          return [...res.alerts, ...rest];
+        });
+        setHasMore((prev) => res.hasMore || prev);
+        if (reason === 'created') setError(null);
+      } catch {
+        // El muro visible se conserva si la consulta falla.
+      } finally {
+        loadingRef.current = false;
+        const again = pendingRefresh.current;
+        const reload = reloadAfter.current;
+        pendingRefresh.current = null;
+        reloadAfter.current = false;
+        if (reload) void loadRef.current();
+        else if (again && again !== reason) refreshQuietRef.current(again);
+      }
+    },
+    [city]
+  );
+  refreshQuietRef.current = refreshQuiet;
+
+  useEffect(() => {
+    setPhotoLimit(4);
+  }, [city, species]);
+
+  useEffect(() => {
+    return navigation.addListener('focus', () => {
+      requestAnimationFrame(() => {
+        const reason = consumeAdoptionWallRefresh(city);
+        if (reason) refreshQuietRef.current(reason);
+      });
+    });
+  }, [navigation, city]);
 
   useEffect(() => {
     setLoading(true);
@@ -197,18 +280,24 @@ export default function AdoptionsWallScreen() {
         contentContainerStyle={styles.listContent}
         columnWrapperStyle={visible.length > 0 ? styles.row : undefined}
         ListHeaderComponent={header}
-        renderItem={({ item }) =>
+        renderItem={({ item, index }) =>
           item ? (
             <AdoptionGridCard
               alert={item}
               onToggleLike={onToggleLike}
               onOpen={openDetail}
               shareUrl={adoptionPostShareUrl(city, item.id)}
+              photoIndex={index}
+              loadPhoto={index < photoLimit}
+              photoPriority={index === 0 ? 'high' : index < 4 ? 'normal' : 'low'}
             />
           ) : (
             <View style={styles.pad} />
           )
         }
+        extraData={photoLimit}
+        viewabilityConfig={viewabilityConfig}
+        onViewableItemsChanged={onViewableItemsChanged}
         ListEmptyComponent={empty}
         ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.loader} color={colors.primary} /> : null}
         onEndReached={loadMore}

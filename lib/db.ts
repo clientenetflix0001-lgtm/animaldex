@@ -798,6 +798,7 @@ export const db = {
     description?: string;
     contactWhatsapp?: string;
     contactPhone?: string;
+    clientRequestId?: string;
   }): Promise<{ alert: ApiAlert; expiresAt: number }> =>
     call('/db', { action: 'createAdoptionPost', ...post }),
   myAdoptionPosts: (): Promise<{ alerts: ApiAlert[] }> => call('/db', { action: 'myAdoptionPosts' }),

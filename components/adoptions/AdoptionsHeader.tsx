@@ -62,7 +62,7 @@ export function AdoptionsHeader({ city, locality, species, onSpecies, onPublish,
           <Ionicons name="chevron-down" size={14} color={colors.text} />
         </Pressable>
       </View>
-      <View style={styles.between}>
+      <View style={styles.actions}>
         <Pressable onPress={onPublish} hitSlop={6} style={styles.publishHit} accessibilityRole="button">
           <Text style={styles.publish} numberOfLines={1}>+ Publicar una adopción</Text>
         </Pressable>
@@ -139,9 +139,18 @@ function makeStyles(colors: ThemeColors, dark: boolean) {
       minHeight: 32,
       gap: spacing.sm,
     },
+    actions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      minHeight: 32,
+      gap: spacing.sm,
+      paddingTop: 8,
+      paddingBottom: 8,
+    },
     brand: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
     mark: { width: 22, height: 22 },
-    word: { fontSize: 20, fontWeight: '900', color: colors.primary, letterSpacing: -0.5 },
+    word: { fontSize: 20, fontWeight: '900', color: dark ? '#FFFFFF' : '#000000', letterSpacing: -0.5 },
     place: {
       flexDirection: 'row',
       alignItems: 'center',

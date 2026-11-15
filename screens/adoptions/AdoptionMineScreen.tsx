@@ -2,7 +2,7 @@
 // Animaldex Adopciones — Mis publicaciones (solo web, con cuenta).
 // Ver, Renovar, Pausar/Reanudar, Eliminar. Sin sesión, invita a entrar.
 // ============================================================
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -22,6 +22,7 @@ import {
 import { AdoptionAccountPrompt } from '../../components/adoptions/AdoptionAccountPrompt';
 import { AdoptionPostRow, type RowAction } from '../../components/adoptions/AdoptionPostRow';
 import { ADOPTIONS_MAX_WIDTH } from './AdoptionsWallScreen';
+import { markAdoptionWallRefresh } from '../../lib/adoptionWallRefresh';
 
 type Rt = RouteProp<RootStackParamList, 'AdoptionMine'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -60,6 +61,7 @@ export default function AdoptionMineScreen() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef<string | null>(null);
   const now = Date.now();
 
   const load = useCallback(async () => {
@@ -83,8 +85,16 @@ export default function AdoptionMineScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    return navigation.addListener('blur', () => {
+      markAdoptionWallRefresh(city, 'mine');
+    });
+  }, [navigation, city]);
+
   const run = useCallback(
     async (alertId: string, fn: () => Promise<unknown>) => {
+      if (busyRef.current) return;
+      busyRef.current = alertId;
       setBusyId(alertId);
       try {
         await fn();
@@ -92,11 +102,32 @@ export default function AdoptionMineScreen() {
       } catch (e: any) {
         notify(e?.message || 'No se pudo completar la acción.');
       } finally {
+        busyRef.current = null;
         setBusyId(null);
       }
     },
     [load]
   );
+
+  const renew = useCallback(async (alertId: string) => {
+    if (busyRef.current) return;
+    busyRef.current = alertId;
+    setBusyId(alertId);
+    try {
+      const res = await db.renewAdoptionPost(alertId);
+      const next = res?.alert;
+      if (!next || next.id !== alertId) {
+        throw new Error('No pudimos confirmar la renovación. La publicación quedó como estaba.');
+      }
+      setMine((prev) => prev.map((item) => (item.id === alertId ? next : item)));
+    } catch (e: unknown) {
+      const message = e instanceof Error && e.message ? e.message : 'No se pudo renovar. La publicación quedó como estaba.';
+      notify(message);
+    } finally {
+      busyRef.current = null;
+      setBusyId(null);
+    }
+  }, []);
 
   const view = useCallback(
     (alertId: string) => navigation.navigate('AdoptionPost', { city, alertId }),
@@ -106,7 +137,7 @@ export default function AdoptionMineScreen() {
   const accountActions = (a: ApiAlert): RowAction[] => {
     const list: RowAction[] = [{ key: 'view', label: 'Ver', onPress: () => view(a.id) }];
     if (canRenewAdoptionPost(a, now) || legacyRenewable(a, now)) {
-      list.push({ key: 'renew', label: 'Renovar', onPress: () => run(a.id, () => db.renewAdoptionPost(a.id)) });
+      list.push({ key: 'renew', label: 'Renovar', onPress: () => renew(a.id) });
     }
     if (canPauseAdoptionPost(a, now) && a.expiresAt != null) {
       list.push({ key: 'pause', label: 'Pausar', onPress: () => run(a.id, () => db.pauseAdoptionPost(a.id)) });
@@ -126,7 +157,11 @@ export default function AdoptionMineScreen() {
     return list;
   };
 
-  const goBack = () => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('AdoptionsWall', { city }));
+  const goBack = () => {
+    markAdoptionWallRefresh(city, 'mine');
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('AdoptionsWall', { city });
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>

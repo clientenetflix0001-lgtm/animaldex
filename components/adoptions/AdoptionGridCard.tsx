@@ -15,23 +15,27 @@ import {
   stageAdoptionPreview,
   type FlightRect,
 } from './adoptionImageFlight';
+import { adoptionVisibleDescription } from '../../lib/adoptionSpeciesFilter';
 
 interface Props {
   alert: ApiAlert;
   onToggleLike: (alertId: string) => void;
   onOpen: (alert: ApiAlert) => void;
   shareUrl: string;
+  photoIndex: number;
+  loadPhoto: boolean;
+  photoPriority: 'low' | 'normal' | 'high';
 }
 
 function gridTitle(alert: ApiAlert): string {
-  const text = String(alert.description || '').replace(/\s+/g, ' ').trim();
+  const text = adoptionVisibleDescription(alert.description).replace(/\s+/g, ' ').trim();
   if (text) return text;
   const name = String(alert.petName || '').trim();
   if (name) return name;
   return 'Mascota en adopción';
 }
 
-function AdoptionGridCardInner({ alert, onToggleLike, onOpen, shareUrl }: Props) {
+function AdoptionGridCardInner({ alert, onToggleLike, onOpen, shareUrl, photoIndex, loadPhoto, photoPriority }: Props) {
   const { colors, scheme } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors, scheme === 'dark'), [colors, scheme]);
   const imageRef = useRef<View>(null);
@@ -80,14 +84,20 @@ function AdoptionGridCardInner({ alert, onToggleLike, onOpen, shareUrl }: Props)
     <View style={styles.cell}>
       <Pressable onPress={open} accessibilityRole="link" accessibilityLabel="Abrir publicación">
         <View ref={imageRef} collapsable={false} style={styles.photoFrame}>
-          <Image
-            source={{ uri: photo }}
-            style={styles.photo}
-            contentFit="cover"
-            recyclingKey={alert.id}
-            transition={80}
-            accessibilityLabel={alert.petName || 'Mascota en adopción'}
-          />
+          {loadPhoto ? (
+            <Image
+              source={{ uri: photo }}
+              style={styles.photo}
+              contentFit="cover"
+              priority={photoPriority}
+              cachePolicy="memory-disk"
+              recyclingKey={alert.id}
+              transition={photoIndex === 0 ? 0 : 80}
+              accessibilityLabel={alert.petName || 'Mascota en adopción'}
+            />
+          ) : (
+            <View style={styles.photo} />
+          )}
         </View>
         <Text style={styles.title} numberOfLines={2}>
           {title}
