@@ -3,7 +3,7 @@
 // A) Tomar foto  B) Subir foto  C) Subir flyer (sin datos extra).
 // Crea una alerta type='adoption' con la localidad fija de la URL.
 // ============================================================
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ import { AdoptionAccountPrompt } from '../../components/adoptions/AdoptionAccoun
 import { shareAlert } from '../../lib/share';
 import { adoptionPostShareUrl } from '../../components/adoptions/useAdoptionPostActions';
 import { ADOPTIONS_MAX_WIDTH } from './AdoptionsWallScreen';
+import { trackAdoptionsEvent } from '../../lib/adoptionsAnalytics';
 
 type Rt = RouteProp<RootStackParamList, 'AdoptionPublish'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -67,6 +68,13 @@ export default function AdoptionPublishScreen() {
   const [retryPick, setRetryPick] = useState<{ asset: ImagePicker.ImagePickerAsset; source: Source } | null>(null);
   const publishingRef = useRef(false);
   const requestIdRef = useRef('');
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    trackAdoptionsEvent({ type: 'publish_started' });
+  }, []);
 
   const kind: AdoptionImageKind = source === 'flyer' ? 'flyer' : 'photo';
 
@@ -139,6 +147,7 @@ export default function AdoptionPublishScreen() {
           : { species: flyerSpecies || undefined }),
       });
       setDone(res.alert);
+      trackAdoptionsEvent({ type: 'publish_completed', alertId: res.alert?.id });
     } catch (e: unknown) {
       setError(explainAdoptionImageError(e, 'upload'));
     } finally {

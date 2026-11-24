@@ -35,7 +35,10 @@ import { adoptCtaLabel } from '../lib/adoptionContact';
 import { openAlertAdoption } from '../lib/openAlertAdoption';
 import { useGuestAccess } from '../lib/guestAccess';
 import { DEFAULT_ADOPTION_SLUG } from '../lib/adoptionLocalities';
-import { adoptionPostShareUrl, useAdoptionPostActions } from '../components/adoptions/useAdoptionPostActions';
+import { useAdoptionPostActions } from '../components/adoptions/useAdoptionPostActions';
+import { AdoptionShareBar } from '../components/adoptions/AdoptionShareBar';
+import { trackAdoptionsEvent } from '../lib/adoptionsAnalytics';
+import { adoptionShareTrackedUrl } from '../lib/adoptionsShare';
 import {
   adoptionThumbFrame,
   beginAdoptionOpen,
@@ -228,7 +231,10 @@ export default function AlertDetailScreen() {
     if (!alert || sharing) return;
     setSharing(true);
     try {
-      await shareAlert(alert, adoptionSection ? adoptionPostShareUrl(adoptionCity, alert.id) : undefined);
+      if (adoptionSection) {
+        trackAdoptionsEvent({ type: 'share_intent', alertId: alert.id, network: 'native' });
+      }
+      await shareAlert(alert, adoptionSection ? adoptionShareTrackedUrl(adoptionCity, alert.id, 'native') : undefined);
     } finally {
       setSharing(false);
     }
@@ -238,12 +244,15 @@ export default function AlertDetailScreen() {
     if (!alert || adopting) return;
     setAdopting(true);
     try {
+      if (adoptionSection) {
+        trackAdoptionsEvent({ type: 'adopt_contact_click', alertId: alert.id });
+      }
       if (flyerModalEnabled) await adoptionActions.adopt(alert);
       else await openAlertAdoption(alert);
     } finally {
       setAdopting(false);
     }
-  }, [alert, adopting, flyerModalEnabled, adoptionActions]);
+  }, [alert, adopting, flyerModalEnabled, adoptionActions, adoptionSection]);
 
   const handleReport = useCallback(() => {
     if (!alert || reported) return;
@@ -484,6 +493,8 @@ export default function AlertDetailScreen() {
           <Text style={styles.postedBy}>{reported ? 'Denuncia enviada' : 'Denunciar publicación'}</Text>
         </Pressable>
       ) : null}
+
+      {adoptionSection ? <AdoptionShareBar alert={alert} citySlug={adoptionCity} /> : null}
 
       <Text style={styles.commentsTitle}>
         Comentarios {displayComments.length > 0 ? `(${displayComments.length})` : ''}

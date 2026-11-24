@@ -56,6 +56,8 @@ import AdoptionDiscoveryScreen from './screens/AdoptionDiscoveryScreen';
 import AdoptionsWallScreen from './screens/adoptions/AdoptionsWallScreen';
 import AdoptionPublishScreen from './screens/adoptions/AdoptionPublishScreen';
 import AdoptionMineScreen from './screens/adoptions/AdoptionMineScreen';
+import AdoptionsAdminScreen from './screens/adoptions/AdoptionsAdminScreen';
+import { AdoptionsAnalyticsBridge } from './components/adoptions/AdoptionsAnalyticsBridge';
 import MyPetsScreen from './screens/MyPetsScreen';
 
 import { StoreProvider, useStore } from './lib/store';
@@ -88,6 +90,7 @@ import {
 } from './lib/appLinks';
 import {
   adoptionStateFromPath,
+  adoptionsAdminStateFromPath,
   getStateFromPublicPath,
   setLinkingHasUser,
   shouldAutoOpenPendingTag,
@@ -282,6 +285,7 @@ const ADOPTION_WEB_SCREENS = {
   AdoptionPublish: 'adopciones/:city/publicar',
   AdoptionMine: 'adopciones/:city/mis-publicaciones',
   AdoptionPost: 'adopciones/:city/:alertId',
+  AdoptionsAdmin: 'admin',
 } as const;
 
 function adoptionWebScreens(colors: ThemeColors) {
@@ -305,6 +309,11 @@ function adoptionWebScreens(colors: ThemeColors) {
       />
       <Stack.Screen name="AdoptionPublish" component={AdoptionPublishScreen} options={{ headerShown: false, title: 'Publicar en adopción' }} />
       <Stack.Screen name="AdoptionMine" component={AdoptionMineScreen} options={{ headerShown: false, title: 'Mis publicaciones' }} />
+      <Stack.Screen
+        name="AdoptionsAdmin"
+        component={AdoptionsAdminScreen}
+        options={{ headerShown: false, title: 'Estadísticas' }}
+      />
     </>
   );
 }
@@ -369,6 +378,7 @@ const linking: LinkingOptions<RootStackParamList> = {
   },
   getStateFromPath(path, options) {
     return (
+      (Platform.OS === 'web' ? adoptionsAdminStateFromPath(path, webHost()) : null) ??
       (Platform.OS === 'web' ? adoptionStateFromPath(path, webHost()) : null) ??
       getStateFromPublicPath(path) ??
       rnGetStateFromPath(path, options)
@@ -545,6 +555,7 @@ function WebUrlSync() {
       if (!navigationRef.isReady()) return;
       const path = `${window.location.pathname}${window.location.search}`;
       const state =
+        adoptionsAdminStateFromPath(path, window.location.hostname) ??
         adoptionStateFromPath(path, window.location.hostname) ??
         getStateFromPublicPath(path) ??
         rnGetStateFromPath(path, linking.config);
@@ -750,6 +761,7 @@ function ThemedAppShell() {
       <AppLinkHandler />
       <PushBootstrap />
       <WebUrlSync />
+      <AdoptionsAnalyticsBridge />
       <RootNavigator />
     </NavigationContainer>
   );

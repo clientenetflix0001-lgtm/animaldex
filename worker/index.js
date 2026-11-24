@@ -33,6 +33,11 @@ import {
   runStoryCleanup,
 } from './stories.js';
 import {
+  handleAdminAdoptionsAnalytics,
+  handlePublicAdoptionsAnalytics,
+  pruneAdoptionsAnalytics,
+} from './adoptionsAnalytics.js';
+import {
   alertVisibilitySql,
   handleAuthAdoptionAction,
   handlePublicAdoptionAction,
@@ -2081,6 +2086,9 @@ async function handleDb(request, env, ctx) {
     const publicAdoption = await handlePublicAdoptionAction(env, request, body, action, now, adoptionDeps());
     if (publicAdoption) return publicAdoption;
 
+    const publicAdoptionsAnalytics = await handlePublicAdoptionsAnalytics(env, request, body, action, json);
+    if (publicAdoptionsAnalytics) return publicAdoptionsAnalytics;
+
     if (action === 'checkProfileUsername') {
       const username = clean(body.username, 20).toLowerCase();
       if (humanPetSuffixBlocked(username)) return json({ ok: true, available: false, reason: 'reserved_pet' });
@@ -2986,6 +2994,9 @@ async function handleDb(request, env, ctx) {
 
     const authStory = await handleAuthStoryAction(env, body, json, clean, userId, notifyUserPush);
     if (authStory) return authStory;
+
+    const adminAdoptionsAnalytics = await handleAdminAdoptionsAnalytics(env, body, action, userId, json);
+    if (adminAdoptionsAnalytics) return adminAdoptionsAnalytics;
 
     const authAdoption = await handleAuthAdoptionAction(env, request, body, action, now, userId, adoptionDeps());
     if (authAdoption) return authAdoption;
@@ -4743,6 +4754,11 @@ export default {
       await processPendingImageDeletions(env, adoptionDeps(), nowMs, { maxPasses: 1, budgetMs: 4_000 });
     } catch (e) {
       console.log('adoption-image-cleanup', e && e.message);
+    }
+    try {
+      await pruneAdoptionsAnalytics(env, nowMs);
+    } catch (e) {
+      console.log('adoptions-analytics-prune', e && e.message);
     }
   },
 };

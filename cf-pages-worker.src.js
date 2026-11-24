@@ -745,6 +745,30 @@ export default {
       });
     }
 
+    // 0.9) /admin no se indexa y no debe recibir la OG de portada.
+    if (cleanPath(url.pathname) === '/robots.txt' && url.hostname.toLowerCase() === ADOPTIONS_HOST) {
+      return new Response('User-agent: *\nAllow: /\nDisallow: /admin\n', {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
+    }
+    if (cleanPath(url.pathname) === '/admin') {
+      const indexRes = await env.ASSETS.fetch(
+        new Request(new URL('/index.html', url.origin).toString(), request)
+      );
+      return new Response(indexRes.body, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'private, no-store',
+          'X-Robots-Tag': 'noindex, nofollow',
+        },
+      });
+    }
+
     // 1) Bots de redes sociales en rutas con preview: servir OG HTML.
     // En el subdominio, /saltacapital se lee como /adopciones/saltacapital.
     const ogUrl = urlForOg(url);
