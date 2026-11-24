@@ -57,6 +57,36 @@ function legalPageAssetPath(pathname) {
   return null;
 }
 
+function looksLikeSpaShell(html) {
+  const s = String(html || '');
+  return s.includes('<div id="root"') && /<script\b/i.test(s);
+}
+
+function withAdminNoIndexHtml(html) {
+  const tag = '<meta name="robots" content="noindex, nofollow" />\n';
+  if (/<meta[^>]+name=["']robots["']/i.test(html)) return html;
+  if (html.includes('</head>')) return html.replace('</head>', `${tag}</head>`);
+  return tag + html;
+}
+
+/**
+ * HTML de la SPA vía ASSETS. Cloudflare Pages hace 308 de `*.html` a la pretty URL:
+ * pedir `/index.html` devuelve 308 → `/` con cuerpo vacío. Reexpedir ese cuerpo
+ * como 200 deja /admin en blanco. Pedir la ruta a ASSETS (no al Worker) usa el
+ * mismo fallback que /saltacapital. `redirect: 'manual'` evita seguir el 308.
+ */
+async function fetchSpaShellHtml(env, origin) {
+  const init = { method: 'GET', redirect: 'manual' };
+  for (const path of ['/admin', '/']) {
+    const res = await env.ASSETS.fetch(new Request(new URL(path, origin).toString(), init));
+    if (res.status >= 300 && res.status < 400) continue;
+    if (!res.ok) continue;
+    const html = await res.text();
+    if (looksLikeSpaShell(html)) return html;
+  }
+  return '';
+}
+
 const ASSETLINKS_JSON = JSON.stringify([
   {
     relation: ['delegate_permission/common.handle_all_urls'],
@@ -756,17 +786,19 @@ export default {
       });
     }
     if (cleanPath(url.pathname) === '/admin') {
-      const indexRes = await env.ASSETS.fetch(
-        new Request(new URL('/index.html', url.origin).toString(), request)
-      );
-      return new Response(indexRes.body, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'private, no-store',
-          'X-Robots-Tag': 'noindex, nofollow',
-        },
-      });
+      const html = withAdminNoIndexHtml(await fetchSpaShellHtml(env, url.origin));
+      const adminHeaders = {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'private, no-store',
+        'X-Robots-Tag': 'noindex, nofollow',
+      };
+      if (!looksLikeSpaShell(html)) {
+        return new Response('No se pudo cargar el panel.', {
+          status: 503,
+          headers: adminHeaders,
+        });
+      }
+      return new Response(html, { status: 200, headers: adminHeaders });
     }
 
     // 1) Bots de redes sociales en rutas con preview: servir OG HTML.
