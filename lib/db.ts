@@ -240,8 +240,8 @@ export type AdoptionsAnalyticsRange = 'today' | 'yesterday' | '7d' | '30d' | 'mo
 
 export type AdoptionsAnalyticsTotals = {
   pageViews: number;
-  uniqueVisitorsEstimated: number;
-  sessionsEstimated: number;
+  uniqueVisitorsEstimated: number | null;
+  sessionsEstimated: number | null;
   shareIntents: number;
   shareCopied: number;
   adoptClicks: number;
@@ -255,6 +255,8 @@ export interface AdoptionsAnalyticsReport {
   range: { key: string; from: string; to: string };
   previousRange: { from: string; to: string };
   startedAt: number;
+  hashRetainedFrom: string;
+  uniqueVisitorsMode: 'period' | 'unavailable';
   note: string;
   overview: {
     today: AdoptionsAnalyticsTotals;

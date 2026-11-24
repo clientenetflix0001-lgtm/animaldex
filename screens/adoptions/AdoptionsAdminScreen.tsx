@@ -77,7 +77,14 @@ function fmt(n: number): string {
   return Number(n || 0).toLocaleString('es-AR');
 }
 
-function delta(current: number, previous: number): string {
+function fmtUnique(n: number | null | undefined): string {
+  if (n == null) return 'No disponible';
+  return fmt(n);
+}
+
+function delta(current: number | null | undefined, previous: number | null | undefined): string {
+  if (current == null) return 'no se puede deduplicar este período';
+  if (previous == null) return 'sin período anterior comparable';
   if (previous <= 0 && current <= 0) return 'sin cambio';
   if (previous <= 0) return 'sin período anterior comparable';
   const pct = Math.round(((current - previous) / previous) * 100);
@@ -212,12 +219,13 @@ export default function AdoptionsAdminScreen() {
                 Medición desde {new Date(data.startedAt).toLocaleString('es-AR', { timeZone: ADOPTIONS_ANALYTICS_TZ })}. No hay datos anteriores.
               </Text>
             ) : null}
+            <Text style={styles.muted}>{data.note}</Text>
 
             <Text style={styles.section}>Resumen del período</Text>
             <View style={styles.grid}>
               <StatCard colors={colors} label="Páginas vistas" value={fmt(selected.pageViews)} hint={delta(selected.pageViews, previous?.pageViews || 0)} />
-              <StatCard colors={colors} label="Visitantes únicos (est.)" value={fmt(selected.uniqueVisitorsEstimated)} hint={delta(selected.uniqueVisitorsEstimated, previous?.uniqueVisitorsEstimated || 0)} />
-              <StatCard colors={colors} label="Sesiones (est.)" value={fmt(selected.sessionsEstimated)} hint={delta(selected.sessionsEstimated, previous?.sessionsEstimated || 0)} />
+              <StatCard colors={colors} label="Visitantes únicos (est.)" value={fmtUnique(selected.uniqueVisitorsEstimated)} hint={delta(selected.uniqueVisitorsEstimated, previous?.uniqueVisitorsEstimated)} />
+              <StatCard colors={colors} label="Sesiones (est.)" value={fmtUnique(selected.sessionsEstimated)} hint={delta(selected.sessionsEstimated, previous?.sessionsEstimated)} />
               <StatCard colors={colors} label="Intentos de compartir" value={fmt(selected.shareIntents)} hint={delta(selected.shareIntents, previous?.shareIntents || 0)} />
               <StatCard colors={colors} label="Enlaces copiados" value={fmt(selected.shareCopied)} />
               <StatCard colors={colors} label="Clics Quiero adoptarlo" value={fmt(selected.adoptClicks)} hint="No equivale a adopciones" />
@@ -225,14 +233,14 @@ export default function AdoptionsAdminScreen() {
 
             <Text style={styles.section}>Totales fijos</Text>
             <View style={styles.grid}>
-              <StatCard colors={colors} label="Hoy" value={fmt(data.overview.today.pageViews)} />
-              <StatCard colors={colors} label="Ayer" value={fmt(data.overview.yesterday.pageViews)} />
-              <StatCard colors={colors} label="Últimos 7 días" value={fmt(data.overview.last7.pageViews)} />
-              <StatCard colors={colors} label="Últimos 30 días" value={fmt(data.overview.last30.pageViews)} />
-              <StatCard colors={colors} label="Semana calendario" value={fmt(data.overview.week.pageViews)} />
-              <StatCard colors={colors} label="Mes calendario" value={fmt(data.overview.month.pageViews)} />
+              <StatCard colors={colors} label="Hoy" value={fmt(data.overview.today.pageViews)} hint={`${fmtUnique(data.overview.today.uniqueVisitorsEstimated)} únicos est.`} />
+              <StatCard colors={colors} label="Ayer" value={fmt(data.overview.yesterday.pageViews)} hint={`${fmtUnique(data.overview.yesterday.uniqueVisitorsEstimated)} únicos est.`} />
+              <StatCard colors={colors} label="Últimos 7 días" value={fmt(data.overview.last7.pageViews)} hint={`${fmtUnique(data.overview.last7.uniqueVisitorsEstimated)} únicos est.`} />
+              <StatCard colors={colors} label="Últimos 30 días" value={fmt(data.overview.last30.pageViews)} hint={`${fmtUnique(data.overview.last30.uniqueVisitorsEstimated)} únicos est.`} />
+              <StatCard colors={colors} label="Semana calendario" value={fmt(data.overview.week.pageViews)} hint={`${fmtUnique(data.overview.week.uniqueVisitorsEstimated)} únicos est.`} />
+              <StatCard colors={colors} label="Mes calendario" value={fmt(data.overview.month.pageViews)} hint={`${fmtUnique(data.overview.month.uniqueVisitorsEstimated)} únicos est.`} />
               <StatCard colors={colors} label="Histórico páginas vistas" value={fmt(data.overview.allTime.pageViews)} />
-              <StatCard colors={colors} label="Histórico únicos (est.)" value={fmt(data.overview.allTime.uniqueVisitorsEstimated)} />
+              <StatCard colors={colors} label="Histórico únicos (est.)" value={fmtUnique(data.overview.allTime.uniqueVisitorsEstimated)} hint="Hashes distintos desde el inicio, no una suma diaria" />
             </View>
 
             <Text style={styles.section}>Evolución diaria</Text>

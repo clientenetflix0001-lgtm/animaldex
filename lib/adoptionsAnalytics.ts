@@ -256,14 +256,10 @@ export function trackAdoptionsEvent(input: {
   }
 }
 
-export function trackAdoptionsPathChange(pathname: string, params?: { alertId?: string; name?: string }): void {
+export function trackAdoptionsPathChange(pathname: string, _params?: { alertId?: string; name?: string }): void {
   const path = String(pathname || '').split('?')[0].split('#')[0];
   if (!path) return;
   const clean = path.replace(/\/+$/, '') || '/';
   if (clean === '/admin' || clean === `/${ADOPTIONS_SEGMENT}/admin`) return;
-  const alertId = params?.alertId;
   trackAdoptionsEvent({ type: 'page_view', path });
-  if (params?.name === 'AdoptionPost' && alertId) {
-    trackAdoptionsEvent({ type: 'adoption_detail_view', path, alertId });
-  }
 }

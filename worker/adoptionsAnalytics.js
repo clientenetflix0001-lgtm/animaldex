@@ -7,8 +7,9 @@
 import { ADOPTION_LOCALITIES, ADOPTIONS_SEGMENT } from '../lib/adoptionLocalities.ts';
 
 const SALTA_TZ = 'America/Argentina/Salta';
-const EVENT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
-const SESSION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+const HASH_RETENTION_DAYS = 90;
+const EVENT_RETENTION_MS = HASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+const SESSION_RETENTION_MS = HASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const PRUNE_BATCH = 4000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 40;
@@ -98,19 +99,19 @@ function knownBot(request) {
   return BOT_UA.test(ua);
 }
 
-export function adoptionsAdminUsernames(env) {
-  const extra = String(env.ADOPTIONS_ADMIN_USERNAMES || '')
-    .split(/[,\s]+/)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  return new Set(['lucasfuentes', ...extra]);
+export function adoptionsAdminUserIds(env) {
+  return new Set(
+    String(env.ADOPTIONS_ADMIN_USER_IDS || '')
+      .split(/[,\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
 }
 
-export async function isAdoptionsAdminUser(env, userId) {
+/** La identidad sale de la sesión del Worker (`authUser` → users.id). No se usa el username. */
+export function isAdoptionsAdminUser(env, userId) {
   if (!userId) return false;
-  const rows = await env.DB.prepare('SELECT username FROM users WHERE id = ?').bind(userId).all();
-  const username = String(rows.results?.[0]?.username || '').toLowerCase();
-  return adoptionsAdminUsernames(env).has(username);
+  return adoptionsAdminUserIds(env).has(String(userId).trim());
 }
 
 async function analyticsReady(env) {
@@ -254,6 +255,14 @@ async function all(env, sql, params = []) {
   return res.results || [];
 }
 
+function prepare(env, sql, params = []) {
+  return env.DB.prepare(sql).bind(...params);
+}
+
+function isUniqueConflict(err) {
+  return /UNIQUE|constraint failed/i.test(String((err && err.message) || err || ''));
+}
+
 export async function handlePublicAdoptionsAnalytics(env, request, body, action, json) {
   if (action !== 'adoptionsTrack') return null;
   const now = Date.now();
@@ -265,6 +274,8 @@ export async function handlePublicAdoptionsAnalytics(env, request, body, action,
 
   const type = clean(body.type, 40);
   if (!TRACK_TYPES.has(type)) return json({ error: 'Evento no permitido' }, 400);
+  // page_view del detalle ya incrementa detail_views. No escribir ni contar otra visita.
+  if (type === 'adoption_detail_view') return emptyOk();
 
   const eventId = clean(body.eventId, 80).toLowerCase();
   if (!EVENT_ID_RE.test(eventId)) return json({ error: 'Evento inválido' }, 400);
@@ -293,65 +304,26 @@ export async function handlePublicAdoptionsAnalytics(env, request, body, action,
   const os = pickAllowed(body.os, OS_NAMES, 'unknown');
   const day = dayInSalta(now);
   const isView = type === 'page_view';
-  const pageKind = type === 'adoption_detail_view' ? 'post' : classified.pageKind;
-  const pageKey = type === 'adoption_detail_view' && alertId ? `post:${alertId}` : classified.pageKey;
+  const pageKind = classified.pageKind;
+  const pageKey = classified.pageKey;
   const locality = classified.locality;
-  const postId = pageKind === 'post' ? alertId : null;
+  const postId = (pageKind === 'post' ? classified.alertId : null) || (isView ? null : clean(body.alertId, 80) || null);
+  const shareIntent = type === 'share_intent' ? 1 : 0;
+  const shareCopied = type === 'share_link_copied' ? 1 : 0;
+  const adoptClick = type === 'adopt_contact_click' ? 1 : 0;
+  const pubStart = type === 'publish_started' ? 1 : 0;
+  const pubDone = type === 'publish_completed' ? 1 : 0;
+  const detail = isView && pageKind === 'post' ? 1 : 0;
+  const actionPostId = postId || (shareIntent || shareCopied || adoptClick ? alertId : null);
 
-  try {
-    const existed = await all(env, 'SELECT 1 AS n FROM adoptions_analytics_events WHERE event_id = ? LIMIT 1', [eventId]);
-    if (existed[0]) return emptyOk();
-
-    const visitorIns = await run(
-      env,
-      'INSERT OR IGNORE INTO adoptions_analytics_visitor_seen (visitor_hash, first_day, first_seen_at) VALUES (?, ?, ?)',
-      [visitorHash, day, now]
-    );
-    const newVisitor = visitorIns.meta?.changes === 1 ? 1 : 0;
-
-    const sessionRow = await all(
-      env,
-      'SELECT session_hash FROM adoptions_analytics_session_seen WHERE session_hash = ? LIMIT 1',
-      [sessionHash]
-    );
-    const newSession = sessionRow[0] ? 0 : 1;
-    if (sessionRow[0]) {
-      await run(env, 'UPDATE adoptions_analytics_session_seen SET last_seen_at = ? WHERE session_hash = ?', [
-        now,
-        sessionHash,
-      ]);
-    } else {
-      await run(
-        env,
-        'INSERT INTO adoptions_analytics_session_seen (session_hash, first_day, last_seen_at) VALUES (?, ?, ?)',
-        [sessionHash, day, now]
-      );
-    }
-
-    let dayNewVisitor = 0;
-    let dayNewSession = 0;
-    if (isView) {
-      const dv = await run(
-        env,
-        'INSERT OR IGNORE INTO adoptions_analytics_daily_visitors (day, visitor_hash) VALUES (?, ?)',
-        [day, visitorHash]
-      );
-      dayNewVisitor = dv.meta?.changes === 1 ? 1 : 0;
-      const ds = await run(
-        env,
-        'INSERT OR IGNORE INTO adoptions_analytics_daily_sessions (day, session_hash) VALUES (?, ?)',
-        [day, sessionHash]
-      );
-      dayNewSession = ds.meta?.changes === 1 ? 1 : 0;
-    }
-
-    await run(
+  const statements = [
+    prepare(
       env,
       `INSERT INTO adoptions_analytics_events (
         event_id, occurred_at, day, type, page_kind, path, locality_slug, alert_id, network, source,
         utm_source, utm_medium, utm_campaign, utm_content, utm_term, device, browser, os,
         visitor_hash, session_hash, new_visitor, new_session
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
       [
         eventId,
         now,
@@ -360,7 +332,7 @@ export async function handlePublicAdoptionsAnalytics(env, request, body, action,
         pageKind,
         classified.path.slice(0, 200),
         locality,
-        postId,
+        actionPostId,
         network,
         source,
         utmSource,
@@ -373,123 +345,167 @@ export async function handlePublicAdoptionsAnalytics(env, request, body, action,
         os,
         visitorHash,
         sessionHash,
-        newVisitor,
-        newSession,
       ]
-    );
+    ),
+  ];
 
-    const shareIntent = type === 'share_intent' ? 1 : 0;
-    const shareCopied = type === 'share_link_copied' ? 1 : 0;
-    const adoptClick = type === 'adopt_contact_click' ? 1 : 0;
-    const pubStart = type === 'publish_started' ? 1 : 0;
-    const pubDone = type === 'publish_completed' ? 1 : 0;
-    const detail = isView && pageKind === 'post' ? 1 : 0;
-    const pageView = isView ? 1 : 0;
-
-    await run(
-      env,
-      `INSERT INTO adoptions_analytics_daily (
-        day, page_views, unique_visitors, sessions, share_intents, share_copied, adopt_clicks,
-        publish_started, publish_completed, detail_views
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(day) DO UPDATE SET
-        page_views = page_views + excluded.page_views,
-        unique_visitors = unique_visitors + excluded.unique_visitors,
-        sessions = sessions + excluded.sessions,
-        share_intents = share_intents + excluded.share_intents,
-        share_copied = share_copied + excluded.share_copied,
-        adopt_clicks = adopt_clicks + excluded.adopt_clicks,
-        publish_started = publish_started + excluded.publish_started,
-        publish_completed = publish_completed + excluded.publish_completed,
-        detail_views = detail_views + excluded.detail_views`,
-      [
-        day,
-        pageView,
-        isView ? dayNewVisitor : 0,
-        isView ? dayNewSession : 0,
-        shareIntent,
-        shareCopied,
-        adoptClick,
-        pubStart,
-        pubDone,
-        detail,
-      ]
-    );
-
-    if (pageView) {
-      await run(
+  if (isView) {
+    statements.push(
+      prepare(
+        env,
+        `INSERT INTO adoptions_analytics_daily (
+          day, page_views, unique_visitors, sessions, share_intents, share_copied, adopt_clicks,
+          publish_started, publish_completed, detail_views
+        ) VALUES (
+          ?, 1,
+          CASE WHEN EXISTS(SELECT 1 FROM adoptions_analytics_daily_visitors WHERE day = ? AND visitor_hash = ?) THEN 0 ELSE 1 END,
+          CASE WHEN EXISTS(SELECT 1 FROM adoptions_analytics_daily_sessions WHERE day = ? AND session_hash = ?) THEN 0 ELSE 1 END,
+          0, 0, 0, 0, 0, ?
+        )
+        ON CONFLICT(day) DO UPDATE SET
+          page_views = page_views + 1,
+          unique_visitors = unique_visitors + excluded.unique_visitors,
+          sessions = sessions + excluded.sessions,
+          detail_views = detail_views + excluded.detail_views`,
+        [day, day, visitorHash, day, sessionHash, detail]
+      ),
+      prepare(
+        env,
+        `INSERT INTO adoptions_analytics_totals (id, page_views, unique_visitors, sessions, share_intents, started_at)
+         VALUES (
+           1, 1,
+           CASE WHEN EXISTS(SELECT 1 FROM adoptions_analytics_visitor_seen WHERE visitor_hash = ?) THEN 0 ELSE 1 END,
+           CASE WHEN EXISTS(SELECT 1 FROM adoptions_analytics_session_seen WHERE session_hash = ?) THEN 0 ELSE 1 END,
+           0, ?
+         )
+         ON CONFLICT(id) DO UPDATE SET
+           page_views = page_views + 1,
+           unique_visitors = unique_visitors + excluded.unique_visitors,
+           sessions = sessions + excluded.sessions`,
+        [visitorHash, sessionHash, now]
+      ),
+      prepare(
+        env,
+        `INSERT INTO adoptions_analytics_daily_sources (
+           day, source, utm_source, utm_medium, utm_campaign, sessions, page_views
+         ) VALUES (
+           ?, ?, ?, ?, ?,
+           CASE WHEN EXISTS(SELECT 1 FROM adoptions_analytics_session_seen WHERE session_hash = ?) THEN 0 ELSE 1 END,
+           1
+         )
+         ON CONFLICT(day, source, utm_source, utm_medium, utm_campaign) DO UPDATE SET
+           page_views = page_views + 1,
+           sessions = sessions + excluded.sessions`,
+        [day, source, utmSource || '', utmMedium || '', utmCampaign || '', sessionHash]
+      ),
+      prepare(
+        env,
+        `INSERT OR IGNORE INTO adoptions_analytics_visitor_seen (visitor_hash, first_day, first_seen_at) VALUES (?, ?, ?)`,
+        [visitorHash, day, now]
+      ),
+      prepare(
+        env,
+        `INSERT INTO adoptions_analytics_session_seen (session_hash, first_day, last_seen_at) VALUES (?, ?, ?)
+         ON CONFLICT(session_hash) DO UPDATE SET last_seen_at = excluded.last_seen_at`,
+        [sessionHash, day, now]
+      ),
+      prepare(
+        env,
+        'INSERT OR IGNORE INTO adoptions_analytics_daily_visitors (day, visitor_hash) VALUES (?, ?)',
+        [day, visitorHash]
+      ),
+      prepare(
+        env,
+        'INSERT OR IGNORE INTO adoptions_analytics_daily_sessions (day, session_hash) VALUES (?, ?)',
+        [day, sessionHash]
+      ),
+      prepare(
         env,
         `INSERT INTO adoptions_analytics_daily_pages (day, page_key, page_kind, locality_slug, alert_id, views)
          VALUES (?, ?, ?, ?, ?, 1)
          ON CONFLICT(day, page_key) DO UPDATE SET views = views + 1`,
-        [day, pageKey, pageKind, locality, postId]
-      );
-      if (locality && pageKind !== 'catalog') {
-        await run(
-          env,
-          `INSERT INTO adoptions_analytics_daily_pages (day, page_key, page_kind, locality_slug, alert_id, views)
-           VALUES (?, ?, 'locality', ?, NULL, 1)
-           ON CONFLICT(day, page_key) DO UPDATE SET views = views + 1`,
-          [day, `locality:${locality}`, locality]
-        );
-      }
-      await run(
-        env,
-        `INSERT INTO adoptions_analytics_daily_sources (
-           day, source, utm_source, utm_medium, utm_campaign, sessions, page_views
-         ) VALUES (?, ?, ?, ?, ?, ?, 1)
-         ON CONFLICT(day, source, utm_source, utm_medium, utm_campaign) DO UPDATE SET
-           page_views = page_views + 1,
-           sessions = sessions + excluded.sessions`,
-        [day, source, utmSource || '', utmMedium || '', utmCampaign || '', newSession]
-      );
-      await run(
+        [day, pageKey, pageKind, locality, pageKind === 'post' ? actionPostId : null]
+      ),
+      prepare(
         env,
         `INSERT INTO adoptions_analytics_daily_devices (day, device, browser, os, page_views)
          VALUES (?, ?, ?, ?, 1)
          ON CONFLICT(day, device, browser, os) DO UPDATE SET page_views = page_views + 1`,
         [day, device, browser, os]
-      );
-    }
-
-    if (postId && (pageView || shareIntent || shareCopied || adoptClick)) {
-      await run(
-        env,
-        `INSERT INTO adoptions_analytics_daily_posts (day, alert_id, views, share_intents, share_copied, adopt_clicks)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(day, alert_id) DO UPDATE SET
-           views = views + excluded.views,
-           share_intents = share_intents + excluded.share_intents,
-           share_copied = share_copied + excluded.share_copied,
-           adopt_clicks = adopt_clicks + excluded.adopt_clicks`,
-        [day, postId, pageKind === 'post' && pageView ? 1 : 0, shareIntent, shareCopied, adoptClick]
-      );
-    }
-
-    if (network && (shareIntent || shareCopied)) {
-      await run(
-        env,
-        `INSERT INTO adoptions_analytics_daily_networks (day, network, share_intents, share_copied)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(day, network) DO UPDATE SET
-           share_intents = share_intents + excluded.share_intents,
-           share_copied = share_copied + excluded.share_copied`,
-        [day, network, shareIntent, shareCopied]
-      );
-    }
-
-    await run(
-      env,
-      `INSERT INTO adoptions_analytics_totals (id, page_views, unique_visitors, sessions, share_intents, started_at)
-       VALUES (1, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         page_views = page_views + excluded.page_views,
-         unique_visitors = unique_visitors + excluded.unique_visitors,
-         sessions = sessions + excluded.sessions,
-         share_intents = share_intents + excluded.share_intents`,
-      [pageView, newVisitor, newSession, shareIntent, now]
+      )
     );
+    if (pageKind === 'post' && actionPostId) {
+      statements.push(
+        prepare(
+          env,
+          `INSERT INTO adoptions_analytics_daily_posts (day, alert_id, views, share_intents, share_copied, adopt_clicks)
+           VALUES (?, ?, 1, 0, 0, 0)
+           ON CONFLICT(day, alert_id) DO UPDATE SET views = views + 1`,
+          [day, actionPostId]
+        )
+      );
+    }
+  } else {
+    statements.push(
+      prepare(
+        env,
+        `INSERT INTO adoptions_analytics_daily (
+          day, page_views, unique_visitors, sessions, share_intents, share_copied, adopt_clicks,
+          publish_started, publish_completed, detail_views
+        ) VALUES (?, 0, 0, 0, ?, ?, ?, ?, ?, 0)
+        ON CONFLICT(day) DO UPDATE SET
+          share_intents = share_intents + excluded.share_intents,
+          share_copied = share_copied + excluded.share_copied,
+          adopt_clicks = adopt_clicks + excluded.adopt_clicks,
+          publish_started = publish_started + excluded.publish_started,
+          publish_completed = publish_completed + excluded.publish_completed`,
+        [day, shareIntent, shareCopied, adoptClick, pubStart, pubDone]
+      )
+    );
+    if (shareIntent) {
+      statements.push(
+        prepare(
+          env,
+          `INSERT INTO adoptions_analytics_totals (id, page_views, unique_visitors, sessions, share_intents, started_at)
+           VALUES (1, 0, 0, 0, 1, ?)
+           ON CONFLICT(id) DO UPDATE SET share_intents = share_intents + 1`,
+          [now]
+        )
+      );
+    }
+    if (actionPostId && (shareIntent || shareCopied || adoptClick)) {
+      statements.push(
+        prepare(
+          env,
+          `INSERT INTO adoptions_analytics_daily_posts (day, alert_id, views, share_intents, share_copied, adopt_clicks)
+           VALUES (?, ?, 0, ?, ?, ?)
+           ON CONFLICT(day, alert_id) DO UPDATE SET
+             share_intents = share_intents + excluded.share_intents,
+             share_copied = share_copied + excluded.share_copied,
+             adopt_clicks = adopt_clicks + excluded.adopt_clicks`,
+          [day, actionPostId, shareIntent, shareCopied, adoptClick]
+        )
+      );
+    }
+    if (network && (shareIntent || shareCopied)) {
+      statements.push(
+        prepare(
+          env,
+          `INSERT INTO adoptions_analytics_daily_networks (day, network, share_intents, share_copied)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(day, network) DO UPDATE SET
+             share_intents = share_intents + excluded.share_intents,
+             share_copied = share_copied + excluded.share_copied`,
+          [day, network, shareIntent, shareCopied]
+        )
+      );
+    }
+  }
+
+  try {
+    await env.DB.batch(statements);
   } catch (e) {
+    if (isUniqueConflict(e)) return emptyOk();
     console.log('adoptions-track', e && e.message);
   }
   return emptyOk();
@@ -541,9 +557,44 @@ function fillDays(from, to, byDay, keys) {
   return out;
 }
 
+function hashRetainedFrom(today) {
+  return addDays(today, -(HASH_RETENTION_DAYS - 1));
+}
+
+async function periodUniques(env, from, to, retainedFrom) {
+  if (!from || !to || from > to || from < retainedFrom) {
+    return { uniqueVisitorsEstimated: null, sessionsEstimated: null, mode: 'unavailable' };
+  }
+  const [visitors, sessions] = await Promise.all([
+    all(
+      env,
+      'SELECT COUNT(DISTINCT visitor_hash) AS n FROM adoptions_analytics_daily_visitors WHERE day BETWEEN ? AND ?',
+      [from, to]
+    ),
+    all(
+      env,
+      'SELECT COUNT(DISTINCT session_hash) AS n FROM adoptions_analytics_daily_sessions WHERE day BETWEEN ? AND ?',
+      [from, to]
+    ),
+  ]);
+  return {
+    uniqueVisitorsEstimated: Number(visitors[0]?.n || 0),
+    sessionsEstimated: Number(sessions[0]?.n || 0),
+    mode: 'period',
+  };
+}
+
+function withUniques(base, u) {
+  return {
+    ...base,
+    uniqueVisitorsEstimated: u.uniqueVisitorsEstimated,
+    sessionsEstimated: u.sessionsEstimated,
+  };
+}
+
 export async function handleAdminAdoptionsAnalytics(env, body, action, userId, json) {
   if (action !== 'adoptionsAnalytics') return null;
-  if (!(await isAdoptionsAdminUser(env, userId))) {
+  if (!isAdoptionsAdminUser(env, userId)) {
     return json({ error: 'No autorizado' }, 403);
   }
   if (!(await analyticsReady(env))) {
@@ -556,6 +607,7 @@ export async function handleAdminAdoptionsAnalytics(env, body, action, userId, j
   const selected = resolveRange(body, today);
   if (selected.error) return json({ error: selected.error }, 400);
   const prev = previousRange(selected.from, selected.to);
+  const retainedFrom = hashRetainedFrom(today);
 
   try {
     const [
@@ -676,6 +728,48 @@ export async function handleAdminAdoptionsAnalytics(env, body, action, userId, j
       detailViews: Number(row?.detail_views || 0),
     });
 
+    const [uToday, uYesterday, u7, u30, uWeek, uMonth, uSelected, uPrev] = await Promise.all([
+      periodUniques(env, today, today, retainedFrom),
+      periodUniques(env, addDays(today, -1), addDays(today, -1), retainedFrom),
+      periodUniques(env, addDays(today, -6), today, retainedFrom),
+      periodUniques(env, addDays(today, -29), today, retainedFrom),
+      periodUniques(env, weekFrom, today, retainedFrom),
+      periodUniques(env, monthFrom, today, retainedFrom),
+      periodUniques(env, selected.from, selected.to, retainedFrom),
+      periodUniques(env, prev.from, prev.to, retainedFrom),
+    ]);
+
+    const selectedCounts = {
+      pageViews: sumRows(rangeRows, 'page_views'),
+      shareIntents: sumRows(rangeRows, 'share_intents'),
+      shareCopied: sumRows(rangeRows, 'share_copied'),
+      adoptClicks: sumRows(rangeRows, 'adopt_clicks'),
+      detailViews: sumRows(rangeRows, 'detail_views'),
+    };
+    const previousCounts = {
+      pageViews: sumRows(prevRows, 'page_views'),
+      shareIntents: sumRows(prevRows, 'share_intents'),
+      shareCopied: sumRows(prevRows, 'share_copied'),
+      adoptClicks: sumRows(prevRows, 'adopt_clicks'),
+      detailViews: sumRows(prevRows, 'detail_views'),
+    };
+
+    const localityPages = [];
+    const locMap = new Map();
+    for (const p of pages) {
+      if (!p.locality_slug) continue;
+      locMap.set(p.locality_slug, (locMap.get(p.locality_slug) || 0) + Number(p.views || 0));
+    }
+    for (const [slug, views] of locMap) {
+      localityPages.push({
+        key: `locality:${slug}`,
+        kind: 'locality',
+        locality: slug,
+        alertId: null,
+        views,
+      });
+    }
+
     const byDay = new Map(rangeRows.map((r) => [r.day, r]));
     const daily = fillDays(selected.from, selected.to, byDay, [
       'page_views',
@@ -685,6 +779,10 @@ export async function handleAdminAdoptionsAnalytics(env, body, action, userId, j
     ]);
 
     const startedAt = Number(totals[0]?.started_at || 0);
+    const selectedUnavailable = uSelected.mode === 'unavailable';
+    const uniquesNote = selectedUnavailable
+      ? `Visitantes únicos y sesiones del período no están disponibles: los identificadores anónimos se conservan ${HASH_RETENTION_DAYS} días (desde ${retainedFrom}). No se muestra la suma de únicos diarios porque sobrecuenta a quien vuelve otro día.`
+      : 'Visitantes únicos y sesiones del período son COUNT DISTINCT de hashes anónimos en el rango. El gráfico diario muestra actividad de ese día (la misma persona puede aparecer varios días). No es un recuento exacto de personas.';
 
     return json({
       ok: true,
@@ -693,33 +791,19 @@ export async function handleAdminAdoptionsAnalytics(env, body, action, userId, j
       range: { key: selected.range, from: selected.from, to: selected.to },
       previousRange: prev,
       startedAt,
-      note: 'uniqueVisitorsEstimated y sessionsEstimated son estimaciones (hashes anónimos), no un recuento exacto de personas.',
+      hashRetainedFrom: retainedFrom,
+      uniqueVisitorsMode: uSelected.mode,
+      note: uniquesNote,
       overview: {
-        today: pack(overviewToday[0]),
-        yesterday: pack(overviewYesterday[0]),
-        last7: pack(overview7[0]),
-        last30: pack(overview30[0]),
-        week: pack(overviewWeek[0]),
-        month: pack(overviewMonth[0]),
+        today: withUniques(pack(overviewToday[0]), uToday),
+        yesterday: withUniques(pack(overviewYesterday[0]), uYesterday),
+        last7: withUniques(pack(overview7[0]), u7),
+        last30: withUniques(pack(overview30[0]), u30),
+        week: withUniques(pack(overviewWeek[0]), uWeek),
+        month: withUniques(pack(overviewMonth[0]), uMonth),
         allTime: pack(totals[0]),
-        selected: {
-          pageViews: sumRows(rangeRows, 'page_views'),
-          uniqueVisitorsEstimated: sumRows(rangeRows, 'unique_visitors'),
-          sessionsEstimated: sumRows(rangeRows, 'sessions'),
-          shareIntents: sumRows(rangeRows, 'share_intents'),
-          shareCopied: sumRows(rangeRows, 'share_copied'),
-          adoptClicks: sumRows(rangeRows, 'adopt_clicks'),
-          detailViews: sumRows(rangeRows, 'detail_views'),
-        },
-        previous: {
-          pageViews: sumRows(prevRows, 'page_views'),
-          uniqueVisitorsEstimated: sumRows(prevRows, 'unique_visitors'),
-          sessionsEstimated: sumRows(prevRows, 'sessions'),
-          shareIntents: sumRows(prevRows, 'share_intents'),
-          shareCopied: sumRows(prevRows, 'share_copied'),
-          adoptClicks: sumRows(prevRows, 'adopt_clicks'),
-          detailViews: sumRows(prevRows, 'detail_views'),
-        },
+        selected: withUniques(selectedCounts, uSelected),
+        previous: withUniques(previousCounts, uPrev),
       },
       daily: daily.map((d) => ({
         day: d.day,
@@ -728,13 +812,16 @@ export async function handleAdminAdoptionsAnalytics(env, body, action, userId, j
         sessionsEstimated: d.sessions,
         shareIntents: d.share_intents,
       })),
-      pages: pages.map((p) => ({
-        key: p.page_key,
-        kind: p.page_kind,
-        locality: p.locality_slug || null,
-        alertId: p.alert_id || null,
-        views: Number(p.views || 0),
-      })),
+      pages: [
+        ...pages.map((p) => ({
+          key: p.page_key,
+          kind: p.page_kind,
+          locality: p.locality_slug || null,
+          alertId: p.alert_id || null,
+          views: Number(p.views || 0),
+        })),
+        ...localityPages,
+      ].sort((a, b) => b.views - a.views),
       posts: posts.map((p) => ({
         alertId: p.alert_id,
         petName: p.pet_name || null,
@@ -780,7 +867,7 @@ export async function pruneAdoptionsAnalytics(env, nowMs = Date.now()) {
   const today = dayInSalta(nowMs);
   const cutoff = nowMs - EVENT_RETENTION_MS;
   const sessionCutoff = nowMs - SESSION_RETENTION_MS;
-  const visitorAuxDay = addDays(today, -3);
+  const hashDay = addDays(today, -(HASH_RETENTION_DAYS));
   try {
     const old = await all(
       env,
@@ -793,8 +880,8 @@ export async function pruneAdoptionsAnalytics(env, nowMs = Date.now()) {
         cutoff,
       ]);
     }
-    await run(env, 'DELETE FROM adoptions_analytics_daily_visitors WHERE day < ?', [visitorAuxDay]);
-    await run(env, 'DELETE FROM adoptions_analytics_daily_sessions WHERE day < ?', [visitorAuxDay]);
+    await run(env, 'DELETE FROM adoptions_analytics_daily_visitors WHERE day < ?', [hashDay]);
+    await run(env, 'DELETE FROM adoptions_analytics_daily_sessions WHERE day < ?', [hashDay]);
     await run(env, 'DELETE FROM adoptions_analytics_session_seen WHERE last_seen_at < ?', [sessionCutoff]);
   } catch (e) {
     console.log('adoptions-analytics-prune', e && e.message);

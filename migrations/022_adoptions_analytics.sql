@@ -2,6 +2,7 @@
 -- NO EJECUTAR desde este cambio. Aplicar en D1 animaldex-db cuando se autorice el deploy.
 -- Zona horaria de agregación: America/Argentina/Salta (el Worker escribe `day` ya convertido).
 -- Eventos crudos: retención 90 días. Totales y series diarias: se conservan.
+-- daily_visitors / daily_sessions: 90 días para COUNT DISTINCT del período (no sumar únicos diarios).
 -- No guarda IP, nombres, teléfonos ni correos de visitantes.
 
 CREATE TABLE IF NOT EXISTS adoptions_analytics_events (
@@ -120,7 +121,9 @@ CREATE TABLE IF NOT EXISTS adoptions_analytics_session_seen (
   last_seen_at INTEGER NOT NULL
 );
 
--- Auxiliares de uniques por día. Se podan a los 3 días: el recuento queda en daily.
+-- Un hash por visitante/sesión y día. Retención 90 días.
+-- El panel hace COUNT DISTINCT sobre estas tablas para el período elegido.
+-- PRIMARY KEY (day, hash) cubre los filtros BETWEEN day.
 CREATE TABLE IF NOT EXISTS adoptions_analytics_daily_visitors (
   day TEXT NOT NULL,
   visitor_hash TEXT NOT NULL,
