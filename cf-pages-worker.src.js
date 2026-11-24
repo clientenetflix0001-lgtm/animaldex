@@ -41,6 +41,11 @@ const PUBLIC_WEB_ORIGIN = 'https://animaldex.com';
 // animaldex.com/adopciones/... redirige acá. No es una base ni un Worker nuevos.
 const ADOPTIONS_ORIGIN = 'https://adopciones.animaldex.com';
 const ADOPTIONS_HOST = 'adopciones.animaldex.com';
+const ADOPTIONS_OG_PATH = '/og/animaldex-adopciones-og-v2.jpg';
+const ADOPTIONS_OG_IMAGE = `${ADOPTIONS_ORIGIN}${ADOPTIONS_OG_PATH}`;
+const ADOPTIONS_OG_IMAGE_WIDTH = 1200;
+const ADOPTIONS_OG_IMAGE_HEIGHT = 630;
+const ADOPTIONS_OG_IMAGE_TYPE = 'image/jpeg';
 
 /** HTML estático de Play/privacidad. Se sirve ANTES de OG y de la SPA. */
 function legalPageAssetPath(pathname) {
@@ -228,7 +233,15 @@ function esc(s) {
     .replace(/'/g, '&#39;');
 }
 
-function ogHtml({ title, description, image, url }) {
+function ogHtml({ title, description, image, url, imageWidth, imageHeight, imageType, imageSecureUrl }) {
+  const width = imageWidth || 600;
+  const height = imageHeight || 600;
+  const secure = imageSecureUrl
+    ? `\n  <meta property="og:image:secure_url" content="${esc(imageSecureUrl)}" />`
+    : '';
+  const type = imageType
+    ? `\n  <meta property="og:image:type" content="${esc(imageType)}" />`
+    : '';
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -239,9 +252,9 @@ function ogHtml({ title, description, image, url }) {
   <meta property="og:type" content="article" />
   <meta property="og:title" content="${esc(title)}" />
   <meta property="og:description" content="${esc(description)}" />
-  <meta property="og:image" content="${esc(image)}" />
-  <meta property="og:image:width" content="600" />
-  <meta property="og:image:height" content="600" />
+  <meta property="og:image" content="${esc(image)}" />${secure}
+  <meta property="og:image:width" content="${width}" />
+  <meta property="og:image:height" content="${height}" />${type}
   <meta property="og:url" content="${esc(url)}" />
   <link rel="canonical" href="${esc(url)}" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -297,7 +310,11 @@ function adoptionWallMeta(place) {
   return {
     title: `Adopciones en ${place.locality} · Animaldex 💜`,
     description: `Mascotas que buscan familia en ${place.locality}. Mirá las publicaciones, difundilas o publicá una mascota en adopción.`,
-    image: petImage('perro', 11, 600),
+    image: ADOPTIONS_OG_IMAGE,
+    imageSecureUrl: ADOPTIONS_OG_IMAGE,
+    imageWidth: ADOPTIONS_OG_IMAGE_WIDTH,
+    imageHeight: ADOPTIONS_OG_IMAGE_HEIGHT,
+    imageType: ADOPTIONS_OG_IMAGE_TYPE,
     url: `${ADOPTIONS_ORIGIN}/${place.slug}`,
   };
 }
@@ -608,6 +625,7 @@ const ADOPTIONS_RESERVED = new Set([
   'favicon.ico', 'robots.txt', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil',
   'editar-perfil', 'editar-perfil-publico', 'nueva-mascota', 'crear-alerta', 'mis-alertas',
   'mis-productos', 'mercado-favoritos', 'transfer', 'well-known', 'login', 'register', 'auth', 'adopciones',
+  'og',
 ]);
 
 function cleanPath(pathname) {
@@ -673,6 +691,24 @@ export default {
           'Cache-Control': 'public, max-age=3600',
         },
       });
+    }
+
+    // Imagen OG del muro de Adopciones: JPEG público, sin SPA ni login.
+    const ogImagePath = url.pathname.replace(/\/+$/, '') || '/';
+    if (ogImagePath === ADOPTIONS_OG_PATH) {
+      const imgRes = await env.ASSETS.fetch(
+        new Request(new URL(ADOPTIONS_OG_PATH, url.origin).toString(), { method: 'GET' })
+      );
+      if (imgRes.ok) {
+        return new Response(imgRes.body, {
+          status: 200,
+          headers: {
+            'Content-Type': 'image/jpeg',
+            'Cache-Control': 'public, max-age=86400',
+          },
+        });
+      }
+      return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
 
     // 0.5) Política de privacidad y eliminación de cuenta: HTML público,
