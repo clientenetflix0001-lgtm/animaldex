@@ -41,6 +41,7 @@ const PUBLIC_WEB_ORIGIN = 'https://animaldex.com';
 // animaldex.com/adopciones/... redirige acá. No es una base ni un Worker nuevos.
 const ADOPTIONS_ORIGIN = 'https://adopciones.animaldex.com';
 const ADOPTIONS_HOST = 'adopciones.animaldex.com';
+const ADOPTIONS_GA4_ID = 'G-W0D1L1BDJL';
 const ADOPTIONS_OG_PATH = '/og/animaldex-adopciones-og-v2.jpg';
 const ADOPTIONS_OG_IMAGE = `${ADOPTIONS_ORIGIN}${ADOPTIONS_OG_PATH}`;
 const ADOPTIONS_OG_IMAGE_WIDTH = 1200;
@@ -62,22 +63,67 @@ function looksLikeSpaShell(html) {
   return s.includes('<div id="root"') && /<script\b/i.test(s);
 }
 
-function withAdminNoIndexHtml(html) {
-  const tag = '<meta name="robots" content="noindex, nofollow" />\n';
-  if (/<meta[^>]+name=["']robots["']/i.test(html)) return html;
-  if (html.includes('</head>')) return html.replace('</head>', `${tag}</head>`);
-  return tag + html;
+function isStaticAssetPathname(pathname) {
+  const p = String(pathname || '');
+  return (
+    p === '/favicon.ico' ||
+    p === '/robots.txt' ||
+    p.startsWith('/_expo/') ||
+    p.startsWith('/assets/') ||
+    p.startsWith('/vendor_modules/') ||
+    p.startsWith('/legal/') ||
+    p.startsWith('/og/') ||
+    p.startsWith('/.well-known/')
+  );
+}
+
+function injectAdoptionsGa4IntoSpa(html) {
+  const s = String(html || '');
+  if (s.includes(`googletagmanager.com/gtag/js?id=${ADOPTIONS_GA4_ID}`)) return s;
+  const snippet = `
+  <!-- Google tag (gtag.js) -->
+  <script>
+    window.__adxInitialLanding = window.__adxInitialLanding || {
+      pathname: window.location.pathname || '/',
+      search: window.location.search || '',
+      referrer: document.referrer || ''
+    };
+    try {
+      if (window.localStorage && window.localStorage.getItem('adx_analytics_consent') === 'denied') {
+        window['ga-disable-${ADOPTIONS_GA4_ID}'] = true;
+      }
+    } catch (e) {}
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    if (!window['ga-disable-${ADOPTIONS_GA4_ID}'] && !window.__adxGa4Configured) {
+      window.__adxGa4Configured = true;
+      gtag('consent', 'default', {
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+        analytics_storage: 'granted'
+      });
+      gtag('js', new Date());
+      gtag('config', '${ADOPTIONS_GA4_ID}', {
+        send_page_view: false,
+        allow_google_signals: false,
+        allow_ad_personalization_signals: false
+      });
+    }
+  </script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=${ADOPTIONS_GA4_ID}"></script>
+`;
+  if (s.includes('</head>')) return s.replace('</head>', `${snippet}</head>`);
+  return snippet + s;
 }
 
 /**
  * HTML de la SPA vía ASSETS. Cloudflare Pages hace 308 de `*.html` a la pretty URL:
- * pedir `/index.html` devuelve 308 → `/` con cuerpo vacío. Reexpedir ese cuerpo
- * como 200 deja /admin en blanco. Pedir la ruta a ASSETS (no al Worker) usa el
- * mismo fallback que /saltacapital. `redirect: 'manual'` evita seguir el 308.
+ * pedir `/index.html` devuelve 308 → `/` con cuerpo vacío. `redirect: 'manual'` evita seguirlo.
  */
 async function fetchSpaShellHtml(env, origin) {
   const init = { method: 'GET', redirect: 'manual' };
-  for (const path of ['/admin', '/']) {
+  for (const path of ['/saltacapital', '/']) {
     const res = await env.ASSETS.fetch(new Request(new URL(path, origin).toString(), init));
     if (res.status >= 300 && res.status < 400) continue;
     if (!res.ok) continue;
@@ -775,8 +821,10 @@ export default {
       });
     }
 
-    // 0.9) /admin no se indexa y no debe recibir la OG de portada.
-    if (cleanPath(url.pathname) === '/robots.txt' && url.hostname.toLowerCase() === ADOPTIONS_HOST) {
+    // 0.9) Antigua ruta /admin en Adopciones: retirada (sin SPA ni Google Analytics).
+    const normalizedPath = cleanPath(url.pathname);
+    const isAdoptionsSubdomain = url.hostname.toLowerCase() === ADOPTIONS_HOST;
+    if (normalizedPath === '/robots.txt' && isAdoptionsSubdomain) {
       return new Response('User-agent: *\nAllow: /\nDisallow: /admin\n', {
         status: 200,
         headers: {
@@ -785,20 +833,18 @@ export default {
         },
       });
     }
-    if (cleanPath(url.pathname) === '/admin') {
-      const html = withAdminNoIndexHtml(await fetchSpaShellHtml(env, url.origin));
-      const adminHeaders = {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'private, no-store',
-        'X-Robots-Tag': 'noindex, nofollow',
-      };
-      if (!looksLikeSpaShell(html)) {
-        return new Response('No se pudo cargar el panel.', {
-          status: 503,
-          headers: adminHeaders,
-        });
-      }
-      return new Response(html, { status: 200, headers: adminHeaders });
+    if (isAdoptionsSubdomain && (normalizedPath === '/admin' || normalizedPath.startsWith('/admin/'))) {
+      return new Response(
+        `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><meta name="robots" content="noindex, nofollow"/><title>Página no disponible · Animaldex Adopciones</title></head><body style="font-family:system-ui,-apple-system,sans-serif;padding:40px 20px;text-align:center;color:#222;"><h1 style="font-size:20px;margin-bottom:8px;">Página no disponible</h1><p style="font-size:14px;color:#666;margin-bottom:20px;">Esta ruta ya no se encuentra activa.</p><p><a href="${ADOPTIONS_ORIGIN}/${DEFAULT_ADOPTION_SLUG}" style="color:#FF6B4A;font-weight:700;text-decoration:none;">Ir a Adopciones</a></p></body></html>`,
+        {
+          status: 404,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'private, no-store',
+            'X-Robots-Tag': 'noindex, nofollow',
+          },
+        }
+      );
     }
 
     // 1) Bots de redes sociales en rutas con preview: servir OG HTML.
@@ -867,7 +913,9 @@ export default {
           ? await env.ASSETS.fetch(new Request(new URL('/index.html', url.origin).toString(), request))
           : assetResponse;
         const html = await source.text();
-        return new Response(injectOgIntoSpa(html, meta), {
+        const withOg = injectOgIntoSpa(html, meta);
+        const finalHtml = isAdoptionsSubdomain && url.protocol === 'https:' ? injectAdoptionsGa4IntoSpa(withOg) : withOg;
+        return new Response(finalHtml, {
           status: 200,
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
@@ -875,6 +923,36 @@ export default {
             'Vary': 'User-Agent',
           },
         });
+      }
+    }
+
+    // 4) En adopciones.animaldex.com (HTTPS, rutas públicas de la SPA), inyectar gtag.js (GA4)
+    //    exclusivamente en el subdominio de producción. Nunca en animaldex.com, pages.dev ni /admin.
+    if (isAdoptionsSubdomain && url.protocol === 'https:' && !isStaticAssetPathname(url.pathname)) {
+      if (assetResponse.status === 200 && assetType.includes('text/html')) {
+        const html = await assetResponse.text();
+        if (looksLikeSpaShell(html)) {
+          return new Response(injectAdoptionsGa4IntoSpa(html), {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': assetResponse.headers.get('cache-control') || 'public, max-age=0, must-revalidate',
+            },
+          });
+        }
+        return new Response(html, { status: 200, headers: assetResponse.headers });
+      }
+      if (assetResponse.status === 404) {
+        const fallbackHtml = await fetchSpaShellHtml(env, url.origin);
+        if (looksLikeSpaShell(fallbackHtml)) {
+          return new Response(injectAdoptionsGa4IntoSpa(fallbackHtml), {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'public, max-age=0, must-revalidate',
+            },
+          });
+        }
       }
     }
 

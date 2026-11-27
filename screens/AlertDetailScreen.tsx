@@ -37,8 +37,13 @@ import { useGuestAccess } from '../lib/guestAccess';
 import { DEFAULT_ADOPTION_SLUG } from '../lib/adoptionLocalities';
 import { useAdoptionPostActions } from '../components/adoptions/useAdoptionPostActions';
 import { AdoptionShareBar } from '../components/adoptions/AdoptionShareBar';
-import { trackAdoptionsEvent } from '../lib/adoptionsAnalytics';
-import { adoptionShareTrackedUrl } from '../lib/adoptionsShare';
+import {
+  adoptionAnalyticsSpecies,
+  trackAdoptContactClick,
+  trackAdoptionDetailView,
+  trackAdoptionShareIntent,
+} from '../lib/adoptionsAnalytics';
+import { adoptionShareTrackedUrl, canUseWebShare } from '../lib/adoptionsShare';
 import {
   adoptionThumbFrame,
   beginAdoptionOpen,
@@ -118,6 +123,18 @@ export default function AlertDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const trackedDetailIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!adoptionSection || loading || !alert || alert.type !== 'adoption') return;
+    if (trackedDetailIdRef.current === alert.id) return;
+    trackedDetailIdRef.current = alert.id;
+    trackAdoptionDetailView({
+      adoptionId: alert.id,
+      species: adoptionAnalyticsSpecies(alert),
+      city: adoptionCity,
+    });
+  }, [adoptionSection, loading, alert, adoptionCity]);
 
   useEffect(() => {
     if (chromeOn) return;
@@ -232,7 +249,12 @@ export default function AlertDetailScreen() {
     setSharing(true);
     try {
       if (adoptionSection) {
-        trackAdoptionsEvent({ type: 'share_intent', alertId: alert.id, network: 'native' });
+        trackAdoptionShareIntent({
+          adoptionId: alert.id,
+          shareNetwork: canUseWebShare() ? 'native' : 'copy_link',
+          species: adoptionAnalyticsSpecies(alert),
+          city: adoptionCity,
+        });
       }
       await shareAlert(alert, adoptionSection ? adoptionShareTrackedUrl(adoptionCity, alert.id, 'native') : undefined);
     } finally {
@@ -245,14 +267,18 @@ export default function AlertDetailScreen() {
     setAdopting(true);
     try {
       if (adoptionSection) {
-        trackAdoptionsEvent({ type: 'adopt_contact_click', alertId: alert.id });
+        trackAdoptContactClick({
+          adoptionId: alert.id,
+          species: adoptionAnalyticsSpecies(alert),
+          city: adoptionCity,
+        });
       }
       if (flyerModalEnabled) await adoptionActions.adopt(alert);
       else await openAlertAdoption(alert);
     } finally {
       setAdopting(false);
     }
-  }, [alert, adopting, flyerModalEnabled, adoptionActions, adoptionSection]);
+  }, [alert, adopting, flyerModalEnabled, adoptionActions, adoptionSection, adoptionCity]);
 
   const handleReport = useCallback(() => {
     if (!alert || reported) return;

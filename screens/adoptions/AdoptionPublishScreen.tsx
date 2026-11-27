@@ -30,7 +30,13 @@ import { AdoptionAccountPrompt } from '../../components/adoptions/AdoptionAccoun
 import { shareAlert } from '../../lib/share';
 import { adoptionPostShareUrl } from '../../components/adoptions/useAdoptionPostActions';
 import { ADOPTIONS_MAX_WIDTH } from './AdoptionsWallScreen';
-import { trackAdoptionsEvent } from '../../lib/adoptionsAnalytics';
+import {
+  adoptionAnalyticsSpecies,
+  trackAdoptionPublishCompleted,
+  trackAdoptionPublishStarted,
+  trackAdoptionShareIntent,
+} from '../../lib/adoptionsAnalytics';
+import { canUseWebShare } from '../../lib/adoptionsShare';
 
 type Rt = RouteProp<RootStackParamList, 'AdoptionPublish'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -71,10 +77,10 @@ export default function AdoptionPublishScreen() {
   const startedRef = useRef(false);
 
   useEffect(() => {
-    if (startedRef.current) return;
+    if (!user || startedRef.current) return;
     startedRef.current = true;
-    trackAdoptionsEvent({ type: 'publish_started' });
-  }, []);
+    trackAdoptionPublishStarted({ city });
+  }, [user, city]);
 
   const kind: AdoptionImageKind = source === 'flyer' ? 'flyer' : 'photo';
 
@@ -147,7 +153,13 @@ export default function AdoptionPublishScreen() {
           : { species: flyerSpecies || undefined }),
       });
       setDone(res.alert);
-      trackAdoptionsEvent({ type: 'publish_completed', alertId: res.alert?.id });
+      if (res.alert?.id) {
+        trackAdoptionPublishCompleted({
+          adoptionId: res.alert.id,
+          species: kind === 'photo' ? species : flyerSpecies || adoptionAnalyticsSpecies(res.alert),
+          city,
+        });
+      }
     } catch (e: unknown) {
       setError(explainAdoptionImageError(e, 'upload'));
     } finally {
@@ -189,7 +201,15 @@ export default function AdoptionPublishScreen() {
             </Pressable>
             <Pressable
               style={styles.secondaryBtn}
-              onPress={() => shareAlert(done, adoptionPostShareUrl(city, done.id)).catch(() => {})}
+              onPress={() => {
+                trackAdoptionShareIntent({
+                  adoptionId: done.id,
+                  shareNetwork: canUseWebShare() ? 'native' : 'copy_link',
+                  species: adoptionAnalyticsSpecies(done),
+                  city,
+                });
+                shareAlert(done, adoptionPostShareUrl(city, done.id)).catch(() => {});
+              }}
             >
               <Text style={styles.secondaryBtnText}>Difundir</Text>
             </Pressable>

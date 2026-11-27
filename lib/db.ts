@@ -236,76 +236,6 @@ export interface ApiComment {
   createdAt: number;
 }
 
-export type AdoptionsAnalyticsRange = 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'custom';
-
-export type AdoptionsAnalyticsTotals = {
-  pageViews: number;
-  uniqueVisitorsEstimated: number | null;
-  sessionsEstimated: number | null;
-  shareIntents: number;
-  shareCopied: number;
-  adoptClicks: number;
-  detailViews: number;
-};
-
-export interface AdoptionsAnalyticsReport {
-  ok: true;
-  timezone: string;
-  today: string;
-  range: { key: string; from: string; to: string };
-  previousRange: { from: string; to: string };
-  startedAt: number;
-  hashRetainedFrom: string;
-  uniqueVisitorsMode: 'period' | 'unavailable';
-  note: string;
-  overview: {
-    today: AdoptionsAnalyticsTotals;
-    yesterday: AdoptionsAnalyticsTotals;
-    last7: AdoptionsAnalyticsTotals;
-    last30: AdoptionsAnalyticsTotals;
-    week: AdoptionsAnalyticsTotals;
-    month: AdoptionsAnalyticsTotals;
-    allTime: AdoptionsAnalyticsTotals;
-    selected: AdoptionsAnalyticsTotals;
-    previous: AdoptionsAnalyticsTotals;
-  };
-  daily: Array<{
-    day: string;
-    pageViews: number;
-    uniqueVisitorsEstimated: number;
-    sessionsEstimated: number;
-    shareIntents: number;
-  }>;
-  pages: Array<{
-    key: string;
-    kind: string;
-    locality: string | null;
-    alertId: string | null;
-    views: number;
-  }>;
-  posts: Array<{
-    alertId: string;
-    petName: string | null;
-    image: string | null;
-    mediaKind: string | null;
-    locality: string | null;
-    views: number;
-    shareIntents: number;
-    shareCopied: number;
-    adoptClicks: number;
-  }>;
-  sources: Array<{ source: string; pageViews: number; sessionsEstimated: number }>;
-  devices: Array<{ device: string; browser: string; os: string; pageViews: number }>;
-  networks: Array<{ network: string; shareIntents: number; shareCopied: number }>;
-  campaigns: Array<{
-    campaign: string;
-    source: string;
-    medium: string;
-    pageViews: number;
-    sessionsEstimated: number;
-  }>;
-}
-
 export interface ApiAlert {
   id: string;
   userId: string;
@@ -883,11 +813,6 @@ export const db = {
   deleteAdoptionPost: (alertId: string): Promise<{ ok: boolean }> =>
     call('/db', { action: 'deleteAdoptionPost', alertId }),
   reportAlert: (alertId: string): Promise<{ ok: boolean }> => call('/db', { action: 'reportAlert', alertId }),
-  adoptionsAnalytics: (query: {
-    range: AdoptionsAnalyticsRange;
-    from?: string;
-    to?: string;
-  }): Promise<AdoptionsAnalyticsReport> => call('/db', { action: 'adoptionsAnalytics', ...query }),
 
   // ---------- Mercado (productos y servicios) ----------
   listingsFeed: (params: {

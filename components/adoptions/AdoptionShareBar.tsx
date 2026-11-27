@@ -3,7 +3,12 @@ import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import Ionicons from '../AppIcon';
 import type { ApiAlert } from '../../lib/db';
 import { useAppTheme, type ThemeColors, radius, spacing } from '../../lib/theme';
-import { trackAdoptionsEvent } from '../../lib/adoptionsAnalytics';
+import {
+  adoptionAnalyticsSpecies,
+  trackAdoptionShareCopied,
+  trackAdoptionShareIntent,
+  type Ga4ShareNetwork,
+} from '../../lib/adoptionsAnalytics';
 import {
   adoptionShareHeadline,
   adoptionShareTitle,
@@ -15,7 +20,6 @@ import {
   openExternal,
   shareViaWebApi,
   whatsappShareUrl,
-  type ShareNetwork,
 } from '../../lib/adoptionsShare';
 
 type Props = {
@@ -37,29 +41,47 @@ export function AdoptionShareBar({ alert, citySlug }: Props) {
     setTimeout(() => setStatus((cur) => (cur === msg ? '' : cur)), 3200);
   }, []);
 
-  const track = useCallback(
-    (network: ShareNetwork, copied = false) => {
-      trackAdoptionsEvent({ type: 'share_intent', alertId: alert.id, network });
-      if (copied) trackAdoptionsEvent({ type: 'share_link_copied', alertId: alert.id, network });
+  const species = useMemo(() => adoptionAnalyticsSpecies(alert), [alert]);
+
+  const trackIntent = useCallback(
+    (shareNetwork: Ga4ShareNetwork) => {
+      trackAdoptionShareIntent({
+        adoptionId: alert.id,
+        shareNetwork,
+        species,
+        city: citySlug,
+      });
     },
-    [alert.id]
+    [alert.id, citySlug, species]
+  );
+
+  const trackCopied = useCallback(
+    (shareNetwork: Ga4ShareNetwork) => {
+      trackAdoptionShareCopied({
+        adoptionId: alert.id,
+        shareNetwork,
+        species,
+        city: citySlug,
+      });
+    },
+    [alert.id, citySlug, species]
   );
 
   const onWhatsapp = useCallback(() => {
     const url = adoptionShareTrackedUrl(citySlug, alert.id, 'whatsapp');
-    track('whatsapp');
+    trackIntent('whatsapp');
     openExternal(whatsappShareUrl(waText, url));
-  }, [alert.id, citySlug, track, waText]);
+  }, [alert.id, citySlug, trackIntent, waText]);
 
   const onFacebook = useCallback(() => {
     const url = adoptionShareTrackedUrl(citySlug, alert.id, 'facebook');
-    track('facebook');
+    trackIntent('facebook');
     openExternal(facebookSharerUrl(url));
-  }, [alert.id, citySlug, track]);
+  }, [alert.id, citySlug, trackIntent]);
 
   const onInstagram = useCallback(async () => {
     const url = adoptionShareTrackedUrl(citySlug, alert.id, 'instagram');
-    track('instagram');
+    trackIntent('instagram');
     if (canUseWebShare()) {
       const outcome = await shareViaWebApi(title, `${headline}\n${url}`, url);
       if (outcome === 'shared') {
@@ -67,37 +89,37 @@ export function AdoptionShareBar({ alert, citySlug }: Props) {
         return;
       }
       if (outcome === 'copied') {
-        trackAdoptionsEvent({ type: 'share_link_copied', alertId: alert.id, network: 'instagram' });
+        trackCopied('instagram');
         note('Enlace copiado. Pegalo en Instagram: no hay publicación automática.');
         return;
       }
     }
     const copied = await copyText(url);
     if (copied) {
-      trackAdoptionsEvent({ type: 'share_link_copied', alertId: alert.id, network: 'instagram' });
+      trackCopied('instagram');
       note('Enlace copiado. Pegalo en Instagram: no hay publicación automática.');
     } else {
       note('Copiá el enlace y pegalo en Instagram. No se puede publicar desde la web.');
     }
-  }, [alert.id, citySlug, headline, note, title, track]);
+  }, [alert.id, citySlug, headline, note, title, trackCopied, trackIntent]);
 
   const onMore = useCallback(async () => {
     const url = adoptionShareTrackedUrl(citySlug, alert.id, 'native');
-    track('native');
+    trackIntent(canUseWebShare() ? 'native' : 'copy_link');
     const outcome = await shareViaWebApi(title, waText, url);
     if (outcome === 'copied') {
-      trackAdoptionsEvent({ type: 'share_link_copied', alertId: alert.id, network: 'copy' });
+      trackCopied('copy_link');
       note('Enlace copiado');
     } else if (outcome === 'shared') {
       note('Menú de compartir abierto');
     } else {
       const copied = await copyText(url);
       if (copied) {
-        trackAdoptionsEvent({ type: 'share_link_copied', alertId: alert.id, network: 'copy' });
+        trackCopied('copy_link');
         note('Enlace copiado');
       }
     }
-  }, [alert.id, citySlug, note, title, track, waText]);
+  }, [alert.id, citySlug, note, title, trackCopied, trackIntent, waText]);
 
   if (Platform.OS !== 'web') return null;
 

@@ -1,6 +1,6 @@
 import { resolveAppLink } from './appLinks.ts';
 import { ADOPTIONS_SEGMENT, DEFAULT_ADOPTION_SLUG, resolveAdoptionPath } from './adoptionLocalities.ts';
-import { isAdoptionsHost, toLogicalAdoptionPath } from './adoptionsHost.ts';
+import { toLogicalAdoptionPath } from './adoptionsHost.ts';
 import { isPublicLegalPath } from './legalPages.ts';
 import { PUBLIC_WEB_ORIGIN } from './publicWeb.ts';
 import { extractTagCode } from './tags.ts';
@@ -66,14 +66,6 @@ export function shouldAutoOpenPendingTag(opts: {
 function tagWelcomeState(code: string) {
   const tag = { name: 'TagWelcome', params: { code } };
   return linkingHasUser ? { routes: [{ name: 'Tabs' }, tag] } : { routes: [tag] };
-}
-
-/** Panel privado `/admin` en el subdominio de Adopciones. No es un perfil. */
-export function adoptionsAdminStateFromPath(path: string, host?: string | null) {
-  const p = pathnameOnly(path);
-  if (p === '/adopciones/admin') return { routes: [{ name: 'AdoptionsAdmin' as const }] };
-  if (isAdoptionsHost(host) && p === '/admin') return { routes: [{ name: 'AdoptionsAdmin' as const }] };
-  return null;
 }
 
 /**
