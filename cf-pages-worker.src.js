@@ -34,9 +34,19 @@
 // 1) EAS/Preview (upload)
 // 2) SHA copiado de Play Console
 // 3) SHA del APK instalado desde Play Internal Testing (pm get-app-links)
-// Dominio público oficial. OG/canonical siempre usan este origin,
+// Dominio público oficial. OG/canonical de la red principal usan este origin,
 // aunque la visita llegue por animaldex-web.pages.dev (legacy, sin redirect).
 const PUBLIC_WEB_ORIGIN = 'https://animaldex.com';
+// Animaldex Adopciones. El muro canónico es /saltacapital en este host.
+// animaldex.com/adopciones/... redirige acá. No es una base ni un Worker nuevos.
+const ADOPTIONS_ORIGIN = 'https://adopciones.animaldex.com';
+const ADOPTIONS_HOST = 'adopciones.animaldex.com';
+const ADOPTIONS_GA4_ID = 'G-W0D1L1BDJL';
+const ADOPTIONS_OG_PATH = '/og/animaldex-adopciones-og-v2.jpg';
+const ADOPTIONS_OG_IMAGE = `${ADOPTIONS_ORIGIN}${ADOPTIONS_OG_PATH}`;
+const ADOPTIONS_OG_IMAGE_WIDTH = 1200;
+const ADOPTIONS_OG_IMAGE_HEIGHT = 630;
+const ADOPTIONS_OG_IMAGE_TYPE = 'image/jpeg';
 
 /** HTML estático de Play/privacidad. Se sirve ANTES de OG y de la SPA. */
 function legalPageAssetPath(pathname) {
@@ -46,6 +56,81 @@ function legalPageAssetPath(pathname) {
   if (p === '/eliminar-cuenta') return '/legal/eliminar-cuenta';
   if (p === '/seguridad-infantil') return '/legal/seguridad-infantil';
   return null;
+}
+
+function looksLikeSpaShell(html) {
+  const s = String(html || '');
+  return s.includes('<div id="root"') && /<script\b/i.test(s);
+}
+
+function isStaticAssetPathname(pathname) {
+  const p = String(pathname || '');
+  return (
+    p === '/favicon.ico' ||
+    p === '/robots.txt' ||
+    p.startsWith('/_expo/') ||
+    p.startsWith('/assets/') ||
+    p.startsWith('/vendor_modules/') ||
+    p.startsWith('/legal/') ||
+    p.startsWith('/og/') ||
+    p.startsWith('/.well-known/')
+  );
+}
+
+function injectAdoptionsGa4IntoSpa(html) {
+  const s = String(html || '');
+  if (s.includes(`googletagmanager.com/gtag/js?id=${ADOPTIONS_GA4_ID}`)) return s;
+  const snippet = `
+  <!-- Google tag (gtag.js) -->
+  <script>
+    window.__adxInitialLanding = window.__adxInitialLanding || {
+      pathname: window.location.pathname || '/',
+      search: window.location.search || '',
+      referrer: document.referrer || ''
+    };
+    try {
+      if (window.localStorage && window.localStorage.getItem('adx_analytics_consent') === 'denied') {
+        window['ga-disable-${ADOPTIONS_GA4_ID}'] = true;
+      }
+    } catch (e) {}
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    if (!window['ga-disable-${ADOPTIONS_GA4_ID}'] && !window.__adxGa4Configured) {
+      window.__adxGa4Configured = true;
+      gtag('consent', 'default', {
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+        analytics_storage: 'granted'
+      });
+      gtag('js', new Date());
+      gtag('config', '${ADOPTIONS_GA4_ID}', {
+        send_page_view: false,
+        allow_google_signals: false,
+        allow_ad_personalization_signals: false
+      });
+    }
+  </script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=${ADOPTIONS_GA4_ID}"></script>
+`;
+  if (s.includes('</head>')) return s.replace('</head>', `${snippet}</head>`);
+  return snippet + s;
+}
+
+/**
+ * HTML de la SPA vía ASSETS. Cloudflare Pages hace 308 de `*.html` a la pretty URL:
+ * pedir `/index.html` devuelve 308 → `/` con cuerpo vacío. `redirect: 'manual'` evita seguirlo.
+ */
+async function fetchSpaShellHtml(env, origin) {
+  const init = { method: 'GET', redirect: 'manual' };
+  for (const path of ['/saltacapital', '/']) {
+    const res = await env.ASSETS.fetch(new Request(new URL(path, origin).toString(), init));
+    if (res.status >= 300 && res.status < 400) continue;
+    if (!res.ok) continue;
+    const html = await res.text();
+    if (looksLikeSpaShell(html)) return html;
+  }
+  return '';
 }
 
 const ASSETLINKS_JSON = JSON.stringify([
@@ -224,7 +309,15 @@ function esc(s) {
     .replace(/'/g, '&#39;');
 }
 
-function ogHtml({ title, description, image, url }) {
+function ogHtml({ title, description, image, url, imageWidth, imageHeight, imageType, imageSecureUrl }) {
+  const width = imageWidth || 600;
+  const height = imageHeight || 600;
+  const secure = imageSecureUrl
+    ? `\n  <meta property="og:image:secure_url" content="${esc(imageSecureUrl)}" />`
+    : '';
+  const type = imageType
+    ? `\n  <meta property="og:image:type" content="${esc(imageType)}" />`
+    : '';
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -235,9 +328,9 @@ function ogHtml({ title, description, image, url }) {
   <meta property="og:type" content="article" />
   <meta property="og:title" content="${esc(title)}" />
   <meta property="og:description" content="${esc(description)}" />
-  <meta property="og:image" content="${esc(image)}" />
-  <meta property="og:image:width" content="600" />
-  <meta property="og:image:height" content="600" />
+  <meta property="og:image" content="${esc(image)}" />${secure}
+  <meta property="og:image:width" content="${width}" />
+  <meta property="og:image:height" content="${height}" />${type}
   <meta property="og:url" content="${esc(url)}" />
   <link rel="canonical" href="${esc(url)}" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -276,6 +369,36 @@ async function d1Query(env, sql, params) {
   }
 }
 
+// ---------- Animaldex Adopciones (/adopciones/:city[/:id]) ----------
+// Copia mínima de lib/adoptionLocalities.ts (este archivo no importa TS):
+// mantener sincronizado. Un slug desconocido usa la localidad por defecto,
+// igual que la SPA.
+const ADOPTION_LOCALITIES = { saltacapital: { slug: 'saltacapital', locality: 'Salta Capital' } };
+const DEFAULT_ADOPTION_SLUG = 'saltacapital';
+const ADOPTION_SUBPATHS = new Set(['publicar', 'mis-publicaciones', 'gestionar']);
+const ADOPTION_PATH_RE = /^\/adopciones(?:\/([a-z0-9-]+)(?:\/([A-Za-z0-9_-]{1,80}))?)?\/?$/i;
+
+function adoptionLocality(slug) {
+  return ADOPTION_LOCALITIES[String(slug || '').toLowerCase()] || ADOPTION_LOCALITIES[DEFAULT_ADOPTION_SLUG];
+}
+
+function adoptionWallMeta(place) {
+  return {
+    title: `Adopciones en ${place.locality} · Animaldex 💜`,
+    description: `Mascotas que buscan familia en ${place.locality}. Mirá las publicaciones, difundilas o publicá una mascota en adopción.`,
+    image: ADOPTIONS_OG_IMAGE,
+    imageSecureUrl: ADOPTIONS_OG_IMAGE,
+    imageWidth: ADOPTIONS_OG_IMAGE_WIDTH,
+    imageHeight: ADOPTIONS_OG_IMAGE_HEIGHT,
+    imageType: ADOPTIONS_OG_IMAGE_TYPE,
+    url: `${ADOPTIONS_ORIGIN}/${place.slug}`,
+  };
+}
+
+function adoptionPostPublicUrl(place, alertId) {
+  return `${ADOPTIONS_ORIGIN}/${place.slug}/${encodeURIComponent(alertId)}`;
+}
+
 async function buildOgMeta(request, env, url) {
   const origin = PUBLIC_WEB_ORIGIN;
   const pathname = url.pathname;
@@ -286,6 +409,12 @@ async function buildOgMeta(request, env, url) {
   const listingMatch = pathname.match(/^\/m\/([^/]+)\/?$/);
   const reelMatch = pathname.match(/^\/r\/([^/]+)\/?$/);
   const postMatch = pathname.match(/^\/p\/([^/]+)\/?$/);
+  const adoptionMatch = pathname.match(ADOPTION_PATH_RE);
+  const adoptionPlace = adoptionMatch ? adoptionLocality(adoptionMatch[1]) : null;
+  const adoptionPostId =
+    adoptionMatch && adoptionMatch[2] && !ADOPTION_SUBPATHS.has(adoptionMatch[2].toLowerCase())
+      ? decodeURIComponent(adoptionMatch[2])
+      : '';
   const handleMatch = pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i);
   // Keep in sync with lib/publicHandles.ts and worker/index.js
   const reserved = new Set([
@@ -294,7 +423,7 @@ async function buildOgMeta(request, env, url) {
     'verificar', 'escanear', 'entrar', 'tienda', 'vender', 'user', 'users', 'assets', '_expo',
     'index', 'home', 'app', 'www', 'static', 'public', 'nueva-mascota', 'editar-perfil',
     'editar-perfil-publico', 'crear-alerta', 'mis-alertas', 'mis-productos', 'mercado-favoritos', 'favicon.ico', 'robots.txt',
-    'well-known', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil',
+    'well-known', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil', 'adopciones',
   ]);
 
   if (petMatch) {
@@ -321,8 +450,8 @@ async function buildOgMeta(request, env, url) {
         };
       }
     }
-  } else if (alertMatch) {
-    const id = decodeURIComponent(alertMatch[1]);
+  } else if (alertMatch || adoptionPostId) {
+    const id = adoptionPostId || decodeURIComponent(alertMatch[1]);
     const rows = await d1Query(
       env,
       `SELECT a.*, u.username AS username
@@ -330,7 +459,12 @@ async function buildOgMeta(request, env, url) {
        WHERE a.id = ?`,
       [id]
     );
-    if (rows[0]) {
+    const hidden =
+      rows[0] &&
+      rows[0].expires_at != null &&
+      (Number(rows[0].expires_at) <= Date.now() || rows[0].paused_at != null);
+    const wrongSection = adoptionPostId && rows[0] && rows[0].type !== 'adoption';
+    if (rows[0] && !hidden && !wrongSection) {
       const a = rows[0];
       const resolved = !!(a.resolved_at || a.status === 'resolved');
       const name = a.pet_name ? String(a.pet_name).trim() : '';
@@ -385,9 +519,14 @@ async function buildOgMeta(request, env, url) {
         title,
         description,
         image: a.image,
-        url: `${origin}/a/${a.id}`,
+        url: adoptionPostId
+          ? adoptionPostPublicUrl(adoptionPlace, a.id)
+          : `${origin}/a/${a.id}`,
       };
     }
+    if (!meta && adoptionPostId) meta = adoptionWallMeta(adoptionPlace);
+  } else if (adoptionMatch) {
+    meta = adoptionWallMeta(adoptionPlace);
   } else if (listingMatch) {
     const id = decodeURIComponent(listingMatch[1]);
     const rows = await d1Query(env, 'SELECT * FROM listings WHERE id = ?', [id]);
@@ -554,7 +693,63 @@ async function buildOgMeta(request, env, url) {
   return meta;
 }
 
-const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/|\/r\/)|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
+const OG_PATH_RE = /^(\/p\/|\/pet\/|\/a\/|\/m\/|\/r\/|\/adopciones(\/|$))|^\/$|^\/[a-z0-9_.]{3,20}\/?$/i;
+
+const ADOPTIONS_RESERVED = new Set([
+  'p', 'pet', 'a', 'm', 'r', 'reels', 'alertas', 'mercado', 'crear', 'mascotas', 'actividad', 'perfil',
+  'explorar', 'verificar', 'escanear', 'entrar', 'tienda', 'admin', 'vender', 'assets', '_expo',
+  'favicon.ico', 'robots.txt', 'privacidad', 'eliminar-cuenta', 'seguridad-infantil',
+  'editar-perfil', 'editar-perfil-publico', 'nueva-mascota', 'crear-alerta', 'mis-alertas',
+  'mis-productos', 'mercado-favoritos', 'transfer', 'well-known', 'login', 'register', 'auth', 'adopciones',
+  'og',
+]);
+
+function cleanPath(pathname) {
+  return String(pathname || '').replace(/\/+$/, '') || '/';
+}
+
+/** 301 hacia el subdominio. No corre en pages.dev, así el preview conserva /adopciones. */
+function adoptionsRedirectTarget(url) {
+  const host = url.hostname.toLowerCase();
+  const path = cleanPath(url.pathname);
+  if (
+    path.startsWith('/_expo') ||
+    path.startsWith('/assets') ||
+    path.startsWith('/legal') ||
+    path === '/favicon.ico' ||
+    path.startsWith('/.well-known')
+  ) {
+    return null;
+  }
+  const onSub = host === ADOPTIONS_HOST;
+  const onMain = host === 'animaldex.com' || host === 'www.animaldex.com';
+  if (onSub && path === '/') return `${ADOPTIONS_ORIGIN}/${DEFAULT_ADOPTION_SLUG}${url.search}`;
+  const legacy = path === '/adopciones' || path.startsWith('/adopciones/');
+  if ((onSub || onMain) && legacy) {
+    let rest = path.replace(/^\/adopciones/, '') || `/${DEFAULT_ADOPTION_SLUG}`;
+    if (rest === '/') rest = `/${DEFAULT_ADOPTION_SLUG}`;
+    return `${ADOPTIONS_ORIGIN}${rest}${url.search}`;
+  }
+  return null;
+}
+
+/** El OG histórico entiende /adopciones/... El subdominio muestra /saltacapital. */
+function urlForOg(url) {
+  if (url.hostname.toLowerCase() !== ADOPTIONS_HOST) return url;
+  const path = cleanPath(url.pathname);
+  if (path.startsWith('/_expo') || path.startsWith('/assets') || path === '/favicon.ico') return url;
+  if (path === '/' || path === '/adopciones') {
+    const next = new URL(url.toString());
+    next.pathname = `/adopciones/${DEFAULT_ADOPTION_SLUG}`;
+    return next;
+  }
+  if (path.startsWith('/adopciones/')) return url;
+  const first = path.split('/').filter(Boolean)[0] || '';
+  if (ADOPTIONS_RESERVED.has(first.toLowerCase())) return url;
+  const next = new URL(url.toString());
+  next.pathname = `/adopciones${path}`;
+  return next;
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -572,6 +767,24 @@ export default {
           'Cache-Control': 'public, max-age=3600',
         },
       });
+    }
+
+    // Imagen OG del muro de Adopciones: JPEG público, sin SPA ni login.
+    const ogImagePath = url.pathname.replace(/\/+$/, '') || '/';
+    if (ogImagePath === ADOPTIONS_OG_PATH) {
+      const imgRes = await env.ASSETS.fetch(
+        new Request(new URL(ADOPTIONS_OG_PATH, url.origin).toString(), { method: 'GET' })
+      );
+      if (imgRes.ok) {
+        return new Response(imgRes.body, {
+          status: 200,
+          headers: {
+            'Content-Type': 'image/jpeg',
+            'Cache-Control': 'public, max-age=86400',
+          },
+        });
+      }
+      return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
 
     // 0.5) Política de privacidad y eliminación de cuenta: HTML público,
@@ -595,9 +808,50 @@ export default {
       );
     }
 
+    // 0.8) Adopciones: el subdominio es la entrada. Las rutas viejas redirigen.
+    // No se aplica en *.pages.dev para no romper un preview antes del DNS.
+    const adoptionsTarget = adoptionsRedirectTarget(url);
+    if (adoptionsTarget) {
+      return new Response(null, {
+        status: 301,
+        headers: {
+          Location: adoptionsTarget,
+          'Cache-Control': 'public, max-age=300',
+        },
+      });
+    }
+
+    // 0.9) Antigua ruta /admin en Adopciones: retirada (sin SPA ni Google Analytics).
+    const normalizedPath = cleanPath(url.pathname);
+    const isAdoptionsSubdomain = url.hostname.toLowerCase() === ADOPTIONS_HOST;
+    if (normalizedPath === '/robots.txt' && isAdoptionsSubdomain) {
+      return new Response('User-agent: *\nAllow: /\nDisallow: /admin\n', {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
+    }
+    if (isAdoptionsSubdomain && (normalizedPath === '/admin' || normalizedPath.startsWith('/admin/'))) {
+      return new Response(
+        `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><meta name="robots" content="noindex, nofollow"/><title>Página no disponible · Animaldex Adopciones</title></head><body style="font-family:system-ui,-apple-system,sans-serif;padding:40px 20px;text-align:center;color:#222;"><h1 style="font-size:20px;margin-bottom:8px;">Página no disponible</h1><p style="font-size:14px;color:#666;margin-bottom:20px;">Esta ruta ya no se encuentra activa.</p><p><a href="${ADOPTIONS_ORIGIN}/${DEFAULT_ADOPTION_SLUG}" style="color:#FF6B4A;font-weight:700;text-decoration:none;">Ir a Adopciones</a></p></body></html>`,
+        {
+          status: 404,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'private, no-store',
+            'X-Robots-Tag': 'noindex, nofollow',
+          },
+        }
+      );
+    }
+
     // 1) Bots de redes sociales en rutas con preview: servir OG HTML.
-    if (BOT_RE.test(ua) && OG_PATH_RE.test(url.pathname)) {
-      const meta = await buildOgMeta(request, env, url);
+    // En el subdominio, /saltacapital se lee como /adopciones/saltacapital.
+    const ogUrl = urlForOg(url);
+    if (BOT_RE.test(ua) && OG_PATH_RE.test(ogUrl.pathname)) {
+      const meta = await buildOgMeta(request, env, ogUrl);
       return new Response(ogHtml(meta), {
         status: 200,
         headers: {
@@ -629,14 +883,15 @@ export default {
 
     const assetResponse = await env.ASSETS.fetch(assetRequest);
 
+    const adoptionPage = /^\/adopciones(\/|$)/.test(cleanPath(urlForOg(url).pathname));
     const spaHandle = (url.pathname.match(/^\/([a-z0-9_.]{3,20})\/?$/i) || [])[1];
     const spaReserved = new Set([
       'p','pet','a','m','r','reels','alertas','mercado','crear','mascotas','actividad','perfil',
       'explorar','verificar','escanear','entrar','tienda','admin','vender',
       'editar-perfil','editar-perfil-publico','user','assets','_expo','favicon.ico','robots.txt',
-      'privacidad','eliminar-cuenta','seguridad-infantil',
+      'privacidad','eliminar-cuenta','seguridad-infantil','adopciones',
     ]);
-    const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase());
+    const maybeProfile = spaHandle && !spaReserved.has(spaHandle.toLowerCase()) && !adoptionPage;
     const maybePet = /^\/pet\/[^/]+\/?$/.test(url.pathname) || (spaHandle && /\.pet$/i.test(spaHandle));
     const assetType = (assetResponse.headers.get('content-type') || '').toLowerCase();
     const assetIsHtml = assetResponse.status === 404 || assetType.includes('text/html');
@@ -658,7 +913,9 @@ export default {
           ? await env.ASSETS.fetch(new Request(new URL('/index.html', url.origin).toString(), request))
           : assetResponse;
         const html = await source.text();
-        return new Response(injectOgIntoSpa(html, meta), {
+        const withOg = injectOgIntoSpa(html, meta);
+        const finalHtml = isAdoptionsSubdomain && url.protocol === 'https:' ? injectAdoptionsGa4IntoSpa(withOg) : withOg;
+        return new Response(finalHtml, {
           status: 200,
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
@@ -666,6 +923,36 @@ export default {
             'Vary': 'User-Agent',
           },
         });
+      }
+    }
+
+    // 4) En adopciones.animaldex.com (HTTPS, rutas públicas de la SPA), inyectar gtag.js (GA4)
+    //    exclusivamente en el subdominio de producción. Nunca en animaldex.com, pages.dev ni /admin.
+    if (isAdoptionsSubdomain && url.protocol === 'https:' && !isStaticAssetPathname(url.pathname)) {
+      if (assetResponse.status === 200 && assetType.includes('text/html')) {
+        const html = await assetResponse.text();
+        if (looksLikeSpaShell(html)) {
+          return new Response(injectAdoptionsGa4IntoSpa(html), {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': assetResponse.headers.get('cache-control') || 'public, max-age=0, must-revalidate',
+            },
+          });
+        }
+        return new Response(html, { status: 200, headers: assetResponse.headers });
+      }
+      if (assetResponse.status === 404) {
+        const fallbackHtml = await fetchSpaShellHtml(env, url.origin);
+        if (looksLikeSpaShell(fallbackHtml)) {
+          return new Response(injectAdoptionsGa4IntoSpa(fallbackHtml), {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'public, max-age=0, must-revalidate',
+            },
+          });
+        }
       }
     }
 

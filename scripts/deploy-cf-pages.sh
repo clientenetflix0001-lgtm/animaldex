@@ -26,6 +26,10 @@ npx expo export --platform all
 echo "==> Copiando páginas legales públicas (/privacidad, /eliminar-cuenta, /seguridad-infantil)..."
 bash scripts/copy-legal-pages.sh
 
+echo "==> Copiando imagen Open Graph de Adopciones..."
+mkdir -p dist/og
+cp web/og/animaldex-adopciones-og-v2.jpg dist/og/animaldex-adopciones-og-v2.jpg
+
 echo "==> Copiando Worker de Pages (OG previews + SPA fallback)..."
 cp cf-pages-worker.src.js dist/_worker.js
 
